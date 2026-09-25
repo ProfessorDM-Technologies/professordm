@@ -1,0 +1,17 @@
+# Who reviews what (diagram 12). GitHub Free does not auto-request reviewers from this file on
+# private repos, so assign these people by hand on each PR. It starts working if we move to GitHub Team.
+# Last matching line wins, so broad paths go first.
+/services/                @AkshayVoora
+/packages/meta-client/    @AkshayVoora
+/apps/creator-workspace/  @ritvikreddygangula
+/apps/consumer/           @akallam04
+/services/ai-worker/      @Chinmay1545
+/packages/ai/             @Chinmay1545
+/eval/                    @Chinmay1545
+/supabase/                @karthikreddyyalala
+/infra/                   @karthikreddyyalala @AkshayVoora
+/packages/contracts/      @karthikreddyyalala
+/packages/db/             @karthikreddyyalala
+/packages/observability/  @karthikreddyyalala
+/.github/                 @karthikreddyyalala
+/e2e/                     @karthikreddyyalala
