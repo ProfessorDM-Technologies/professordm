@@ -1,15 +1,61 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { PageSection } from "@/components/page-section";
+import { notFound } from "next/navigation";
+import { LocalTime } from "@/components/local-time";
 import { Placeholder } from "@/components/placeholder";
+import { RefreshButton } from "@/components/refresh-button";
+import { outboundStatusLabel, outboundTypeLabel } from "@/lib/inbox/labels";
+import { getThread } from "@/lib/inbox/queries";
+import type { ThreadItem } from "@/lib/inbox/thread";
 
 export const metadata: Metadata = {
-  title: "Question",
+  title: "Conversation",
 };
 
-const ACTIONS = ["Save draft", "Decline", "Submit answer"] as const;
+function itemCaption(item: ThreadItem) {
+  if (item.kind === "clarification_prompt") return "Clarification question";
+  if (item.kind === "clarification_reply") return "Reply to clarification";
+  if (item.kind === "outbound" && item.outboundType) {
+    const status = outboundStatusLabel(item.status);
+    return status ? `${outboundTypeLabel(item.outboundType)} · ${status}` : outboundTypeLabel(item.outboundType);
+  }
+  return null;
+}
 
-export default function QuestionPage() {
+function Bubble({ item }: { item: ThreadItem }) {
+  const outgoing = item.direction === "out";
+  const caption = itemCaption(item);
+
+  return (
+    <li className={`flex ${outgoing ? "justify-end" : "justify-start"}`}>
+      <div className={`max-w-[85%] space-y-1 sm:max-w-[70%] ${outgoing ? "items-end text-right" : ""}`}>
+        <p className="sr-only">{outgoing ? "You sent:" : "They sent:"}</p>
+        <div
+          className={`whitespace-pre-wrap rounded-2xl px-4 py-2 text-left text-sm ${
+            outgoing ? "bg-pdm-accent text-white" : "border border-pdm-border bg-white text-pdm-ink"
+          }`}
+        >
+          {item.text || "(No text — attachment only)"}
+        </div>
+        <p className="space-x-2 text-xs text-pdm-muted">
+          {caption ? <span>{caption}</span> : null}
+          {item.time ? <LocalTime value={item.time} /> : null}
+        </p>
+      </div>
+    </li>
+  );
+}
+
+export default async function ConversationPage({ params }: PageProps<"/inbox/[id]">) {
+  const { id } = await params;
+  const thread = await getThread(id);
+
+  if (!thread.found) {
+    notFound();
+  }
+
+  const username = thread.follower.username ? `@${thread.follower.username}` : "Unknown sender";
+
   return (
     <article className="space-y-6">
       <p>
@@ -18,45 +64,31 @@ export default function QuestionPage() {
         </Link>
       </p>
 
-      <h1 className="text-2xl font-semibold tracking-tight">Question</h1>
-
-      <PageSection id="question" title="Question">
-        <Placeholder>The follower&apos;s question, source and photos will appear here.</Placeholder>
-      </PageSection>
-
-      <PageSection id="clarification" title="Clarification history">
-        <Placeholder>Clarification prompts and replies will appear here.</Placeholder>
-      </PageSection>
-
-      <PageSection id="classification" title="Classification and safety">
-        <Placeholder>The AI label, confidence and any safety flags will appear here.</Placeholder>
-      </PageSection>
-
-      <PageSection id="draft" title="AI draft">
-        <Placeholder>The AI draft will appear here with its sources labelled creator knowledge or web.</Placeholder>
-      </PageSection>
-
-      <PageSection id="answer" title="Your answer">
-        <Placeholder>
-          Rewrite the draft in your own voice and add at least one tag. An unchanged draft can&apos;t be sent.
-        </Placeholder>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          {ACTIONS.map((label) => (
-            <button
-              key={label}
-              type="button"
-              disabled
-              aria-describedby="actions-note"
-              className="rounded-lg border border-pdm-border bg-white px-4 py-3 font-medium disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {label}
-            </button>
-          ))}
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight">{username}</h1>
+          <p className="text-pdm-muted">Instagram conversation</p>
         </div>
-        <p id="actions-note" className="text-sm text-pdm-muted">
-          These actions are not available yet.
+        <RefreshButton />
+      </div>
+
+      {thread.error ? (
+        <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-800">
+          Part of this conversation couldn&apos;t be loaded. Try again.
         </p>
-      </PageSection>
+      ) : null}
+
+      {thread.items.length === 0 ? (
+        <Placeholder>No messages in this conversation yet.</Placeholder>
+      ) : (
+        <ol aria-label={`Messages with ${username}`} className="space-y-4">
+          {thread.items.map((item) => (
+            <Bubble key={item.key} item={item} />
+          ))}
+        </ol>
+      )}
+
+      <p className="text-sm text-pdm-muted">Replying from here comes in a later update.</p>
     </article>
   );
 }
