@@ -17,7 +17,7 @@ pnpm --filter @professordm/creator-workspace dev                           # htt
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL (same project as `apps/consumer`) |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase publishable key |
 
-Checks (same as CI): `pnpm --filter @professordm/creator-workspace lint`, `typecheck`, `build`.
+Checks (same as CI): `pnpm --filter @professordm/creator-workspace lint`, `typecheck`, `test`, `build`. Unit tests use Vitest (`src/**/*.test.ts`).
 
 ## Who can sign in
 
@@ -35,10 +35,28 @@ Only `profiles.role` = `creator` or `admin`. A `consumer` who signs in is signed
 | `/login` | Sign in | Done |
 | `/` | ProfessorDM Bank (home) | Placeholder |
 | `/incoming` | Incoming Messages (AI labels, override) | Placeholder |
-| `/inbox`, `/inbox/[id]` | Paid question queue, question detail + answer | Placeholder |
+| `/inbox` | Incoming Instagram messages, newest first (read only) | Done (SCRUM-56) |
+| `/inbox/[id]` | Conversation with one sender (`id` = `ig_followers.id`) | Done (SCRUM-56) |
 | `/sent` | Sent answers, follow-ups, ratings | Placeholder |
 | `/moderation` | Flagged items; extra admin review section | Placeholder |
 | `/knowledge` | Knowledge Database | Placeholder |
 | `/profile` | Creator settings | Placeholder |
 
-Reads will go straight to Supabase with RLS; every write goes through the `api` service (BASELINE.md section 2.3).
+Reads go straight to Supabase with RLS; every write goes through the `api` service (BASELINE.md section 2.3).
+
+## Inbox data
+
+Code: `src/lib/inbox/` (`queries.ts` reads, `thread.ts` merges a conversation, `labels.ts` readable names from `@professordm/contracts`).
+
+| Shown | Comes from |
+|---|---|
+| Message list | `inbound_messages` + sender `username` from `ig_followers` |
+| Category | `override_category` if the creator changed it, else `category` |
+| Clarification question + reply | `clarification_rounds.prompt` / `reply` |
+| Answers sent back | `questions` (by sender) → `drafts.final_text` + `approved_at` → `outbound_messages.type` + `status` |
+
+`ig_followers` holds everyone who has DMed the creator, not only people who follow them.
+
+**Requires migrations** `supabase/migrations/20261011_003_creator_read_policies.sql` and `..._004_creator_thread_policies.sql` (select-only RLS: a creator reads their own contacts' data, admins read all). Without them the inbox is empty.
+
+**Known limitation:** `outbound_messages` has no text, sender link or timestamp. Sends without a draft (Ask link, confirmation, status) can't be shown in a conversation, and answers are placed at `drafts.approved_at`, not the actual send time. Proposed schema fix: add `follower_id`, `body` and `created_at` to `outbound_messages`.
