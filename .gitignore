@@ -11,3 +11,6 @@ supabase/.temp/
 .env
 .env.*
 !.env.example
+
+# local Claude Code notes and plans
+.claude/
