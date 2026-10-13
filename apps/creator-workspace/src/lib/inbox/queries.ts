@@ -76,6 +76,8 @@ type QuestionRow = {
   }[];
 };
 
+type DirectAnswerRow = { id: string; type: string; status: string | null; text: string | null; created_at: string };
+
 export type ThreadResult =
   | { found: false }
   | {
@@ -108,7 +110,7 @@ export async function getThread(followerId: string): Promise<ThreadResult> {
     return { found: false };
   }
 
-  const [inboundRes, questionsRes] = await Promise.all([
+  const [inboundRes, questionsRes, directRes] = await Promise.all([
     supabase
       .from("inbound_messages")
       .select("id, text, received_at")
@@ -120,6 +122,13 @@ export async function getThread(followerId: string): Promise<ThreadResult> {
       .select("drafts(final_text, approved_at, outbound_messages(id, type, status))")
       .eq("follower_id", followerId)
       .overrideTypes<QuestionRow[], { merge: false }>(),
+    // Replies the creator typed directly (no AI draft). They carry their own text and time.
+    supabase
+      .from("outbound_messages")
+      .select("id, type, status, text, created_at")
+      .eq("follower_id", followerId)
+      .is("draft_id", null)
+      .overrideTypes<DirectAnswerRow[], { merge: false }>(),
   ]);
 
   const inbound = inboundRes.data ?? [];
@@ -136,7 +145,7 @@ export async function getThread(followerId: string): Promise<ThreadResult> {
         >()
     : { data: [], error: null };
 
-  const failed = [inboundRes.error, questionsRes.error, clarificationsRes.error].find(Boolean);
+  const failed = [inboundRes.error, questionsRes.error, directRes.error, clarificationsRes.error].find(Boolean);
   if (failed) {
     console.error("getThread failed", { code: failed.code });
   }
@@ -149,7 +158,7 @@ export async function getThread(followerId: string): Promise<ThreadResult> {
     reply: row.reply,
   }));
 
-  const outbound: ThreadOutbound[] = (questionsRes.data ?? []).flatMap((question) =>
+  const drafted: ThreadOutbound[] = (questionsRes.data ?? []).flatMap((question) =>
     question.drafts.flatMap((draft) =>
       draft.outbound_messages.map((send) => ({
         id: send.id,
@@ -160,6 +169,14 @@ export async function getThread(followerId: string): Promise<ThreadResult> {
       })),
     ),
   );
+  const direct: ThreadOutbound[] = (directRes.data ?? []).map((send) => ({
+    id: send.id,
+    text: send.text,
+    sentAt: send.created_at,
+    type: send.type,
+    status: send.status,
+  }));
+  const outbound = [...drafted, ...direct];
 
   return {
     found: true,
