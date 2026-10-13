@@ -78,7 +78,14 @@ type QuestionRow = {
 
 export type ThreadResult =
   | { found: false }
-  | { found: true; error: boolean; follower: { id: string; username: string | null }; items: ThreadItem[] };
+  | {
+      found: true;
+      error: boolean;
+      follower: { id: string; username: string | null };
+      items: ThreadItem[];
+      /** The newest message from this sender. A reply is linked to it. */
+      latestInboundId: string | null;
+    };
 
 // One sender's conversation. RLS hides other creators' contacts, so they come back as not found.
 export async function getThread(followerId: string): Promise<ThreadResult> {
@@ -95,7 +102,7 @@ export async function getThread(followerId: string): Promise<ThreadResult> {
 
   if (followerError) {
     console.error("getThread follower failed", { code: followerError.code });
-    return { found: true, error: true, follower: { id: followerId, username: null }, items: [] };
+    return { found: true, error: true, follower: { id: followerId, username: null }, items: [], latestInboundId: null };
   }
   if (!follower) {
     return { found: false };
@@ -158,6 +165,7 @@ export async function getThread(followerId: string): Promise<ThreadResult> {
     found: true,
     error: Boolean(failed),
     follower,
+    latestInboundId: inbound.at(-1)?.id ?? null,
     items: buildThread({
       inbound: inbound.map((message) => ({ id: message.id, text: message.text, receivedAt: message.received_at })),
       clarifications,

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ReplyBox } from "@/components/inbox/reply-box";
 import { LocalTime } from "@/components/local-time";
 import { Placeholder } from "@/components/placeholder";
 import { RefreshButton } from "@/components/refresh-button";
@@ -88,7 +89,9 @@ export default async function ConversationPage({ params }: PageProps<"/inbox/[id
         </ol>
       )}
 
-      <p className="text-sm text-pdm-muted">Replying from here comes in a later update.</p>
+      {thread.latestInboundId ? (
+        <ReplyBox inboundMessageId={thread.latestInboundId} recipient={username} />
+      ) : null}
     </article>
   );
 }
