@@ -3,6 +3,7 @@ import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from "
 import { parseInboundEvents, verifyMetaSignature } from "./meta";
 import { createPersistence, createServiceRoleClient, type Persistence } from "./persistence";
 import { createTriageQueue, type TriageJob, type TriageQueue } from "./queue";
+import { loadConfig } from "./config";
 
 export interface Dependencies { persistence: Persistence; queue: TriageQueue; appSecret: string }
 
@@ -42,12 +43,11 @@ export async function processWebhook(event: APIGatewayProxyEventV2, deps: Depend
 }
 
 export async function handler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyStructuredResultV2> {
-  const appSecret = process.env.META_APP_SECRET;
-  if (!appSecret) throw new Error("Meta app secret configuration is missing");
   try {
+    const config = await loadConfig();
     return await processWebhook(event, {
-      appSecret,
-      persistence: createPersistence(createServiceRoleClient()),
+      appSecret: config.metaAppSecret,
+      persistence: createPersistence(createServiceRoleClient(config.supabaseUrl, config.supabaseServiceRoleKey)),
       queue: createTriageQueue(),
     });
   } catch (error) {
