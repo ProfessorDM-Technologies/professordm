@@ -31,6 +31,9 @@ erDiagram
     tags ||--o{ question_tags : used_in
     followups ||--o| drafts : "answered by"
     drafts ||--o{ outbound_messages : "delivered as"
+    inbound_messages ||--o{ outbound_messages : "replied to by"
+    ig_followers ||--o{ outbound_messages : "receives"
+    creators ||--o{ outbound_messages : "sends"
     questions ||--o| knowledge_entries : "published as"
     knowledge_docs ||--o{ knowledge_entries : chunked_into
 
@@ -165,12 +168,18 @@ erDiagram
     }
     outbound_messages {
         uuid id PK
-        uuid draft_id FK "nullable"
+        uuid draft_id FK "nullable, null = creator typed it directly"
         text type "ask_link | clarification | confirmation | answer | followup | rating_prompt | survey | decline"
         text delivery_mode "standard | human_agent | fallback_email"
         text meta_message_id
-        text status
+        text status "pending -> sent | failed"
         int attempts
+        uuid inbound_message_id FK "nullable, DM this replies after"
+        uuid follower_id FK "nullable, recipient = thread"
+        text text "nullable, non-blank when direct answer"
+        uuid creator_id FK "nullable, sender, used by RLS"
+        uuid client_request_id UK "one per Send press, blocks double-click"
+        timestamptz created_at "default now()"
     }
     safety_flags {
         uuid id PK
