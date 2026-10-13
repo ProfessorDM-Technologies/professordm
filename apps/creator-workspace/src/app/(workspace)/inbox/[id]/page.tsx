@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ReplyBox } from "@/components/inbox/reply-box";
 import { LocalTime } from "@/components/local-time";
 import { Placeholder } from "@/components/placeholder";
 import { RefreshButton } from "@/components/refresh-button";
@@ -28,7 +29,9 @@ function Bubble({ item }: { item: ThreadItem }) {
 
   return (
     <li className={`flex ${outgoing ? "justify-end" : "justify-start"}`}>
-      <div className={`max-w-[85%] space-y-1 sm:max-w-[70%] ${outgoing ? "items-end text-right" : ""}`}>
+      <div
+        className={`flex max-w-[85%] flex-col space-y-1 sm:max-w-[70%] ${outgoing ? "items-end text-right" : "items-start"}`}
+      >
         <p className="sr-only">{outgoing ? "You sent:" : "They sent:"}</p>
         <div
           className={`whitespace-pre-wrap rounded-2xl px-4 py-2 text-left text-sm ${
@@ -88,7 +91,9 @@ export default async function ConversationPage({ params }: PageProps<"/inbox/[id
         </ol>
       )}
 
-      <p className="text-sm text-pdm-muted">Replying from here comes in a later update.</p>
+      {thread.latestInboundId ? (
+        <ReplyBox inboundMessageId={thread.latestInboundId} recipient={username} />
+      ) : null}
     </article>
   );
 }

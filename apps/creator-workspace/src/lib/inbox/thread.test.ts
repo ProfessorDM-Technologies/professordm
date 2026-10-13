@@ -82,4 +82,16 @@ describe("buildThread", () => {
 
     expect(item).toMatchObject({ kind: "outbound", outboundType: "followup", status: "delivered" });
   });
+
+  it("places several pending direct replies after the message they follow, in send order", () => {
+    const pending = (id: string, sentAt: string): ThreadOutbound => ({ ...outbound(id, sentAt), status: "pending" });
+    const items = buildThread({
+      inbound: [inbound("m1", "2026-10-01T00:00:00Z")],
+      clarifications: [],
+      outbound: [pending("r2", "2026-10-01T00:02:00Z"), pending("r1", "2026-10-01T00:01:00Z")],
+    });
+
+    expect(keys(items)).toEqual(["in-m1", "out-r1", "out-r2"]);
+    expect(items[1]).toMatchObject({ outboundType: "answer", status: "pending", text: "r1" });
+  });
 });

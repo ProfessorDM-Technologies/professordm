@@ -53,10 +53,20 @@ Code: `src/lib/inbox/` (`queries.ts` reads, `thread.ts` merges a conversation, `
 | Message list | `inbound_messages` + sender `username` from `ig_followers` |
 | Category | `override_category` if the creator changed it, else `category` |
 | Clarification question + reply | `clarification_rounds.prompt` / `reply` |
-| Answers sent back | `questions` (by sender) → `drafts.final_text` + `approved_at` → `outbound_messages.type` + `status` |
+| Answers sent back (AI draft) | `questions` (by sender) → `drafts.final_text` + `approved_at` → `outbound_messages.type` + `status` |
+| Replies the creator typed | `outbound_messages` where `follower_id` = sender and `draft_id` is null → `text`, `created_at`, `status` |
 
 `ig_followers` holds everyone who has DMed the creator, not only people who follow them.
 
-**Requires migrations** `supabase/migrations/20261011_003_creator_read_policies.sql` and `..._004_creator_thread_policies.sql` (select-only RLS: a creator reads their own contacts' data, admins read all). Without them the inbox is empty.
+**Requires migrations** `supabase/migrations/20261011_003_creator_read_policies.sql`, `..._004_creator_thread_policies.sql` (select-only RLS: a creator reads their own contacts' data, admins read all) and `20261012_005_creator_direct_answer_outbound.sql` (reply columns + insert policy). Without them the inbox is empty and Send fails.
 
-**Known limitation:** `outbound_messages` has no text, sender link or timestamp. Sends without a draft (Ask link, confirmation, status) can't be shown in a conversation, and answers are placed at `drafts.approved_at`, not the actual send time. Proposed schema fix: add `follower_id`, `body` and `created_at` to `outbound_messages`.
+## Replying (SCRUM-73)
+
+The conversation page has a reply box (`components/inbox/reply-box.tsx`). Send calls the `sendReply` server action (`lib/inbox/actions.ts`), which inserts one `outbound_messages` row: `type = 'answer'`, `draft_id = null`, `status = 'pending'`, linked to the sender's newest inbound message, the follower and the creator. The sender delivers it to Instagram and updates `status`.
+
+- Empty or whitespace-only replies are blocked in the form, the action (`lib/inbox/reply.ts`) and a database check.
+- Double clicks: each Send press carries a `client_request_id` (unique in the database). A repeat is treated as already sent.
+- No AI draft this milestone; the creator types the reply.
+- Exception to the "writes go through `api`" rule above: this insert is made with the creator's session and limited by the RLS insert policy in migration 005, because the `api` service doesn't exist yet. Move it to `api` once it does.
+
+**Known limitation:** only typed replies use the new `follower_id`, `text` and `created_at` columns. Other sends without a draft (Ask link, confirmation, status) still don't fill them, so they can't be shown in a conversation, and AI-drafted answers are placed at `drafts.approved_at`, not the actual send time.
