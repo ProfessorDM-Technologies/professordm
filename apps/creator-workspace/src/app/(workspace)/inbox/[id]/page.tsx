@@ -29,7 +29,9 @@ function Bubble({ item }: { item: ThreadItem }) {
 
   return (
     <li className={`flex ${outgoing ? "justify-end" : "justify-start"}`}>
-      <div className={`max-w-[85%] space-y-1 sm:max-w-[70%] ${outgoing ? "items-end text-right" : ""}`}>
+      <div
+        className={`flex max-w-[85%] flex-col space-y-1 sm:max-w-[70%] ${outgoing ? "items-end text-right" : "items-start"}`}
+      >
         <p className="sr-only">{outgoing ? "You sent:" : "They sent:"}</p>
         <div
           className={`whitespace-pre-wrap rounded-2xl px-4 py-2 text-left text-sm ${
