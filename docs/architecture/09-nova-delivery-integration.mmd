@@ -1,0 +1,57 @@
+%%{init: {'theme':'base','themeVariables':{'primaryColor':'#FEFCE8','primaryTextColor':'#1C1917','primaryBorderColor':'#CA8A04','lineColor':'#64748B','background':'#FFFFFF'}}}%%
+flowchart TB
+    %% OWNER: Nova, Project Manager + Delivery Integration Lead.
+    %% Owns WHEN and WHO. Technical leads own HOW. Kristin owns WHAT and final acceptance.
+    %% Dates = sponsor milestone framework (Roles doc section 6). ASU deadlines take precedence.
+
+    subgraph FALL["FALL 2026  Architecture, Connectivity, Core Intelligence  (classes end Dec 4)"]
+        direction LR
+        F1["Sep 18<br/>Team + project baseline<br/>Nova + all"]
+        F2["Sep 25<br/>V1 requirements +<br/>architecture baseline<br/>Karthik + leads"]
+        F3["Oct 16<br/>Platform + Instagram demo<br/>webhook, in/out test DMs,<br/>app shells<br/>Akshay / Karthik"]
+        F4["Oct 30<br/>AI + Knowledge slice<br/>classify, clarify, retrieval,<br/>draft, initial safety<br/>Chinmay + team"]
+        F5["Nov 13<br/>End-to-end Alpha 0.1<br/>IG question to inbox, draft,<br/>review, answer back to IG<br/>All technical"]
+        F6["Dec 1<br/>Semester 1 release<br/>stable alpha, test evidence,<br/>Spring backlog<br/>Nova + all"]
+        F1 --> F2 --> F3 --> F4 --> F5 --> F6
+    end
+
+    subgraph SPR["SPRING 2027  Full Workflow, Consumer Experience, Beta Readiness  (classes end Apr 30)"]
+        direction LR
+        P1["Jan 22<br/>Spring re-baseline<br/>Nova + leads"]
+        P2["Feb 12<br/>Feature-complete Alpha 0.5<br/>Stripe test flow, follow-ups,<br/>moderation, search<br/>All technical"]
+        P3["Mar 5<br/>Internal Beta 0.8<br/>hardening, regression,<br/>trial scripts<br/>Karthik / Maximo"]
+        P4["Mar 26<br/>Beta RC 1.0<br/>acceptance tests pass,<br/>prod env ready<br/>Nova + all"]
+        P5["Apr 9<br/>Controlled Sweetlife<br/>Flora trial done<br/>Maximo / Nova"]
+        P6["Apr 23<br/>Critical fixes +<br/>beta findings<br/>All"]
+        P7["Apr 30<br/>Final handoff V1 MVP<br/>Nova + all"]
+        P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> P7
+    end
+
+    F6 --> P1
+
+    subgraph PM["NOVA RUNS"]
+        direction LR
+        N1["integrated master schedule<br/>2-week sprints, sprint ends<br/>aligned to milestone dates"]
+        N2["Jira: epics per workstream,<br/>tickets tagged with diagram flow"]
+        N3["risk, issue, decision,<br/>dependency, action logs"]
+        N4["sponsor status: decisions,<br/>risks, demos only"]
+        N5["change control: clarification<br/>vs scope change"]
+        N6["beta readiness with Maximo"]
+        N7["final handoff package"]
+    end
+
+    subgraph RISK["TOP RISKS ON THE REGISTER NOW"]
+        R1["Meta app review time<br/>SCRUM-25, blocks Oct 16"]
+        R2["24h messaging window<br/>vs creator answer time"]
+        R3["Stripe live trial approval"]
+        R4["account access runs through Kristin<br/>Vercel codes, JM on Instagram"]
+    end
+
+    PM -.-> FALL
+    PM -.-> SPR
+    RISK -.-> PM
+
+    style FALL fill:#EFF6FF,stroke:#2563EB,color:#1E3A8A
+    style SPR fill:#F0FDF4,stroke:#15803D,color:#14532D
+    style PM fill:#FFFBEB,stroke:#D97706,color:#451A03
+    style RISK fill:#FFF1F2,stroke:#E11D48,color:#881337

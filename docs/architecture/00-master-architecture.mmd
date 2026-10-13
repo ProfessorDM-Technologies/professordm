@@ -1,0 +1,126 @@
+%%{init: {'theme':'base','themeVariables':{'primaryColor':'#FEFCE8','primaryTextColor':'#1C1917','primaryBorderColor':'#CA8A04','lineColor':'#64748B','background':'#FFFFFF'}}}%%
+flowchart TB
+    %% ProfessorDM V1 system context. Every box carries its accountable lead.
+
+    subgraph USERS["PEOPLE"]
+        direction LR
+        FOL(["Instagram follower"])
+        CON(["Knowledge App user<br/>Ask Sweetlife Flora"])
+        CRE(["Creator<br/>Kristin, Sweetlife Flora"])
+        ADM(["ProfessorDM team<br/>reviews flagged answers"])
+    end
+
+    subgraph EXT["EXTERNAL SERVICES"]
+        direction LR
+        IG["Meta Instagram Messaging API<br/>webhooks + send API"]
+        STR["Stripe<br/>standard Payments, test mode first"]
+        OR["OpenRouter<br/>Gemini 3.1 Flash-Lite, Claude Sonnet 5,<br/>GPT-5.6 Terra fallback, web search"]
+        OAI["OpenAI API<br/>Moderation + text-embedding-3-small"]
+        RES["Resend<br/>transactional email"]
+    end
+
+    subgraph FE["FRONTEND  Vercel Pro, 2 separate projects"]
+        direction LR
+        CW["Creator Workspace  Ritvik<br/>Bank (home), Inbox, Sent, Moderation,<br/>Profile settings, Knowledge Database<br/>+ ProfessorDM team review by role"]
+        CA["Consumer App  Arun<br/>pre-paywall Ask page for IG followers<br/>+ Ask [Creator] Knowledge App<br/>V1 = Ask Sweetlife Flora"]
+    end
+
+    subgraph BE["BACKEND  AWS Lambda + API Gateway + SQS"]
+        direction TB
+        WHI["ig-webhook  Akshay<br/>HMAC verify, dedupe, 200 fast"]
+        WHS["stripe-webhook  Akshay<br/>signature verify, payment events"]
+        API["api  Akshay routing<br/>commands: approve, accept + rating,<br/>refund, search, ask, override, settings"]
+        Q1[["SQS ai-jobs + DLQ"]]
+        Q2[["SQS outbound + DLQ"]]
+        AIW["ai-worker  Chinmay<br/>LangGraph JS: triage, clarify, retrieve,<br/>web search, draft, safety, embed,<br/>knowledge safety review"]
+        SND["sender  Akshay<br/>DM delivery + quick-reply buttons,<br/>24h window rules, retry, delivery state"]
+        SCH["scheduler  Karthik<br/>EventBridge, hourly: day-2 survey,<br/>day-3 close + knowledge, payouts,<br/>weekly knowledge safety review"]
+    end
+
+    subgraph DATA["SUPABASE PRO  Karthik"]
+        direction LR
+        PG[("Postgres<br/>RLS on every table<br/>audit_log + events tables")]
+        VEC[("pgvector<br/>knowledge_entries")]
+        AUTH["Supabase Auth<br/>creator, admin, consumer roles"]
+        STO["Supabase Storage<br/>DM images, voice answers"]
+        RT["Realtime<br/>inbox updates"]
+    end
+
+    subgraph OPS["QUALITY + OBSERVABILITY  Karthik"]
+        direction LR
+        GHA["GitHub Actions CI/CD"]
+        SEN["Sentry free<br/>PII scrubbed"]
+        AMP["Amplitude free<br/>reads internal events"]
+    end
+
+    %% Instagram path
+    FOL -- "DM" --> IG
+    IG -- "webhook" --> WHI
+    WHI --> Q1
+    Q1 --> AIW
+    AIW -- "classify, clarify, draft" --> OR
+    AIW -- "moderation, embeddings" --> OAI
+    AIW -- "link, clarification DMs" --> Q2
+    SCH -- "survey, embed, reviews" --> Q1
+    SCH --> PG
+    Q2 --> SND
+    SND -- "send DM" --> IG
+    IG -- "DM reply" --> FOL
+    FOL -- "opens Ask link" --> CA
+
+    %% Knowledge App path
+    CON --> CA
+
+    %% Payments
+    CA -- "Checkout" --> STR
+    STR -- "webhook" --> WHS
+    WHS --> Q1
+
+    %% Human in the loop
+    CRE --> CW
+    ADM --> CW
+    CW -- "approve, edit, tag, refund" --> API
+    API --> Q2
+    API --> Q1
+    API -- "refund" --> STR
+    CA -- "search, ask, history" --> API
+    SND -- "fallback email,<br/>app notifications" --> RES
+
+    %% Data
+    WHI --> PG
+    WHS --> PG
+    API --> PG
+    AIW --> PG
+    AIW --> VEC
+    AIW --> STO
+    SND --> PG
+    CW -. "reads via RLS" .-> PG
+    CA -. "reads via RLS" .-> PG
+    CW -. "live" .-> RT
+    CW --> AUTH
+    CA --> AUTH
+
+    %% Ops
+    GHA -. "deploy" .-> FE
+    GHA -. "deploy" .-> BE
+    SEN -. "errors" .-> FE
+    SEN -. "errors" .-> BE
+    PG -. "event export" .-> AMP
+
+    HITL{{"HUMAN IN THE LOOP<br/>No AI answer reaches a follower until the creator<br/>edits it, tags it and approves it.<br/>Flagged answers also need the ProfessorDM team"}}
+    CW --- HITL
+
+    classDef people fill:#FFF7ED,stroke:#EA580C,color:#7C2D12
+    classDef ext fill:#FEF9C3,stroke:#CA8A04,color:#713F12
+    classDef fe fill:#EFF6FF,stroke:#2563EB,color:#1E3A8A
+    classDef be fill:#F0FDF4,stroke:#15803D,color:#14532D
+    classDef data fill:#F0FDFA,stroke:#0F766E,color:#134E4A
+    classDef ops fill:#F8FAFC,stroke:#64748B,color:#1E293B
+    classDef human fill:#FFF1F2,stroke:#E11D48,color:#881337,font-weight:bold
+    class FOL,CON,CRE,ADM people
+    class IG,STR,OR,OAI,RES ext
+    class CW,CA fe
+    class WHI,WHS,API,Q1,Q2,AIW,SND,SCH be
+    class PG,VEC,AUTH,STO,RT data
+    class GHA,SEN,AMP ops
+    class HITL human

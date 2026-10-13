@@ -1,0 +1,61 @@
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#FEF9C3','actorTextColor':'#713F12','signalColor':'#92400E','signalTextColor':'#1C1917','noteBkgColor':'#FFFBEB','noteTextColor':'#451A03'}}}%%
+sequenceDiagram
+    autonumber
+    %% V1 = one creator (Sweetlife Flora). Large-scale multi-creator onboarding is deferred (proposal).
+    %% This is the setup Kristin goes through once, and the base for Maximo's onboarding SOP.
+    actor AD as ProfessorDM admin<br/>(Karthik)
+    actor CR as Kristin
+    participant CW as Creator Workspace<br/>(Ritvik)
+    participant API as api<br/>(Akshay)
+    participant META as Meta
+    participant DB as Supabase
+    participant AI as ai-worker<br/>(Chinmay)
+    participant EM as Resend
+
+    rect rgb(232, 245, 233)
+    Note over AD,EM: STEP 1  Invite (no public creator sign-up in V1)
+    end
+    AD->>DB: create creator + profile role creator
+    DB->>EM: invite email (Supabase Auth via Resend SMTP)
+    EM-->>CR: set password link
+    CR->>CW: sign in
+
+    rect rgb(255, 243, 224)
+    Note over CR,META: STEP 2  Connect Instagram (dev IG test account on staging first)
+    end
+    CR->>CW: Connect Instagram
+    CW->>META: Meta login, grant messaging permissions
+    META-->>API: auth code
+    API->>META: exchange for long-lived token
+    API->>DB: token to Supabase Vault, ig_accounts row
+    API->>META: subscribe to messages webhook
+    Note over CR,META: Coordinate with JM before touching Sweetlife Flora settings
+
+    rect rgb(243, 232, 255)
+    Note over CR,DB: STEP 3  Settings
+    end
+    CR->>CW: Edit Profile: photo, bio, question price, follow-ups, expected answer time,<br/>Knowledge Database on, subscription price, subscriber discount,<br/>payout method + payout mode (Automatic weekly or On Demand)
+    CW->>API: PUT /creator/settings
+    Note over CR,DB: No creator Stripe account in V1. Payments land in ProfessorDM's Stripe,<br/>platform fee (15-20 percent) tracked in Postgres, payouts are manual and shown as status.
+
+    rect rgb(227, 242, 253)
+    Note over CR,AI: STEP 4  Seed knowledge (about 110 docs from Kristin)
+    end
+    CR->>CW: Knowledge manager: upload docs, tag them
+    CW->>API: POST /knowledge
+    API->>AI: ai-jobs ingest
+    AI->>DB: chunk + embed into knowledge_entries
+
+    rect rgb(255, 235, 238)
+    Note over CR,AI: STEP 5  Dry run on staging (full golden path, test IG + Stripe test)
+    end
+    CR->>META: DM from a test account
+    AI->>DB: classify, Ask link, test payment, draft
+    CR->>CW: edit + tag + approve (HITL)
+    API->>META: answer delivered to test account
+
+    rect rgb(232, 245, 233)
+    Note over AD,DB: STEP 6  Go live (production beta, from Beta RC)
+    end
+    AD->>DB: creator status active in production
+    Note over AD,DB: Live DMs only after Meta app review is approved<br/>and Kristin signs off on the dry run

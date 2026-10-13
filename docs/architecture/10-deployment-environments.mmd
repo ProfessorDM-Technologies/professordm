@@ -1,0 +1,58 @@
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#FEF9C3','actorTextColor':'#713F12','signalColor':'#92400E','signalTextColor':'#1C1917','noteBkgColor':'#FFFBEB','noteTextColor':'#451A03'}}}%%
+sequenceDiagram
+    autonumber
+    %% OWNER: Karthik. Trunk-based: feature branch > PR > main > staging. Tag > production.
+    %% GitHub Free cannot enforce branch protection on private repos, so review is by team rule.
+    %% Vercel Pro: 1 deploying seat. CI deploys with one token, everyone else is a free Viewer.
+    actor DEV as Developer
+    participant GH as GitHub<br/>ProfessorDM org
+    participant GHA as GitHub Actions
+    participant VPV as Vercel preview
+    participant STG as staging<br/>Supabase staging, AWS staging,<br/>Stripe test, Meta dev app
+    actor KR as Kristin
+    participant PRD as production beta<br/>from Mar 2027
+
+    rect rgb(255, 243, 224)
+    Note over DEV,VPV: PHASE 1  Local + pull request
+    end
+    DEV->>DEV: local: Supabase CLI stack, Stripe test keys, no real DMs
+    DEV->>GH: push feature/SCRUM-xx-short-name
+    DEV->>GH: open PR to main, fill template (ticket, diagram flow, tests)
+    GH->>GHA: CI workflow
+    GHA->>GHA: lint + typecheck + Vitest + build both apps + SAM build
+    GHA->>GHA: contract tests on packages/contracts
+    GHA->>GHA: AI eval gate if prompts or models changed
+    GHA->>VPV: vercel deploy (token) for Creator Workspace + Consumer App
+    GHA-->>GH: preview URLs + CI status on the PR
+
+    rect rgb(255, 235, 238)
+    Note over GH,GHA: PHASE 2  Review (team rule, CODEOWNERS requests reviewers)
+    end
+    GH-->>DEV: 1 approval from the owning lead + green CI before merge
+    Note over GH: Cross-workstream change: second approval from Karthik + ADR link.<br/>If rules get skipped, upgrade org to GitHub Team to enforce them.
+
+    rect rgb(232, 245, 233)
+    Note over GH,STG: PHASE 3  Merge to main deploys staging
+    end
+    DEV->>GH: squash merge to main
+    GH->>GHA: deploy-staging workflow
+    GHA->>STG: supabase db push (migrations)
+    GHA->>STG: sam deploy staging (AWS OIDC role, no stored AWS keys)
+    GHA->>STG: vercel deploy staging for both apps
+    GHA->>GHA: Playwright E2E on golden paths 02 + 02b
+    Note over STG: Secrets: Vercel env vars + AWS SSM SecureString.<br/>Test IG account only. Seed knowledge data. Sentry env = staging.
+
+    rect rgb(243, 232, 255)
+    Note over STG,KR: PHASE 4  Milestone demo + sign-off
+    end
+    STG-->>KR: demo on staging at each sponsor milestone
+    KR-->>GH: sign-off recorded by Nova in the decision log
+
+    rect rgb(227, 242, 253)
+    Note over GH,PRD: PHASE 5  Production (from Beta RC, Mar 26 2027)
+    end
+    DEV->>GH: tag release v1.x.y (Karthik)
+    GH->>GHA: deploy-prod workflow, manual approval step
+    GHA->>PRD: supabase db push to prod project, sam deploy prod, vercel --prod
+    GHA->>PRD: smoke test
+    Note over PRD: Sweetlife Flora IG account. Stripe test unless the live trial is approved.<br/>Supabase daily backups, restore drill done at Beta 0.8.

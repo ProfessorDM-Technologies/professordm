@@ -1,0 +1,53 @@
+%%{init: {'theme':'base','themeVariables':{'primaryColor':'#FEFCE8','primaryTextColor':'#1C1917','primaryBorderColor':'#CA8A04','lineColor':'#64748B','background':'#FFFFFF'}}}%%
+flowchart TB
+    %% OWNER: Maximo, Process Optimization + Beta Validation Lead (Industrial Engineering).
+    %% Not an auxiliary software developer. Owns process + beta design, not QA or schedule.
+
+    subgraph MAP["1 PROCESS MAPS"]
+        M1["current state: Kristin answering DMs by hand<br/>6-8 hrs a day at peak"]
+        M2["target state: DM > classify > clarify > pay ><br/>review > deliver > follow-up > knowledge"]
+        M3["value stream: delays, handoffs,<br/>duplicate work, failure points"]
+    end
+
+    subgraph MEAS["2 MEASURES  from events table + Amplitude"]
+        K1["cycle time: DM to answer delivered"]
+        K2["clarification success rate"]
+        K3["search success in Knowledge App"]
+        K4["creator effort: time in review, edit size"]
+        K5["moderation incidence"]
+        K6["error and retry frequency"]
+        K7["completion friction: Ask link to paid"]
+    end
+
+    subgraph BETA["3 CONTROLLED TRIAL DESIGN"]
+        B1["scenarios + scripts with Nova and Kristin"]
+        B2["participant consent + recruitment<br/>Kristin first, then small Sweetlife Flora group"]
+        B3["observation plan + feedback form"]
+        B4["trial complete  Apr 9 2027"]
+    end
+
+    subgraph IMP["4 IMPROVE"]
+        R1["root-cause analysis on failures"]
+        R2["SOPs + one-point lessons to run the trial<br/>and onboard creators later"]
+        R3["prioritized recommendations for commercial MVP"]
+    end
+
+    MAP --> MEAS --> BETA --> IMP
+    IMP -. "findings into Jira via Nova" .-> MAP
+
+    subgraph HAND["HANDOFFS"]
+        H1["Ritvik: creator workflow efficiency,<br/>moderation + refund burden"]
+        H2["Arun: consumer search, ask, friction"]
+        H3["Akshay, Chinmay, Karthik: link failures<br/>to telemetry and eval data"]
+        H4["Kristin: turn observations into requirements"]
+    end
+    IMP -.-> HAND
+
+    NOTE["Post-capstone: ProfessorDM runs broader beta May-Aug 2027<br/>with about 50 creators on the V1 we hand off"]
+
+    style MAP fill:#EFF6FF,stroke:#2563EB,color:#1E3A8A
+    style MEAS fill:#F0FDFA,stroke:#0F766E,color:#134E4A
+    style BETA fill:#FEF9C3,stroke:#CA8A04,color:#713F12
+    style IMP fill:#F0FDF4,stroke:#15803D,color:#14532D
+    style HAND fill:#FFF1F2,stroke:#E11D48,color:#881337
+    style NOTE fill:#F8FAFC,stroke:#94A3B8,color:#334155,stroke-dasharray:4

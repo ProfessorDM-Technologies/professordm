@@ -1,0 +1,124 @@
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#FEF9C3','actorTextColor':'#713F12','signalColor':'#92400E','signalTextColor':'#1C1917','noteBkgColor':'#FFFBEB','noteTextColor':'#451A03'}}}%%
+sequenceDiagram
+    autonumber
+    %% OWNER: Ritvik, Creator Application + Transaction Workflow Lead.
+    %% Creator Workspace = the "control tower". Vercel project 1.
+    %% Reads via Supabase RLS + Realtime. Every write goes through api (Akshay).
+    actor CR as Creator (Kristin)
+    actor AD as ProfessorDM team
+    participant CW as Creator Workspace<br/>(Ritvik)
+    participant API as api<br/>(Akshay)
+    participant DB as Supabase<br/>(Karthik)
+    participant AI as ai-worker<br/>(Chinmay)
+    participant STR as Stripe
+
+    rect rgb(255, 243, 224)
+    Note over CR,DB: FLOW 1  Sign in, ProfessorDM Bank as home, Incoming Messages
+    end
+    CR->>CW: sign in (Supabase Auth, role creator, invite only in V1)
+    CW-->>CR: lands on ProfessorDM Bank (home page), refund banner if any
+    CW->>DB: read inbound messages with AI label + confidence (RLS)
+    CW-->>CR: Incoming: Expert Question, Needs Clarification, Social, Spam, Safety, Service
+    CR->>CW: override a wrong label (e.g. Social to Expert Question)
+    CW->>API: POST /messages/:id/override
+    API->>DB: new category, audit_log, re-route (Ask link queued if Expert)
+
+    rect rgb(232, 245, 233)
+    Note over CR,DB: FLOW 2  Inbox tab: paid questions from every channel in one queue
+    end
+    DB-->>CW: Realtime: new paid question, AI draft ready
+    CW-->>CR: card: source tag Instagram or Ask Sweetlife Flora, $4.00 earned,<br/>AI draft ready, awaiting answer / in progress, follow-ups left, reply-by timer,<br/>Safety Flag badge if flagged
+    Note over CW: Tabs with counts: Inbox | Sent | Moderation. Refund requests pinned at the top of Inbox.
+
+    rect rgb(255, 235, 238)
+    Note over CR,AI: FLOW 3  Answer (HUMAN IN THE LOOP, mandatory)
+    end
+    opt question has a Safety Flag
+        CR->>CW: review the flag in the Moderation tab first, then the question unlocks
+        CW->>API: POST /moderation/:flagId/creator-review
+    end
+    CR->>CW: open question
+    CW-->>CR: question, photos, clarification history, classification, safety flags,<br/>AI draft with sources labeled: creator knowledge | web (URL)
+    CR->>CW: rewrite in own voice, answer as text and/or voice note (or save draft, or decline)
+    CR->>CW: add tags
+    CW->>CW: SEND GATE: text changed from draft? at least one tag?
+    alt unchanged or no tags
+        CW-->>CR: blocking warning: "You are the expert. Make this answer yours."
+    else passes
+        CR->>CW: Submit answer
+        CW->>API: POST /drafts/:id/approve { finalText, voiceNote?, tags }
+        API->>API: re-check gate server side (HITL enforced in api, not only UI)
+        API->>DB: status approved, edit_distance, audit_log
+        API->>AI: ai-jobs final_screen (safety checkpoint 3)
+        alt clean
+            AI-->>DB: outbound queued, then delivered
+            DB-->>CW: Realtime: moves to Sent
+        else flagged
+            AI-->>DB: professordm_review, shows in Moderation tab as "with ProfessorDM team"
+        end
+    end
+    alt Decline
+        CR->>CW: Decline with reason
+        CW->>API: POST /questions/:id/decline
+        API->>STR: full refund
+        API->>DB: status declined_refunded, ledger reversal
+    end
+
+    rect rgb(243, 232, 255)
+    Note over CR,AI: FLOW 4  Sent tab: follow-ups, accept, rating
+    end
+    DB-->>CW: Realtime: follow-up #1 arrived, AI reply draft ready
+    CW-->>CR: thread view: 1 of 3 used, off-topic flag if any, 3-day hold reminder
+    CR->>CW: edit + Submit (same gate + safety check as FLOW 3)
+    CW->>API: POST /followups/:id/approve
+    API->>DB: followups_used + 1, final_screen, outbound
+    Note over CW: Follow-ups only while the 3-day hold is open.<br/>Sent card shows: answer sent, answer accepted, stars + review, funds released
+
+    rect rgb(255, 243, 224)
+    Note over CR,STR: FLOW 5  Refund requests (only inside the 3-day hold)
+    end
+    DB-->>CW: Realtime: refund requested, reason, sent answer (also a banner in the Bank)
+    alt Revisit Answer (always try this first, per the guide)
+        CR->>CW: Revisit, edit answer, send again through FLOW 3 gate, payment kept
+    else Approve Refund
+        CR->>CW: Approve
+        CW->>API: POST /refunds/:id/approve
+        API->>STR: create refund (from the held money)
+        STR-->>DB: charge.refunded via stripe-webhook: refunded, ledger reversal
+    else Deny
+        CR->>CW: Deny (e.g. follow-ups not used, or revised answer already sent)
+        CW->>API: POST /refunds/:id/deny { note }
+        API->>DB: refund_denied, audit_log, follower notified
+    end
+    Note over CR,STR: ProfessorDM does not mediate. The follower can contact ProfessorDM on social media.<br/>After the 3-day hold, refund requests close.
+
+    rect rgb(255, 235, 238)
+    Note over CR,AD: FLOW 6  Moderation tab (two kinds of flagged items)
+    end
+    CW-->>CR: 1. flagged follower QUESTIONS: creator reviews before she can answer
+    CW-->>CR: 2. flagged creator ANSWERS: sent to the ProfessorDM team before delivery
+    AD->>CW: admin view (role admin): review flagged answer, approve or send back
+    CW->>API: POST /moderation/:flagId/decision { decision, feedback }
+    API->>DB: decision + reviewer + time in audit_log.<br/>Approved: delivery queued. Sent back: feedback shown in creator's Moderation tab
+    Note over CW,DB: Also lands here: knowledge entries flagged by the weekly AI safety review
+
+    rect rgb(232, 245, 233)
+    Note over CR,DB: FLOW 7  ProfessorDM Bank (payout STATUS only in V1)
+    end
+    CR->>CW: open ProfessorDM Bank
+    CW->>DB: ledger + questions
+    DB-->>CW: tiles: Available Now | Pending (3-day hold) | Total Balance, plus Lifetime
+    CW-->>CR: transaction list filterable by status: unanswered, in progress<br/>("available in 3 days"), completed, refund requested
+    CR->>CW: Withdraw Available Balance (only Available Now)
+    CW->>API: POST /payouts
+    API->>DB: payout requested. ProfessorDM pays by manual transfer, admin marks paid
+    Note over CW,DB: Payout mode (creator setting): Automatic = paid every Friday after the hold.<br/>On Demand = held until requested, auto-paid after 30 days (scheduler).<br/>V1: no Stripe Connect, money in ProfessorDM's Stripe, split tracked in Postgres.
+
+    rect rgb(227, 242, 253)
+    Note over CR,AI: FLOW 8  Edit Profile + Knowledge Database
+    end
+    CR->>CW: Edit Profile: photo, bio, question price, follow-ups included,<br/>payout method, payout mode, notification preferences, expected answer time,<br/>Knowledge Database on/off, subscription price, subscriber discount
+    CW->>API: PUT /creator/settings
+    CR->>CW: Knowledge Database (creator only): edit past answers, add/edit/remove tags,<br/>add new facts by hand, unpublish
+    CW->>API: POST /knowledge
+    API->>AI: ai-jobs ingest or embed

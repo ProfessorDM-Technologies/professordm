@@ -1,0 +1,266 @@
+%%{init: {'theme':'base'}}%%
+erDiagram
+    %% OWNER: Karthik (schema, RLS) with Chinmay (knowledge), Ritvik (workflow), Akshay (messages).
+    %% Supabase Postgres + pgvector. RLS on every table. Money in cents, CAD or USD per Stripe account.
+
+    profiles ||--o| creators : "is"
+    profiles ||--o| consumers : "is"
+    creators ||--|| creator_settings : has
+    creators ||--o| ig_accounts : connects
+    creators ||--o{ ig_followers : "DMs from"
+    creators ||--o{ questions : receives
+    creators ||--o{ knowledge_docs : uploads
+    creators ||--o{ knowledge_entries : owns
+    creators ||--o{ tags : defines
+    creators ||--o{ payouts : requests
+
+    ig_followers ||--o{ inbound_messages : sends
+    inbound_messages ||--o{ clarification_rounds : has
+    inbound_messages ||--o| questions : "becomes"
+    ig_followers ||--o{ questions : "asks via IG"
+    consumers ||--o{ questions : "asks via app"
+    consumers ||--o{ subscriptions : has
+
+    questions ||--o{ drafts : has
+    questions ||--o{ followups : has
+    questions ||--o{ media : attaches
+    questions ||--o{ payments : "paid by"
+    questions ||--o{ refund_requests : may_have
+    questions ||--o| ratings : "rated by"
+    questions ||--o{ question_tags : tagged
+    tags ||--o{ question_tags : used_in
+    followups ||--o| drafts : "answered by"
+    drafts ||--o{ outbound_messages : "delivered as"
+    questions ||--o| knowledge_entries : "published as"
+    knowledge_docs ||--o{ knowledge_entries : chunked_into
+
+    payments ||--o{ ledger_entries : posts
+    subscriptions ||--o{ ledger_entries : posts
+    payouts ||--o{ ledger_entries : posts
+
+    profiles {
+        uuid id PK "= auth.users.id"
+        text role "creator | admin | consumer"
+        text display_name
+        timestamptz created_at
+    }
+    creators {
+        uuid id PK
+        uuid profile_id FK
+        text brand_name "Sweetlife Flora"
+        text status "setup | active"
+    }
+    creator_settings {
+        uuid creator_id PK
+        int question_price_cents "default 500"
+        int platform_fee_bps "1500-2000 = 15-20 percent"
+        int followups_included "default 3"
+        bool knowledge_app_enabled
+        int kb_subscription_price_cents "default 1000"
+        int free_answer_limit "default 5, one-time trial"
+        int subscriber_question_price_cents "default 250"
+        text expected_answer_time
+        text payout_method
+        text payout_mode "automatic weekly Friday | on_demand, auto after 30 days"
+    }
+    ig_accounts {
+        uuid id PK
+        uuid creator_id FK
+        text ig_user_id UK
+        uuid vault_token_id "Supabase Vault"
+        timestamptz token_expires_at
+        bool human_agent_approved
+    }
+    ig_followers {
+        uuid id PK
+        uuid creator_id FK
+        text ig_scoped_id UK
+        text username
+        text email "from Stripe checkout, nullable"
+        timestamptz last_inbound_at "24h window"
+    }
+    consumers {
+        uuid id PK
+        uuid profile_id FK
+        int free_views_used "trial, never resets"
+        text auth_provider "email | google | apple | azure"
+        text stripe_customer_id "saved card"
+    }
+    inbound_messages {
+        uuid id PK
+        uuid follower_id FK
+        text mid UK "Meta message id, dedupe"
+        text text
+        text category "6 categories"
+        numeric confidence
+        text override_category "creator"
+        text status
+        text prompt_version
+        timestamptz received_at
+    }
+    clarification_rounds {
+        uuid id PK
+        uuid message_id FK
+        int round "max 2"
+        text prompt
+        text reply
+    }
+    questions {
+        uuid id PK
+        uuid creator_id FK
+        text source "instagram | knowledge_app"
+        uuid follower_id FK "nullable"
+        uuid consumer_id FK "nullable"
+        uuid origin_message_id FK "nullable"
+        text question_text
+        text status "see BASELINE status model"
+        bool safety_flagged "risk topic, creator reviews first"
+        text ask_token UK "signed link"
+        int price_cents
+        int followups_included
+        int followups_used
+        timestamptz paid_at
+        timestamptz delivered_at
+        timestamptz hold_ends_at "delivered_at + 3 days, to confirm"
+        timestamptz survey_sent_at "day 2"
+        timestamptz accepted_at "tap or auto at hold end"
+    }
+    media {
+        uuid id PK
+        uuid question_id FK
+        uuid message_id FK
+        text storage_path "private bucket"
+        text kind "image | voice_note"
+    }
+    drafts {
+        uuid id PK
+        uuid question_id FK
+        uuid followup_id FK "nullable"
+        text ai_text
+        jsonb citations "knowledge ids + web URLs, labeled"
+        bool used_web_search
+        text model_used
+        text prompt_version
+        text final_text
+        int edit_distance "must be above 0"
+        text status
+        timestamptz approved_at
+    }
+    followups {
+        uuid id PK
+        uuid question_id FK
+        int seq
+        text text
+        bool on_topic
+        text status
+    }
+    tags {
+        uuid id PK
+        uuid creator_id FK
+        text name
+    }
+    question_tags {
+        uuid question_id FK
+        uuid tag_id FK
+    }
+    outbound_messages {
+        uuid id PK
+        uuid draft_id FK "nullable"
+        text type "ask_link | clarification | confirmation | answer | followup | rating_prompt | survey | decline"
+        text delivery_mode "standard | human_agent | fallback_email"
+        text meta_message_id
+        text status
+        int attempts
+    }
+    safety_flags {
+        uuid id PK
+        text target_type "message | draft | final | knowledge_entry"
+        uuid target_id
+        text checkpoint "1 | 2 | 3"
+        text layer "moderation | rules | policy"
+        text category
+        text status "open | creator_reviewed | approved | sent_back"
+        text feedback "ProfessorDM team to creator"
+        uuid reviewed_by FK
+    }
+    knowledge_docs {
+        uuid id PK
+        uuid creator_id FK
+        text title
+        text storage_path
+    }
+    knowledge_entries {
+        uuid id PK
+        uuid creator_id FK
+        uuid doc_id FK "nullable"
+        uuid question_id FK "nullable"
+        text source "question | doc | manual_fact"
+        text content "anonymized"
+        uuid voice_media_id FK "nullable"
+        text_array tags
+        bool published "Knowledge App visible"
+        vector embedding "1536, text-embedding-3-small"
+    }
+    payments {
+        uuid id PK
+        uuid question_id FK
+        text stripe_payment_intent_id UK
+        int amount_cents
+        int platform_fee_cents
+        int creator_share_cents
+        text status "succeeded | refunded"
+    }
+    refund_requests {
+        uuid id PK
+        uuid question_id FK
+        text reason
+        text status "pending | approved | denied | revisited"
+        uuid decided_by FK
+    }
+    subscriptions {
+        uuid id PK
+        uuid consumer_id FK
+        text stripe_subscription_id UK
+        text status
+        timestamptz current_period_end
+        int discount_spent_cents "this period, resets on renewal"
+    }
+    payouts {
+        uuid id PK
+        uuid creator_id FK
+        int amount_cents
+        text trigger "manual | weekly_auto | 30_day_auto"
+        text status "requested | paid"
+        text reference "manual transfer ref"
+    }
+    ledger_entries {
+        uuid id PK
+        text entry_type "question_fee | platform_fee | refund | subscription | payout"
+        int amount_cents
+        uuid payment_id FK
+        uuid subscription_id FK
+        uuid payout_id FK
+        timestamptz created_at "append only"
+    }
+    ratings {
+        uuid id PK
+        uuid question_id FK, UK
+        int stars "1-5"
+        text review "optional"
+        timestamptz created_at
+    }
+    audit_log {
+        uuid id PK
+        uuid actor_id
+        text action
+        text entity
+        uuid entity_id
+        jsonb before_after
+        timestamptz created_at "append only"
+    }
+    events {
+        uuid id PK
+        text name "feeds Amplitude"
+        jsonb props "no DM content"
+        timestamptz created_at
+    }

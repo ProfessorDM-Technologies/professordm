@@ -1,0 +1,74 @@
+%%{init: {'theme':'base','themeVariables':{'primaryColor':'#FEFCE8','primaryTextColor':'#1C1917','primaryBorderColor':'#CA8A04','lineColor':'#64748B','background':'#FFFFFF'}}}%%
+flowchart TB
+    %% OWNER: Karthik, Cloud, Data, Security + Quality Lead, and Technical Architecture Coordinator.
+    %% Coordinates architecture, does not assign day-to-day work (roles doc).
+
+    subgraph ARCH["ARCHITECTURE COORDINATION"]
+        A1["this diagram pack + docs/BASELINE.md"]
+        A2["interface contracts in packages/contracts<br/>queue payloads, api routes, status enums"]
+        A3["ADRs in docs/adr  any change touching<br/>another workstream gets an ADR first"]
+        A4["weekly cross-lead integration check"]
+    end
+
+    subgraph ENV["ENVIRONMENTS  see diagram 10"]
+        E1["local: Supabase CLI + Stripe test"]
+        E2["staging: Supabase staging project, AWS staging stack,<br/>Vercel preview, Meta dev IG test account"]
+        E3["production beta: created at Beta RC Mar 2027,<br/>Sweetlife Flora, Stripe live only if approved"]
+        E4["scheduler: EventBridge hourly job,<br/>same in staging + prod"]
+    end
+
+    subgraph DATA["DATA ARCHITECTURE"]
+        D1["schema + SQL migrations  supabase/migrations"]
+        D2["RLS on every table, deny by default"]
+        D3["pgvector index tuning with Chinmay"]
+        D4["Supabase daily backups, restore drill before beta"]
+    end
+
+    subgraph SEC["SECURITY + PRIVACY"]
+        S1["roles: creator, admin (ProfessorDM team), consumer<br/>service key only inside Lambdas<br/>consumer logins: email, Google, Apple, Microsoft"]
+        S2["secrets: Vercel env vars, AWS SSM SecureString,<br/>GitHub OIDC to AWS. No secrets in code, rotate if leaked"]
+        S3["webhook signatures: Meta HMAC + Stripe"]
+        S4["Meta token in Supabase Vault"]
+        S5["private Storage buckets, short signed URLs"]
+        S6["PII: Sentry scrubbing before real DMs,<br/>anonymize before knowledge publish"]
+        S7["retention: see BASELINE.md section 5"]
+        S8["accounts owned by ProfessorDM email, never student or ASU email"]
+    end
+
+    subgraph OBS["OBSERVABILITY"]
+        O1["Sentry free: apps + Lambdas"]
+        O2["Supabase logs: DB, auth, storage"]
+        O3["audit_log: state changes, moderation,<br/>creator actions, append only"]
+        O4["events table feeds Amplitude"]
+        O5["DLQ depth + failed delivery alerts"]
+    end
+
+    subgraph QA["TEST STRATEGY + RELEASE GATES"]
+        Q1["each lead: unit tests in own workstream  Vitest"]
+        Q2["Karthik: Playwright E2E on golden paths 02 + 02b"]
+        Q3["contract tests on queue payloads"]
+        Q4["AI eval gates with Chinmay: no prompt or model<br/>change merges if eval drops below baseline"]
+        Q5["milestone gate: Kristin demo sign-off"]
+        Q6["pre-beta: security, privacy, performance,<br/>resilience review  Mar 5 2027"]
+    end
+
+    subgraph GR["AI GUARDRAILS  co-owned with Chinmay"]
+        G1["blocked category list, Kristin signs off"]
+        G2["3 checkpoints: inbound, draft, final<br/>+ weekly knowledge base review"]
+        G4["2 tiers: prohibited = blocked,<br/>risk topic = Safety Flag + creator review"]
+        G5["flagged creator answers need<br/>ProfessorDM team approval"]
+        G6["web search results: cited, labeled,<br/>safety-checked, never auto-sent"]
+        G3["HITL enforced in api, not only in UI"]
+    end
+
+    ARCH --> ENV --> DATA --> SEC --> OBS --> QA
+    GR -.-> QA
+    ARCH -.-> GR
+
+    style ARCH fill:#FFFBEB,stroke:#D97706,color:#451A03
+    style ENV fill:#F0FDF4,stroke:#15803D,color:#14532D
+    style DATA fill:#F0FDFA,stroke:#0F766E,color:#134E4A
+    style SEC fill:#FFF1F2,stroke:#E11D48,color:#881337
+    style OBS fill:#FEF9C3,stroke:#CA8A04,color:#713F12
+    style QA fill:#EFF6FF,stroke:#2563EB,color:#1E3A8A
+    style GR fill:#FAF5FF,stroke:#7C3AED,color:#4C1D95

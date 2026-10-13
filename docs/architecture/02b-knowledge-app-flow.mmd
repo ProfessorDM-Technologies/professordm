@@ -1,0 +1,103 @@
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#FEF9C3','actorTextColor':'#713F12','signalColor':'#92400E','signalTextColor':'#1C1917','noteBkgColor':'#FFFBEB','noteTextColor':'#451A03'}}}%%
+sequenceDiagram
+    autonumber
+    %% Second app: "Ask [Creator]" Knowledge App, V1 = Ask Sweetlife Flora (white-label per creator).
+    %% One-time free trial of 5 answers, then $10/month subscription. Ask the Expert $5, subscriber discount.
+    %% Every question goes through the SAME AI, safety and creator inbox as Instagram (guide + kickoff).
+    %% Answers to app questions are delivered in the app inbox, never to social media.
+    actor U as Knowledge App user
+    participant KA as Ask Sweetlife Flora<br/>(Arun)
+    participant AU as Supabase Auth
+    participant API as api<br/>(Akshay)
+    participant AI as ai-worker<br/>(Chinmay)
+    participant DB as Supabase<br/>(Karthik)
+    participant STR as Stripe
+    participant CW as Creator Workspace<br/>(Ritvik)
+    participant EM as Resend
+    participant SCH as scheduler<br/>(Karthik)
+
+    rect rgb(255, 243, 224)
+    Note over U,AU: 1. Sign in (required). "No payment needed until you subscribe or ask an expert."
+    end
+    U->>KA: open Ask Sweetlife Flora, Browse Knowledge
+    KA->>AU: sign up free or sign in: Google, Apple, Microsoft or email + password
+    AU->>EM: confirmation email via Resend SMTP (email sign-up only)
+    AU-->>KA: session, role = consumer
+    KA-->>U: home: search bar, popular topics (from tags), "5 / 5 free answers remaining"
+
+    rect rgb(232, 245, 233)
+    Note over U,DB: 2. Semantic search over PUBLISHED, creator-approved knowledge only
+    end
+    U->>KA: search "thrips" or tap a popular topic
+    KA->>API: POST /search
+    API->>API: embed query (text-embedding-3-small)
+    API->>DB: pgvector similarity over knowledge_entries where published
+    DB-->>KA: result cards: title, preview, tags, Premium badge once the trial is used up
+    U->>KA: open a full answer
+    alt subscriber
+        KA-->>U: full answer
+    else free trial answers left
+        KA->>API: POST /entries/:id/view (1 of 5 used, one-time trial, never resets)
+        KA-->>U: full answer, counter updated
+    else trial used up
+        KA-->>U: Premium gate: subscribe to keep reading (no per-answer purchase)
+    end
+    KA-->>U: "Need more specific advice? Ask the Expert" (available during trial too)
+
+    rect rgb(243, 232, 255)
+    Note over U,STR: 3. Subscription (default $10/month, set by creator)
+    end
+    U->>KA: Subscribe (from gate or Profile)
+    KA->>STR: Checkout in subscription mode, card saved for later questions
+    STR->>DB: via stripe-webhook (Akshay): subscription active, ledger split<br/>(platform fee 15-20 percent, creator the rest)
+    KA-->>U: full library unlocked + discounted Ask the Expert
+
+    rect rgb(255, 235, 238)
+    Note over U,CW: 4. Ask the Expert (same pipeline as Instagram)
+    end
+    U->>KA: question + photo, sees creator, price, "3 free follow-ups", Available Now
+    KA->>API: POST /questions { source: knowledge_app }
+    API->>AI: ai-jobs triage: safety check 1 + classification
+    alt needs_clarification
+        AI-->>KA: clarification prompt in the app, user revises + adds photos, reassess
+    else prohibited content
+        AI->>DB: blocked, user sees "we can't accept this question"
+    else ready (risk topics continue with a Safety Flag, as in diagram 02)
+        AI-->>KA: ready
+        API->>API: price: $5, or $2.50 for subscribers until discounted spend<br/>this month reaches the subscription fee ($10), then $5 again
+        KA->>STR: Submit and Pay with saved card or Checkout
+        STR->>DB: via stripe-webhook: paid, enqueue draft
+    end
+    AI->>DB: draft (knowledge first, web to fill gaps), safety check 2, awaiting_creator
+    DB-->>CW: Realtime: Inbox item tagged "Ask Sweetlife Flora"
+    Note over CW: Creator review identical to diagram 02 step 5: flag review if flagged,<br/>mandatory edit + tags, text and/or voice note, safety check 3,<br/>flagged answers go to the ProfessorDM team before delivery
+
+    rect rgb(232, 245, 233)
+    Note over U,EM: 5. Delivery in the app inbox + follower options
+    end
+    DB-->>KA: answer in the app Inbox (Realtime) with buttons:<br/>Send Follow-up | Accept answer | Request refund
+    API->>EM: "Your answer is ready" notification email
+    alt Send Follow-up (only during the 3-day hold, 3 included, on topic)
+        U->>KA: follow-up
+        KA->>API: POST /questions/:id/followups
+        Note over KA,CW: Same as diagram 02 step 7
+    else Accept answer
+        U->>KA: Accept, then rate 1-5 stars + optional review
+        KA->>API: POST /questions/:id/accept { stars, review }
+    else Request refund (only during the 3-day hold)
+        U->>KA: pick a reason
+        KA->>API: POST /questions/:id/refund-request
+    end
+
+    rect rgb(240, 249, 255)
+    Note over SCH,DB: 6. Scheduler (same job as diagram 02)
+    end
+    SCH->>KA: day 2: in-app survey + email "Happy with your answer?" Accept | Follow-up | Refund
+    SCH->>DB: day 3, no refund: auto-accept, close follow-ups + refunds,<br/>money to Available, queue embed for the knowledge base
+
+    rect rgb(227, 242, 253)
+    Note over U,DB: 7. Profile
+    end
+    U->>KA: Profile: name, photo, notification settings (email / push)
+    KA-->>U: plan (Free Trial or Monthly), trial answers left, renewal date,<br/>upgrade / cancel, saved card (last 4), question history with status
+    Note over KA: User states: pending payment, pending answer, needs your reply, answered,<br/>follow-up available, accepted, refund requested, refunded, refund denied
