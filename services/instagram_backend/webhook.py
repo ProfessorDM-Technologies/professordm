@@ -57,7 +57,7 @@ def _messages(payload):
             yield mid, sender_id, recipient_id, text if isinstance(text, str) else None
 
 
-def handle_webhook(event, *, verify_token, repository, publisher):
+def handle_webhook(event, *, verify_token, repository, publisher, vault, graph):
     method = event.get("httpMethod")
     if method == "GET":
         params = event.get("queryStringParameters") or {}
@@ -93,6 +93,31 @@ def handle_webhook(event, *, verify_token, repository, publisher):
             creator_id, sender_id, datetime.now(timezone.utc).isoformat()
         )
         logger.info("Instagram webhook stage=follower_upsert PASS")
+        if follower.get("username") is None:
+            phase = "vault_lookup"
+            try:
+                token = vault.page_token(account["id"])
+                if token:
+                    phase = "meta_profile_lookup"
+                    profile = graph.user_profile(token, sender_id)
+                    username = profile.get("username")
+                    if isinstance(username, str) and username.strip():
+                        phase = "username_update"
+                        updated = repository.update_follower_username_if_missing(
+                            follower["id"], username.strip())
+                        logger.info("Instagram webhook stage=username_enrichment username_returned=true name_returned=%s updated=%s",
+                                    bool(profile.get("name")), updated)
+                    else:
+                        logger.info("Instagram webhook stage=username_enrichment username_returned=false name_returned=%s updated=false",
+                                    bool(profile.get("name")))
+                else:
+                    logger.warning("Instagram webhook stage=username_enrichment token_available=false")
+            except Exception as error:
+                logger.warning("Instagram webhook stage=username_enrichment FAIL phase=%s error_type=%s http_status=%s error_code=%s meta_error_type=%s",
+                               phase, type(error).__name__, getattr(error, "status", None),
+                               getattr(error, "code", None), getattr(error, "error_type", None))
+        else:
+            logger.info("Instagram webhook stage=username_enrichment SKIP already_present")
         inbound = repository.upsert_inbound(mid, follower["id"], text)
         if not inbound or inbound["follower_id"] != follower["id"]:
             logger.warning("Instagram webhook stage=inbound_upsert FAIL mid_conflict")

@@ -38,13 +38,15 @@ def webhook_handler(event, context):
     try:
         if event.get("httpMethod") == "GET":
             result = handle_webhook(event, verify_token=_parameter("SSM_META_VERIFY_TOKEN"),
-                                    repository=None, publisher=None)
+                                    repository=None, publisher=None, vault=None, graph=None)
             logger.info("Instagram webhook method=GET status=%s", result["statusCode"])
             return result
         rest = _supabase()
         publisher = SqsPublisher(_sqs, os.environ["QUEUE_URL"])
         result = handle_webhook(event, verify_token="",
-                                repository=SupabaseRepository(rest), publisher=publisher)
+                                repository=SupabaseRepository(rest), publisher=publisher,
+                                vault=SupabaseVault(rest),
+                                graph=MetaGraph(os.environ.get("META_GRAPH_API_VERSION")))
         logger.info("Instagram webhook method=%s status=%s", event.get("httpMethod"),
                     result["statusCode"])
         return result

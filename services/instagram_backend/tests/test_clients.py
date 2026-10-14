@@ -1,11 +1,14 @@
 import json
+from io import BytesIO
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+from urllib.error import HTTPError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from clients import SupabaseRepository, SupabaseVault, SqsPublisher
+from clients import MetaGraph, RestError, SupabaseRepository, SupabaseVault, SqsPublisher, _json_request
 
 
 class FakeRest:
@@ -74,6 +77,33 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(job["payload"], {"messageId": "message-id"})
         self.assertEqual(job["creatorId"], "creator-id")
         self.assertEqual(job["v"], 1)
+
+    def test_username_update_is_conditional_on_null(self):
+        rest = FakeRest()
+        updated = SupabaseRepository(rest).update_follower_username_if_missing("follower-id", "new_handle")
+        self.assertTrue(updated)
+        self.assertEqual(rest.calls[0], (
+            "PATCH", "ig_followers", {"id": "eq.follower-id", "username": "is.null"},
+            {"username": "new_handle"}, "return=representation"))
+
+    def test_meta_profile_uses_v26_page_token_and_requests_username_name(self):
+        with patch("clients._json_request", return_value={"username": "handle", "name": "Name"}) as request:
+            result = MetaGraph("v26.0").user_profile("private-token", "4672837849619460")
+        self.assertEqual(result, {"username": "handle", "name": "Name"})
+        self.assertEqual(request.call_args.args[0],
+                         "https://graph.facebook.com/v26.0/4672837849619460?fields=username%2Cname")
+        self.assertEqual(request.call_args.args[1], "GET")
+        self.assertEqual(request.call_args.args[2], {"Authorization": "Bearer private-token"})
+        self.assertEqual(request.call_args.kwargs["timeout"], 4)
+
+    def test_meta_nested_error_code_and_type_are_available_for_safe_logs(self):
+        body = BytesIO(b'{"error":{"message":"Page is not linked","type":"OAuthException","code":100}}')
+        error = HTTPError("https://graph.facebook.com/v26.0/1", 400, "Bad Request", {}, body)
+        with patch("clients.urlopen", side_effect=error):
+            with self.assertRaises(RestError) as raised:
+                _json_request("https://graph.facebook.com/v26.0/1", "GET", {})
+        self.assertEqual((raised.exception.status, raised.exception.code,
+                          raised.exception.error_type), (400, 100, "OAuthException"))
 
 
 if __name__ == "__main__":
