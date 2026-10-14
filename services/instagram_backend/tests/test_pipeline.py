@@ -1,6 +1,4 @@
 import base64
-import hashlib
-import hmac
 import json
 import sys
 import threading
@@ -21,12 +19,11 @@ ACCOUNT_ID = "44444444-4444-4444-8444-444444444444"
 REQUEST_ID = "55555555-5555-4555-8555-555555555555"
 
 
-def webhook_event(body, *, signed=True, encoded=False):
+def webhook_event(body, *, encoded=False, headers=None):
     raw = json.dumps(body, separators=(",", ":")).encode()
-    signature = "sha256=" + hmac.new(b"test-app-secret", raw, hashlib.sha256).hexdigest()
     return {
         "httpMethod": "POST",
-        "headers": {"X-Hub-Signature-256": signature if signed else "sha256=bad"},
+        "headers": headers or {},
         "body": base64.b64encode(raw).decode() if encoded else raw.decode(),
         "isBase64Encoded": encoded,
     }
@@ -75,91 +72,50 @@ class WebhookTests(unittest.TestCase):
         event = {"httpMethod": "GET", "queryStringParameters": {
             "hub.mode": "subscribe", "hub.verify_token": "test-token", "hub.challenge": "challenge-123",
         }}
-        good = handle_webhook(event, verify_token="test-token", app_secret="test-app-secret", repository=store, publisher=publisher)
-        bad = handle_webhook(event, verify_token="wrong", app_secret="test-app-secret", repository=store, publisher=publisher)
+        good = handle_webhook(event, verify_token="test-token", repository=store, publisher=publisher)
+        bad = handle_webhook(event, verify_token="wrong", repository=store, publisher=publisher)
         self.assertEqual((good["statusCode"], good["body"]), (200, "challenge-123"))
         self.assertEqual(bad["statusCode"], 403)
 
-    def test_bad_signature_never_writes_or_publishes(self):
-        store, publisher = InboundStore(), Publisher()
-        with self.assertLogs("webhook", level="WARNING") as logs:
-            result = handle_webhook(webhook_event(instagram_message(), signed=False), verify_token="test-token", app_secret="test-app-secret", repository=store, publisher=publisher)
-        self.assertEqual(result["statusCode"], 401)
-        self.assertEqual(store.follower_calls, 0)
-        self.assertEqual(store.messages, {})
-        self.assertEqual(publisher.jobs, [])
-        self.assertIn("sha256_present=True", logs.output[0])
-        self.assertNotIn("sha256=bad", "\n".join(logs.output))
-
-    def test_staging_diagnostic_bad_signature_continues_with_clear_log(self):
+    def test_post_without_signature_parses_persists_and_publishes(self):
         store, publisher = InboundStore(), Publisher()
         with self.assertLogs("webhook", level="INFO") as logs:
-            result = handle_webhook(webhook_event(instagram_message(), signed=False),
-                                    verify_token="test-token", app_secret="test-app-secret",
-                                    repository=store, publisher=publisher,
-                                    allow_unverified=True)
+            result = handle_webhook(webhook_event(instagram_message()),
+                                    verify_token="test-token", repository=store, publisher=publisher)
         self.assertEqual(result["statusCode"], 200)
         self.assertEqual(store.follower_calls, 1)
         self.assertEqual(len(store.messages), 1)
         self.assertEqual(publisher.jobs, [(MESSAGE_ID, CREATOR_ID)])
-        self.assertIn("UNVERIFIED staging diagnostic continuation", "\n".join(logs.output))
+        self.assertIn("stage=json_parse PASS", "\n".join(logs.output))
         self.assertIn("stage=sqs_publish PASS", "\n".join(logs.output))
-        self.assertNotIn("sha256=bad", "\n".join(logs.output))
 
-    def test_get_verification_stays_strict_even_with_diagnostic_enabled(self):
+    def test_get_verification_stays_strict(self):
         result = handle_webhook({"httpMethod": "GET", "queryStringParameters": {
             "hub.mode": "subscribe", "hub.verify_token": "wrong", "hub.challenge": "x",
-        }}, verify_token="test-token", app_secret="test-app-secret",
-            repository=None, publisher=None, allow_unverified=True)
+        }}, verify_token="test-token", repository=None, publisher=None)
         self.assertEqual(result["statusCode"], 403)
 
-    def test_valid_legacy_signature_does_not_bypass_sha256(self):
+    def test_post_ignores_signature_headers(self):
         store, publisher = InboundStore(), Publisher()
-        event = webhook_event(instagram_message(), signed=False)
-        event["headers"]["X-Hub-Signature"] = "sha1=" + hmac.new(
-            b"test-app-secret", event["body"].encode(), hashlib.sha1
-        ).hexdigest()
-        with self.assertLogs("webhook", level="WARNING") as logs:
-            result = handle_webhook(event, verify_token="test-token", app_secret="test-app-secret",
-                                    repository=store, publisher=publisher)
-        self.assertEqual(result["statusCode"], 401)
-        self.assertIn("legacy_sha1_match=True", "\n".join(logs.output))
-        self.assertEqual(store.messages, {})
-        self.assertEqual(publisher.jobs, [])
-
-    def test_diagnostic_matches_never_authorize_a_request(self):
-        store, publisher = InboundStore(), Publisher()
-        event = webhook_event(instagram_message())
-        raw = event["body"].encode()
-        event["headers"]["X-Hub-Signature-256"] = "sha256=" + hmac.new(
-            b"test-token", raw, hashlib.sha256
-        ).hexdigest()
-        event["headers"]["X-Hub-Signature"] = "sha1=" + hmac.new(
-            b"test-token", raw, hashlib.sha1
-        ).hexdigest()
-        with self.assertLogs("webhook", level="WARNING") as logs:
-            result = handle_webhook(event, verify_token="test-token", app_secret="test-app-secret",
-                                    repository=store, publisher=publisher)
-        self.assertEqual(result["statusCode"], 401)
-        self.assertIn("verify_token_sha256_match=True", "\n".join(logs.output))
-        self.assertIn("verify_token_sha1_match=True", "\n".join(logs.output))
-        self.assertEqual(store.messages, {})
-        self.assertEqual(publisher.jobs, [])
+        event = webhook_event(instagram_message(), headers={"X-Hub-Signature-256": "invalid"})
+        result = handle_webhook(event, verify_token="test-token", repository=store, publisher=publisher)
+        self.assertEqual(result["statusCode"], 200)
+        self.assertEqual(publisher.jobs, [(MESSAGE_ID, CREATOR_ID)])
 
     def test_duplicate_mid_creates_one_row_and_uses_stable_job_identity(self):
         store, publisher = InboundStore(), Publisher()
         event = webhook_event(instagram_message(), encoded=True)
         for _ in range(2):
-            result = handle_webhook(event, verify_token="test-token", app_secret="test-app-secret", repository=store, publisher=publisher)
+            result = handle_webhook(event, verify_token="test-token", repository=store, publisher=publisher)
             self.assertEqual(result["statusCode"], 200)
         self.assertEqual(len(store.messages), 1)
         self.assertEqual(publisher.jobs, [(MESSAGE_ID, CREATOR_ID), (MESSAGE_ID, CREATOR_ID)])
 
     def test_unknown_recipient_and_unsupported_event_do_not_write(self):
         store, publisher = InboundStore(known=False), Publisher()
-        first = handle_webhook(webhook_event(instagram_message()), verify_token="test-token", app_secret="test-app-secret", repository=store, publisher=publisher)
-        second = handle_webhook(webhook_event({"object": "instagram", "entry": [{"messaging": [{"read": {"mid": "x"}}]}]}), verify_token="test-token", app_secret="test-app-secret", repository=store, publisher=publisher)
-        third = handle_webhook(webhook_event({"object": "page", "entry": []}), verify_token="test-token", app_secret="test-app-secret", repository=store, publisher=publisher)
+        first = handle_webhook(webhook_event(instagram_message()), verify_token="test-token", repository=store, publisher=publisher)
+        second = handle_webhook(webhook_event({"object": "instagram", "entry": [{"messaging": [{"read": {"mid": "x"}}]}]}), verify_token="test-token", repository=store, publisher=publisher)
+        third = handle_webhook(webhook_event({"object": "page", "entry": []}), verify_token="test-token", repository=store, publisher=publisher)
         self.assertEqual((first["statusCode"], second["statusCode"], third["statusCode"]), (200, 200, 200))
         self.assertEqual(store.messages, {})
         self.assertEqual(publisher.jobs, [])
@@ -168,7 +124,7 @@ class WebhookTests(unittest.TestCase):
         store, publisher = InboundStore(), Publisher()
         body = instagram_message()
         body["entry"][0]["messaging"][0]["message"] = {"mid": "attachment-mid", "attachments": [{"type": "image"}]}
-        result = handle_webhook(webhook_event(body), verify_token="test-token", app_secret="test-app-secret", repository=store, publisher=publisher)
+        result = handle_webhook(webhook_event(body), verify_token="test-token", repository=store, publisher=publisher)
         self.assertEqual(result["statusCode"], 200)
         self.assertIsNone(store.messages["attachment-mid"]["text"])
 

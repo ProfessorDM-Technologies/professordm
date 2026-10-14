@@ -14,7 +14,6 @@ Globals:
           Ref: InboundQueue
         SSM_SUPABASE_KEY: /professordm/staging/supabase-service-role-key
         SSM_SUPABASE_URL: /professordm/staging/supabase-url
-        SSM_META_APP_SECRET: /professordm/staging/meta-app-secret
         SSM_META_VERIFY_TOKEN: /professordm/staging/meta-verify-token
 Resources:
   WebhookFunction:
@@ -23,10 +22,6 @@ Resources:
       FunctionName: professordm-webhook
       Handler: handler.lambda_handler
       CodeUri: ../services/instagram_backend/
-      Environment:
-        Variables:
-          ALLOW_UNVERIFIED_META_WEBHOOKS: 'false'
-          UNVERIFIED_META_WEBHOOK_EXPIRES_AT: ''
       Policies:
       - SQSSendMessagePolicy:
           QueueName:

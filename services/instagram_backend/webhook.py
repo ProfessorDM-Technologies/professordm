@@ -3,7 +3,6 @@
 import base64
 import binascii
 from datetime import datetime, timezone
-import hashlib
 import hmac
 import json
 import logging
@@ -27,22 +26,6 @@ def _raw_body(event):
         except binascii.Error as exc:
             raise ValueError("invalid base64 body") from exc
     return body.encode("utf-8")
-
-
-def _valid_signature(raw, headers, app_secret):
-    supplied = next((str(value) for key, value in (headers or {}).items()
-                     if key.lower() == "x-hub-signature-256"), "")
-    if not supplied.startswith("sha256=") or len(supplied) != 71:
-        return False
-    expected = "sha256=" + hmac.new(app_secret.encode("utf-8"), raw, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, supplied)
-
-
-def _diagnostic_hmac_match(raw, supplied, key, algorithm, prefix):
-    if not isinstance(supplied, str) or not isinstance(key, str) or not key:
-        return False
-    expected = prefix + hmac.new(key.encode("utf-8"), raw, algorithm).hexdigest()
-    return hmac.compare_digest(expected, supplied)
 
 
 def _messages(payload):
@@ -74,8 +57,7 @@ def _messages(payload):
             yield mid, sender_id, recipient_id, text if isinstance(text, str) else None
 
 
-def handle_webhook(event, *, verify_token, app_secret, repository, publisher,
-                   allow_unverified=False):
+def handle_webhook(event, *, verify_token, repository, publisher):
     method = event.get("httpMethod")
     if method == "GET":
         params = event.get("queryStringParameters") or {}
@@ -91,77 +73,31 @@ def handle_webhook(event, *, verify_token, app_secret, repository, publisher,
         raw = _raw_body(event)
     except ValueError:
         return _response(400, "Invalid body")
-    signature_valid = _valid_signature(raw, event.get("headers"), app_secret)
-    if not signature_valid:
-        headers = {str(key).lower(): value for key, value in (event.get("headers") or {}).items()}
-        signature = headers.get("x-hub-signature-256")
-        multi_headers = event.get("multiValueHeaders") or {}
-        multi_signatures = [value for key, values in multi_headers.items()
-                            if str(key).lower() == "x-hub-signature-256"
-                            for value in (values if isinstance(values, list) else [])
-                            if isinstance(value, str)]
-        expected = "sha256=" + hmac.new(app_secret.encode("utf-8"), raw, hashlib.sha256).hexdigest()
-        legacy_signature = headers.get("x-hub-signature")
-        legacy_expected = "sha1=" + hmac.new(app_secret.encode("utf-8"), raw, hashlib.sha1).hexdigest()
-        length_header = headers.get("content-length")
-        try:
-            content_length_matches = int(length_header) == len(raw)
-        except (TypeError, ValueError):
-            content_length_matches = None
-        logger.warning("Instagram webhook signature rejected sha256_present=%s sha256_shape_valid=%s sha1_present=%s base64_body=%s",
-                       isinstance(signature, str),
-                       isinstance(signature, str) and signature.startswith("sha256=") and len(signature) == 71,
-                       "x-hub-signature" in headers,
-                       bool(event.get("isBase64Encoded")))
-        logger.warning("Instagram webhook body diagnostic content_length_matches=%s non_ascii=%s cr=%s lf=%s content_encoding_present=%s multi_sha256_count=%d multi_sha256_match=%s digest_case_only_match=%s legacy_sha1_match=%s",
-                       content_length_matches, any(byte > 127 for byte in raw), b"\r" in raw, b"\n" in raw,
-                       "content-encoding" in headers, len(multi_signatures),
-                       any(hmac.compare_digest(expected, value) for value in multi_signatures),
-                       isinstance(signature, str) and signature.lower() == expected.lower(),
-                       isinstance(legacy_signature, str) and hmac.compare_digest(legacy_expected, legacy_signature))
-        if len(raw) <= 65536:
-            logger.warning("Instagram webhook alternate diagnostic verify_token_sha256_match=%s verify_token_sha1_match=%s trimmed_sha256_match=%s appended_lf_sha256_match=%s appended_crlf_sha256_match=%s",
-                           _diagnostic_hmac_match(raw, signature, verify_token, hashlib.sha256, "sha256="),
-                           _diagnostic_hmac_match(raw, legacy_signature, verify_token, hashlib.sha1, "sha1="),
-                           _diagnostic_hmac_match(raw.strip(), signature, app_secret, hashlib.sha256, "sha256="),
-                           _diagnostic_hmac_match(raw + b"\n", signature, app_secret, hashlib.sha256, "sha256="),
-                           _diagnostic_hmac_match(raw + b"\r\n", signature, app_secret, hashlib.sha256, "sha256="))
-        if not allow_unverified:
-            return _response(401, "Unauthorized")
-        logger.warning("Instagram webhook UNVERIFIED staging diagnostic continuation")
     try:
         payload = json.loads(raw)
         messages = list(_messages(payload))
     except (ValueError, UnicodeDecodeError):
-        if not signature_valid:
-            logger.warning("Instagram webhook UNVERIFIED stage=json_parse FAIL")
+        logger.warning("Instagram webhook stage=json_parse FAIL")
         return _response(400, "Invalid payload")
 
-    logger.info("Instagram webhook verification=%s stage=json_parse PASS message_candidates=%d",
-                "SIGNED" if signature_valid else "UNVERIFIED", len(messages))
+    logger.info("Instagram webhook stage=json_parse PASS message_candidates=%d", len(messages))
 
     for mid, sender_id, recipient_id, text in messages:
         account = repository.find_account_by_ig_user_id(recipient_id)
         if not account:
-            logger.warning("Instagram webhook verification=%s stage=account_resolution FAIL recipient_not_connected",
-                           "SIGNED" if signature_valid else "UNVERIFIED")
+            logger.warning("Instagram webhook stage=account_resolution FAIL recipient_not_connected")
             continue
-        logger.info("Instagram webhook verification=%s stage=account_resolution PASS",
-                    "SIGNED" if signature_valid else "UNVERIFIED")
+        logger.info("Instagram webhook stage=account_resolution PASS")
         creator_id = account["creator_id"]
         follower = repository.upsert_follower(
             creator_id, sender_id, datetime.now(timezone.utc).isoformat()
         )
-        logger.info("Instagram webhook verification=%s stage=follower_upsert PASS",
-                    "SIGNED" if signature_valid else "UNVERIFIED")
+        logger.info("Instagram webhook stage=follower_upsert PASS")
         inbound = repository.upsert_inbound(mid, follower["id"], text)
         if not inbound or inbound["follower_id"] != follower["id"]:
-            logger.warning("Instagram webhook verification=%s stage=inbound_upsert FAIL mid_conflict",
-                           "SIGNED" if signature_valid else "UNVERIFIED")
+            logger.warning("Instagram webhook stage=inbound_upsert FAIL mid_conflict")
             continue
-        logger.info("Instagram webhook verification=%s stage=inbound_upsert PASS",
-                    "SIGNED" if signature_valid else "UNVERIFIED")
+        logger.info("Instagram webhook stage=inbound_upsert PASS")
         publisher.publish(inbound["id"], creator_id)
-        logger.info("Instagram webhook verification=%s stage=sqs_publish PASS",
-                    "SIGNED" if signature_valid else "UNVERIFIED")
+        logger.info("Instagram webhook stage=sqs_publish PASS")
     return _response(200, "OK")
