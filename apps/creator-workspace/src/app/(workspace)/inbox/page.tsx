@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { MessageRow } from "@/components/inbox/message-row";
+import { RealtimeRefresh } from "@/components/inbox/realtime-refresh";
 import { PageHeader, PageSection } from "@/components/page-section";
 import { Placeholder } from "@/components/placeholder";
 import { QueueTabs } from "@/components/queue-tabs";
@@ -15,6 +16,7 @@ export default async function InboxPage() {
 
   return (
     <div className="space-y-6">
+      <RealtimeRefresh />
       <div className="flex flex-wrap items-end justify-between gap-4">
         <PageHeader title="Inbox" description="Instagram messages people have sent you, newest first." />
         <RefreshButton />

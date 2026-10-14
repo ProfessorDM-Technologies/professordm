@@ -1,40 +1,31 @@
 import type { Metadata } from "next";
+import { MessageRow } from "@/components/inbox/message-row";
+import { RealtimeRefresh } from "@/components/inbox/realtime-refresh";
 import { PageHeader, PageSection } from "@/components/page-section";
 import { Placeholder } from "@/components/placeholder";
+import { listInboundMessages } from "@/lib/inbox/queries";
 
 export const metadata: Metadata = {
   title: "Incoming Messages",
 };
 
-const CATEGORIES = [
-  "Expert Question",
-  "Needs Clarification",
-  "Social",
-  "Spam",
-  "Safety Concern",
-  "Service Request",
-] as const;
-
-export default function IncomingPage() {
+export default async function IncomingPage() {
+  const { messages, error } = await listInboundMessages();
   return (
     <div className="space-y-8">
-      <PageHeader
-        title="Incoming Messages"
-        description="Instagram DMs sorted by AI. Fix any label the AI got wrong."
-      />
-
-      <PageSection id="categories" title="Categories">
-        <ul className="flex flex-wrap gap-2">
-          {CATEGORIES.map((category) => (
-            <li key={category} className="rounded-full border border-pdm-border bg-white px-3 py-1 text-sm text-pdm-muted">
-              {category}
-            </li>
-          ))}
-        </ul>
-      </PageSection>
+      <RealtimeRefresh />
+      <PageHeader title="Incoming Messages" description="Instagram DMs, newest first." />
 
       <PageSection id="messages" title="Messages">
-        <Placeholder>Messages will appear here with their AI label, confidence and an override control.</Placeholder>
+        {error ? (
+          <p role="alert">Couldn&apos;t load messages. Try again.</p>
+        ) : messages.length === 0 ? (
+          <Placeholder>No messages yet. New Instagram DMs will show up here.</Placeholder>
+        ) : (
+          <ul className="space-y-3">
+            {messages.map((message) => <MessageRow key={message.id} message={message} />)}
+          </ul>
+        )}
       </PageSection>
     </div>
   );

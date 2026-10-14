@@ -50,7 +50,7 @@ export function ReplyBox({ inboundMessageId, recipient }: { inboundMessageId: st
               {state.message}
             </p>
           ) : state.status === "sent" ? (
-            <p className="font-medium text-green-800">Sent. It shows as Pending until Instagram delivers it.</p>
+            <p className="font-medium text-green-800">Reply submitted. Check the conversation for delivery status.</p>
           ) : null}
         </div>
 
