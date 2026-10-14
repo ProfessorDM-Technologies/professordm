@@ -2,6 +2,9 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: ProfessorDM - Instagram webhook handler
 Globals:
+  Api:
+    BinaryMediaTypes:
+    - '*~1*'
   Function:
     Timeout: 30
     Runtime: python3.11
