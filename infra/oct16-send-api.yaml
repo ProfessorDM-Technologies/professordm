@@ -13,7 +13,7 @@ Resources:
     Type: AWS::Serverless::Api
     Properties:
       Name: professordm-staging-instagram-send
-      StageName: Stage
+      StageName: Staging
 
   SendFunction:
     Type: AWS::Serverless::Function
@@ -45,4 +45,4 @@ Resources:
 Outputs:
   SendUrl:
     Description: Server-side INSTAGRAM_SEND_API_URL for Creator Workspace
-    Value: !Sub 'https://${SendApi}.execute-api.${AWS::Region}.amazonaws.com/Stage/api/send'
+    Value: !Sub 'https://${SendApi}.execute-api.${AWS::Region}.amazonaws.com/Staging/api/send'
