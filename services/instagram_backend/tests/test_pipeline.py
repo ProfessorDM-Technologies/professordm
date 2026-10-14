@@ -91,6 +91,28 @@ class WebhookTests(unittest.TestCase):
         self.assertIn("sha256_present=True", logs.output[0])
         self.assertNotIn("sha256=bad", "\n".join(logs.output))
 
+    def test_staging_diagnostic_bad_signature_continues_with_clear_log(self):
+        store, publisher = InboundStore(), Publisher()
+        with self.assertLogs("webhook", level="INFO") as logs:
+            result = handle_webhook(webhook_event(instagram_message(), signed=False),
+                                    verify_token="test-token", app_secret="test-app-secret",
+                                    repository=store, publisher=publisher,
+                                    allow_unverified=True)
+        self.assertEqual(result["statusCode"], 200)
+        self.assertEqual(store.follower_calls, 1)
+        self.assertEqual(len(store.messages), 1)
+        self.assertEqual(publisher.jobs, [(MESSAGE_ID, CREATOR_ID)])
+        self.assertIn("UNVERIFIED staging diagnostic continuation", "\n".join(logs.output))
+        self.assertIn("stage=sqs_publish PASS", "\n".join(logs.output))
+        self.assertNotIn("sha256=bad", "\n".join(logs.output))
+
+    def test_get_verification_stays_strict_even_with_diagnostic_enabled(self):
+        result = handle_webhook({"httpMethod": "GET", "queryStringParameters": {
+            "hub.mode": "subscribe", "hub.verify_token": "wrong", "hub.challenge": "x",
+        }}, verify_token="test-token", app_secret="test-app-secret",
+            repository=None, publisher=None, allow_unverified=True)
+        self.assertEqual(result["statusCode"], 403)
+
     def test_valid_legacy_signature_does_not_bypass_sha256(self):
         store, publisher = InboundStore(), Publisher()
         event = webhook_event(instagram_message(), signed=False)

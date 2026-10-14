@@ -23,6 +23,10 @@ Resources:
       FunctionName: professordm-webhook
       Handler: handler.lambda_handler
       CodeUri: ../services/instagram_backend/
+      Environment:
+        Variables:
+          ALLOW_UNVERIFIED_META_WEBHOOKS: 'false'
+          UNVERIFIED_META_WEBHOOK_EXPIRES_AT: ''
       Policies:
       - SQSSendMessagePolicy:
           QueueName:

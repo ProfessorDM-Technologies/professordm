@@ -74,7 +74,8 @@ def _messages(payload):
             yield mid, sender_id, recipient_id, text if isinstance(text, str) else None
 
 
-def handle_webhook(event, *, verify_token, app_secret, repository, publisher):
+def handle_webhook(event, *, verify_token, app_secret, repository, publisher,
+                   allow_unverified=False):
     method = event.get("httpMethod")
     if method == "GET":
         params = event.get("queryStringParameters") or {}
@@ -90,7 +91,8 @@ def handle_webhook(event, *, verify_token, app_secret, repository, publisher):
         raw = _raw_body(event)
     except ValueError:
         return _response(400, "Invalid body")
-    if not _valid_signature(raw, event.get("headers"), app_secret):
+    signature_valid = _valid_signature(raw, event.get("headers"), app_secret)
+    if not signature_valid:
         headers = {str(key).lower(): value for key, value in (event.get("headers") or {}).items()}
         signature = headers.get("x-hub-signature-256")
         multi_headers = event.get("multiValueHeaders") or {}
@@ -124,27 +126,42 @@ def handle_webhook(event, *, verify_token, app_secret, repository, publisher):
                            _diagnostic_hmac_match(raw.strip(), signature, app_secret, hashlib.sha256, "sha256="),
                            _diagnostic_hmac_match(raw + b"\n", signature, app_secret, hashlib.sha256, "sha256="),
                            _diagnostic_hmac_match(raw + b"\r\n", signature, app_secret, hashlib.sha256, "sha256="))
-        return _response(401, "Unauthorized")
+        if not allow_unverified:
+            return _response(401, "Unauthorized")
+        logger.warning("Instagram webhook UNVERIFIED staging diagnostic continuation")
     try:
         payload = json.loads(raw)
         messages = list(_messages(payload))
     except (ValueError, UnicodeDecodeError):
+        if not signature_valid:
+            logger.warning("Instagram webhook UNVERIFIED stage=json_parse FAIL")
         return _response(400, "Invalid payload")
 
-    logger.info("Instagram webhook signed message_candidates=%d", len(messages))
+    logger.info("Instagram webhook verification=%s stage=json_parse PASS message_candidates=%d",
+                "SIGNED" if signature_valid else "UNVERIFIED", len(messages))
 
     for mid, sender_id, recipient_id, text in messages:
         account = repository.find_account_by_ig_user_id(recipient_id)
         if not account:
-            logger.warning("Instagram webhook recipient is not connected")
+            logger.warning("Instagram webhook verification=%s stage=account_resolution FAIL recipient_not_connected",
+                           "SIGNED" if signature_valid else "UNVERIFIED")
             continue
+        logger.info("Instagram webhook verification=%s stage=account_resolution PASS",
+                    "SIGNED" if signature_valid else "UNVERIFIED")
         creator_id = account["creator_id"]
         follower = repository.upsert_follower(
             creator_id, sender_id, datetime.now(timezone.utc).isoformat()
         )
+        logger.info("Instagram webhook verification=%s stage=follower_upsert PASS",
+                    "SIGNED" if signature_valid else "UNVERIFIED")
         inbound = repository.upsert_inbound(mid, follower["id"], text)
         if not inbound or inbound["follower_id"] != follower["id"]:
-            logger.warning("Instagram webhook mid conflicts with another follower")
+            logger.warning("Instagram webhook verification=%s stage=inbound_upsert FAIL mid_conflict",
+                           "SIGNED" if signature_valid else "UNVERIFIED")
             continue
+        logger.info("Instagram webhook verification=%s stage=inbound_upsert PASS",
+                    "SIGNED" if signature_valid else "UNVERIFIED")
         publisher.publish(inbound["id"], creator_id)
+        logger.info("Instagram webhook verification=%s stage=sqs_publish PASS",
+                    "SIGNED" if signature_valid else "UNVERIFIED")
     return _response(200, "OK")
