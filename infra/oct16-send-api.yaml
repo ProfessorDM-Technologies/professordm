@@ -1,0 +1,48 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: ProfessorDM staging manual Instagram reply API
+
+Parameters:
+  GraphApiVersion:
+    Type: String
+    AllowedPattern: '^v[0-9]+\.[0-9]+$'
+    Description: Meta Graph API version selected for the staging Instagram app
+
+Resources:
+  SendApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: professordm-staging-instagram-send
+      StageName: Stage
+
+  SendFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: professordm-staging-instagram-send
+      Runtime: python3.11
+      Handler: send_handler.lambda_handler
+      CodeUri: ../services/instagram_backend/
+      MemorySize: 256
+      Timeout: 20
+      Environment:
+        Variables:
+          SSM_SUPABASE_URL: /professordm/staging/supabase-url
+          SSM_SUPABASE_KEY: /professordm/staging/supabase-service-role-key
+          META_GRAPH_API_VERSION: !Ref GraphApiVersion
+      Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: professordm/staging/supabase-url
+        - SSMParameterReadPolicy:
+            ParameterName: professordm/staging/supabase-service-role-key
+      Events:
+        PostSend:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SendApi
+            Path: /api/send
+            Method: POST
+
+Outputs:
+  SendUrl:
+    Description: Server-side INSTAGRAM_SEND_API_URL for Creator Workspace
+    Value: !Sub 'https://${SendApi}.execute-api.${AWS::Region}.amazonaws.com/Stage/api/send'

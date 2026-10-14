@@ -1,0 +1,71 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: ProfessorDM - Instagram webhook handler
+Globals:
+  Function:
+    Timeout: 30
+    Runtime: python3.11
+    Environment:
+      Variables:
+        QUEUE_URL:
+          Ref: InboundQueue
+        SSM_SUPABASE_KEY: /professordm/staging/supabase-service-role-key
+        SSM_SUPABASE_URL: /professordm/staging/supabase-url
+        SSM_META_APP_SECRET: /professordm/staging/meta-app-secret
+        SSM_META_VERIFY_TOKEN: /professordm/staging/meta-verify-token
+Resources:
+  WebhookFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: professordm-webhook
+      Handler: handler.lambda_handler
+      CodeUri: ../services/instagram_backend/
+      Policies:
+      - SQSSendMessagePolicy:
+          QueueName:
+            Fn::GetAtt:
+            - InboundQueue
+            - QueueName
+      - SSMParameterReadPolicy:
+          ParameterName: professordm/*
+      Events:
+        WebhookGet:
+          Type: Api
+          Properties:
+            Path: /webhook
+            Method: GET
+        WebhookPost:
+          Type: Api
+          Properties:
+            Path: /webhook
+            Method: POST
+    Metadata:
+      SamResourceId: WebhookFunction
+  InboundQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: professordm-inbound
+      RedrivePolicy:
+        deadLetterTargetArn:
+          Fn::GetAtt:
+          - DeadLetterQueue
+          - Arn
+        maxReceiveCount: 3
+      VisibilityTimeout: 60
+    Metadata:
+      SamResourceId: InboundQueue
+  DeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: professordm-inbound-dlq
+    Metadata:
+      SamResourceId: DeadLetterQueue
+Outputs:
+  WebhookApi:
+    Description: API Gateway endpoint URL
+    Value:
+      Fn::Sub: https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/webhook
+  InboundQueueUrl:
+    Description: SQS queue URL
+    Value:
+      Ref: InboundQueue

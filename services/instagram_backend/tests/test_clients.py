@@ -1,0 +1,80 @@
+import json
+import sys
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from clients import SupabaseRepository, SupabaseVault, SqsPublisher
+
+
+class FakeRest:
+    def __init__(self):
+        self.calls = []
+
+    def request(self, method, path, *, params=None, body=None, prefer=None):
+        self.calls.append((method, path, params, body, prefer))
+        if path == "ig_followers":
+            return [{"id": "follower-id"}]
+        if path == "inbound_messages":
+            return [{"id": "message-id"}]
+        if path == "rpc/meta_page_token_for_account":
+            return "test-page-token"
+        return []
+
+
+class FakeSqs:
+    def __init__(self):
+        self.calls = []
+
+    def send_message(self, **kwargs):
+        self.calls.append(kwargs)
+
+
+class ExistingMidRest(FakeRest):
+    def request(self, method, path, *, params=None, body=None, prefer=None):
+        self.calls.append((method, path, params, body, prefer))
+        if path == "inbound_messages" and method == "POST":
+            return []
+        if path == "inbound_messages" and method == "GET":
+            return [{"id": "existing-id", "follower_id": "first-follower"}]
+        return []
+
+
+class ClientTests(unittest.TestCase):
+    def test_follower_and_message_upserts_name_conflict_columns(self):
+        rest = FakeRest()
+        repo = SupabaseRepository(rest)
+        repo.upsert_follower("creator-id", "scoped-id", "2026-10-14T00:00:00+00:00")
+        repo.upsert_inbound("meta-mid", "follower-id", "hello")
+        self.assertEqual(rest.calls[0][2], {"on_conflict": "ig_scoped_id"})
+        self.assertEqual(rest.calls[1][2], {"on_conflict": "mid"})
+        self.assertEqual(rest.calls[0][4], "resolution=merge-duplicates,return=representation")
+        self.assertEqual(rest.calls[1][4], "resolution=ignore-duplicates,return=representation")
+
+    def test_vault_uses_restricted_rpc_with_account_id(self):
+        rest = FakeRest()
+        token = SupabaseVault(rest).page_token("account-id")
+        self.assertEqual(token, "test-page-token")
+        self.assertEqual(rest.calls[0][1:4], ("rpc/meta_page_token_for_account", None, {"p_account_id": "account-id"}))
+
+    def test_duplicate_mid_reads_original_row_without_overwriting_it(self):
+        rest = ExistingMidRest()
+        inbound = SupabaseRepository(rest).upsert_inbound("meta-mid", "second-follower", "changed text")
+        self.assertEqual(inbound, {"id": "existing-id", "follower_id": "first-follower"})
+        self.assertEqual([call[0] for call in rest.calls], ["POST", "GET"])
+
+    def test_queue_envelope_matches_shared_contract(self):
+        sqs = FakeSqs()
+        SqsPublisher(sqs, "https://example.invalid/queue").publish("message-id", "creator-id")
+        self.assertEqual(len(sqs.calls), 1)
+        job = json.loads(sqs.calls[0]["MessageBody"])
+        self.assertEqual(job["type"], "triage")
+        self.assertEqual(job["id"], "triage:message-id")
+        self.assertEqual(job["payload"], {"messageId": "message-id"})
+        self.assertEqual(job["creatorId"], "creator-id")
+        self.assertEqual(job["v"], 1)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -4,6 +4,8 @@ dist/
 .next/
 .vercel/
 .aws-sam/
+__pycache__/
+*.pyc
 coverage/
 supabase/.temp/
 .DS_Store

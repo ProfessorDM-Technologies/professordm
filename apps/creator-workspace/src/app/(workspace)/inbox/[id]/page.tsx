@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ReplyBox } from "@/components/inbox/reply-box";
+import { RealtimeRefresh } from "@/components/inbox/realtime-refresh";
 import { LocalTime } from "@/components/local-time";
 import { Placeholder } from "@/components/placeholder";
 import { RefreshButton } from "@/components/refresh-button";
@@ -61,6 +62,7 @@ export default async function ConversationPage({ params }: PageProps<"/inbox/[id
 
   return (
     <article className="space-y-6">
+      <RealtimeRefresh />
       <p>
         <Link href="/inbox" className="text-sm font-medium text-pdm-accent-strong underline underline-offset-4">
           Back to inbox
