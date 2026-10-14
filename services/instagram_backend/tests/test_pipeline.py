@@ -82,11 +82,14 @@ class WebhookTests(unittest.TestCase):
 
     def test_bad_signature_never_writes_or_publishes(self):
         store, publisher = InboundStore(), Publisher()
-        result = handle_webhook(webhook_event(instagram_message(), signed=False), verify_token="test-token", app_secret="test-app-secret", repository=store, publisher=publisher)
+        with self.assertLogs("webhook", level="WARNING") as logs:
+            result = handle_webhook(webhook_event(instagram_message(), signed=False), verify_token="test-token", app_secret="test-app-secret", repository=store, publisher=publisher)
         self.assertEqual(result["statusCode"], 401)
         self.assertEqual(store.follower_calls, 0)
         self.assertEqual(store.messages, {})
         self.assertEqual(publisher.jobs, [])
+        self.assertIn("sha256_present=True", logs.output[0])
+        self.assertNotIn("sha256=bad", logs.output[0])
 
     def test_duplicate_mid_creates_one_row_and_uses_stable_job_identity(self):
         store, publisher = InboundStore(), Publisher()

@@ -84,6 +84,13 @@ def handle_webhook(event, *, verify_token, app_secret, repository, publisher):
     except ValueError:
         return _response(400, "Invalid body")
     if not _valid_signature(raw, event.get("headers"), app_secret):
+        headers = {str(key).lower(): value for key, value in (event.get("headers") or {}).items()}
+        signature = headers.get("x-hub-signature-256")
+        logger.warning("Instagram webhook signature rejected sha256_present=%s sha256_shape_valid=%s sha1_present=%s base64_body=%s",
+                       isinstance(signature, str),
+                       isinstance(signature, str) and signature.startswith("sha256=") and len(signature) == 71,
+                       "x-hub-signature" in headers,
+                       bool(event.get("isBase64Encoded")))
         return _response(401, "Unauthorized")
     try:
         payload = json.loads(raw)
