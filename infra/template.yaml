@@ -2,6 +2,19 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: SCRUM-29 Instagram inbound persistence and triage queue
 
+Parameters:
+  MetaAppSecret:
+    Type: String
+    NoEcho: true
+    Description: Supplied at deployment from AWS SSM SecureString; never store in the template
+  SupabaseUrl:
+    Type: String
+    Description: Supabase project URL
+  SupabaseServiceRoleKey:
+    Type: String
+    NoEcho: true
+    Description: Supplied at deployment from AWS SSM SecureString; never store in the template
+
 Resources:
   AiJobsDeadLetterQueue:
     Type: AWS::SQS::Queue
@@ -26,21 +39,15 @@ Resources:
       MemorySize: 256
       Environment:
         Variables:
-          META_APP_SECRET_PARAMETER: /professordm/staging/meta-app-secret
-          SUPABASE_URL_PARAMETER: /professordm/staging/supabase-url
-          SUPABASE_SERVICE_ROLE_KEY_PARAMETER: /professordm/staging/supabase-service-role-key
+          META_APP_SECRET: !Ref MetaAppSecret
+          SUPABASE_URL: !Ref SupabaseUrl
+          SUPABASE_SERVICE_ROLE_KEY: !Ref SupabaseServiceRoleKey
           AI_JOBS_QUEUE_URL: !Ref AiJobsQueue
       Policies:
         - Statement:
             - Effect: Allow
               Action: sqs:SendMessage
               Resource: !GetAtt AiJobsQueue.Arn
-            - Effect: Allow
-              Action: ssm:GetParameter
-              Resource:
-                - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/professordm/staging/meta-app-secret
-                - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/professordm/staging/supabase-url
-                - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/professordm/staging/supabase-service-role-key
       Events:
         InstagramWebhookPost:
           Type: HttpApi

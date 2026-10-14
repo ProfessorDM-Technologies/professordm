@@ -10,7 +10,6 @@
     "build": "node scripts/build.mjs"
   },
   "dependencies": {
-    "@aws-sdk/client-ssm": "^3.1151.0",
     "@aws-sdk/client-sqs": "^3.0.0",
     "@professordm/contracts": "workspace:*",
     "@supabase/supabase-js": "^2.117.2"
