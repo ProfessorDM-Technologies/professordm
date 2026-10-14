@@ -38,6 +38,13 @@ def _valid_signature(raw, headers, app_secret):
     return hmac.compare_digest(expected, supplied)
 
 
+def _diagnostic_hmac_match(raw, supplied, key, algorithm, prefix):
+    if not isinstance(supplied, str) or not isinstance(key, str) or not key:
+        return False
+    expected = prefix + hmac.new(key.encode("utf-8"), raw, algorithm).hexdigest()
+    return hmac.compare_digest(expected, supplied)
+
+
 def _messages(payload):
     if not isinstance(payload, dict):
         raise ValueError("payload must be an object")
@@ -110,6 +117,13 @@ def handle_webhook(event, *, verify_token, app_secret, repository, publisher):
                        any(hmac.compare_digest(expected, value) for value in multi_signatures),
                        isinstance(signature, str) and signature.lower() == expected.lower(),
                        isinstance(legacy_signature, str) and hmac.compare_digest(legacy_expected, legacy_signature))
+        if len(raw) <= 65536:
+            logger.warning("Instagram webhook alternate diagnostic verify_token_sha256_match=%s verify_token_sha1_match=%s trimmed_sha256_match=%s appended_lf_sha256_match=%s appended_crlf_sha256_match=%s",
+                           _diagnostic_hmac_match(raw, signature, verify_token, hashlib.sha256, "sha256="),
+                           _diagnostic_hmac_match(raw, legacy_signature, verify_token, hashlib.sha1, "sha1="),
+                           _diagnostic_hmac_match(raw.strip(), signature, app_secret, hashlib.sha256, "sha256="),
+                           _diagnostic_hmac_match(raw + b"\n", signature, app_secret, hashlib.sha256, "sha256="),
+                           _diagnostic_hmac_match(raw + b"\r\n", signature, app_secret, hashlib.sha256, "sha256="))
         return _response(401, "Unauthorized")
     try:
         payload = json.loads(raw)

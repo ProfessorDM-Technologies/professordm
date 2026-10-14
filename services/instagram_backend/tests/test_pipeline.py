@@ -105,6 +105,25 @@ class WebhookTests(unittest.TestCase):
         self.assertEqual(store.messages, {})
         self.assertEqual(publisher.jobs, [])
 
+    def test_diagnostic_matches_never_authorize_a_request(self):
+        store, publisher = InboundStore(), Publisher()
+        event = webhook_event(instagram_message())
+        raw = event["body"].encode()
+        event["headers"]["X-Hub-Signature-256"] = "sha256=" + hmac.new(
+            b"test-token", raw, hashlib.sha256
+        ).hexdigest()
+        event["headers"]["X-Hub-Signature"] = "sha1=" + hmac.new(
+            b"test-token", raw, hashlib.sha1
+        ).hexdigest()
+        with self.assertLogs("webhook", level="WARNING") as logs:
+            result = handle_webhook(event, verify_token="test-token", app_secret="test-app-secret",
+                                    repository=store, publisher=publisher)
+        self.assertEqual(result["statusCode"], 401)
+        self.assertIn("verify_token_sha256_match=True", "\n".join(logs.output))
+        self.assertIn("verify_token_sha1_match=True", "\n".join(logs.output))
+        self.assertEqual(store.messages, {})
+        self.assertEqual(publisher.jobs, [])
+
     def test_duplicate_mid_creates_one_row_and_uses_stable_job_identity(self):
         store, publisher = InboundStore(), Publisher()
         event = webhook_event(instagram_message(), encoded=True)
