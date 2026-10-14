@@ -91,6 +91,20 @@ class WebhookTests(unittest.TestCase):
         self.assertIn("sha256_present=True", logs.output[0])
         self.assertNotIn("sha256=bad", "\n".join(logs.output))
 
+    def test_valid_legacy_signature_does_not_bypass_sha256(self):
+        store, publisher = InboundStore(), Publisher()
+        event = webhook_event(instagram_message(), signed=False)
+        event["headers"]["X-Hub-Signature"] = "sha1=" + hmac.new(
+            b"test-app-secret", event["body"].encode(), hashlib.sha1
+        ).hexdigest()
+        with self.assertLogs("webhook", level="WARNING") as logs:
+            result = handle_webhook(event, verify_token="test-token", app_secret="test-app-secret",
+                                    repository=store, publisher=publisher)
+        self.assertEqual(result["statusCode"], 401)
+        self.assertIn("legacy_sha1_match=True", "\n".join(logs.output))
+        self.assertEqual(store.messages, {})
+        self.assertEqual(publisher.jobs, [])
+
     def test_duplicate_mid_creates_one_row_and_uses_stable_job_identity(self):
         store, publisher = InboundStore(), Publisher()
         event = webhook_event(instagram_message(), encoded=True)
