@@ -12,6 +12,7 @@ from webhook import handle_webhook
 
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 _session = boto3.Session()
 _ssm = _session.client("ssm")
 _sqs = _session.client("sqs")
@@ -37,15 +38,20 @@ def webhook_handler(event, context):
     try:
         verify_token = _parameter("SSM_META_VERIFY_TOKEN")
         if event.get("httpMethod") == "GET":
-            return handle_webhook(event, verify_token=verify_token, app_secret="",
-                                  repository=None, publisher=None)
+            result = handle_webhook(event, verify_token=verify_token, app_secret="",
+                                    repository=None, publisher=None)
+            logger.info("Instagram webhook method=GET status=%s", result["statusCode"])
+            return result
         rest = _supabase()
         publisher = SqsPublisher(_sqs, os.environ["QUEUE_URL"])
-        return handle_webhook(event, verify_token=verify_token,
-                              app_secret=_parameter("SSM_META_APP_SECRET"),
-                              repository=SupabaseRepository(rest), publisher=publisher)
+        result = handle_webhook(event, verify_token=verify_token,
+                                app_secret=_parameter("SSM_META_APP_SECRET"),
+                                repository=SupabaseRepository(rest), publisher=publisher)
+        logger.info("Instagram webhook method=%s status=%s", event.get("httpMethod"),
+                    result["statusCode"])
+        return result
     except Exception as error:
-        logger.error("Instagram webhook failed", extra={"error_type": type(error).__name__})
+        logger.error("Instagram webhook failed error_type=%s", type(error).__name__)
         return {"statusCode": 500, "body": "Webhook processing failed"}
 
 

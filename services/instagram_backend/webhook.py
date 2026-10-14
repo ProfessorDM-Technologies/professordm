@@ -10,6 +10,7 @@ import logging
 
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 def _response(status, body=""):
@@ -89,6 +90,8 @@ def handle_webhook(event, *, verify_token, app_secret, repository, publisher):
         messages = list(_messages(payload))
     except (ValueError, UnicodeDecodeError):
         return _response(400, "Invalid payload")
+
+    logger.info("Instagram webhook signed message_candidates=%d", len(messages))
 
     for mid, sender_id, recipient_id, text in messages:
         account = repository.find_account_by_ig_user_id(recipient_id)
