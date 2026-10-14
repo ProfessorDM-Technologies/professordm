@@ -86,11 +86,27 @@ def handle_webhook(event, *, verify_token, app_secret, repository, publisher):
     if not _valid_signature(raw, event.get("headers"), app_secret):
         headers = {str(key).lower(): value for key, value in (event.get("headers") or {}).items()}
         signature = headers.get("x-hub-signature-256")
+        multi_headers = event.get("multiValueHeaders") or {}
+        multi_signatures = [value for key, values in multi_headers.items()
+                            if str(key).lower() == "x-hub-signature-256"
+                            for value in (values if isinstance(values, list) else [])
+                            if isinstance(value, str)]
+        expected = "sha256=" + hmac.new(app_secret.encode("utf-8"), raw, hashlib.sha256).hexdigest()
+        length_header = headers.get("content-length")
+        try:
+            content_length_matches = int(length_header) == len(raw)
+        except (TypeError, ValueError):
+            content_length_matches = None
         logger.warning("Instagram webhook signature rejected sha256_present=%s sha256_shape_valid=%s sha1_present=%s base64_body=%s",
                        isinstance(signature, str),
                        isinstance(signature, str) and signature.startswith("sha256=") and len(signature) == 71,
                        "x-hub-signature" in headers,
                        bool(event.get("isBase64Encoded")))
+        logger.warning("Instagram webhook body diagnostic content_length_matches=%s non_ascii=%s cr=%s lf=%s content_encoding_present=%s multi_sha256_count=%d multi_sha256_match=%s digest_case_only_match=%s",
+                       content_length_matches, any(byte > 127 for byte in raw), b"\r" in raw, b"\n" in raw,
+                       "content-encoding" in headers, len(multi_signatures),
+                       any(hmac.compare_digest(expected, value) for value in multi_signatures),
+                       isinstance(signature, str) and signature.lower() == expected.lower())
         return _response(401, "Unauthorized")
     try:
         payload = json.loads(raw)

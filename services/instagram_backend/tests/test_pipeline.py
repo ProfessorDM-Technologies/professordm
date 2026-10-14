@@ -89,7 +89,7 @@ class WebhookTests(unittest.TestCase):
         self.assertEqual(store.messages, {})
         self.assertEqual(publisher.jobs, [])
         self.assertIn("sha256_present=True", logs.output[0])
-        self.assertNotIn("sha256=bad", logs.output[0])
+        self.assertNotIn("sha256=bad", "\n".join(logs.output))
 
     def test_duplicate_mid_creates_one_row_and_uses_stable_job_identity(self):
         store, publisher = InboundStore(), Publisher()
