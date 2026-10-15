@@ -16,6 +16,7 @@ Globals:
         SSM_SUPABASE_URL: /professordm/staging/supabase-url
         SSM_META_VERIFY_TOKEN: /professordm/staging/meta-verify-token
         META_GRAPH_API_VERSION: v26.0
+        SSM_INSTAGRAM_PROFILE_TOKEN_PREFIX: /professordm/staging/instagram-profile-tokens
 Resources:
   WebhookFunction:
     Type: AWS::Serverless::Function

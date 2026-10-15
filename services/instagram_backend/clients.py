@@ -49,13 +49,14 @@ class SupabaseRest:
         self.base = f"{parsed.scheme}://{parsed.netloc}"
         self.key = service_role_key
 
-    def request(self, method, path, *, params=None, body=None, prefer=None):
+    def request(self, method, path, *, params=None, body=None, prefer=None, timeout=8):
         query = f"?{urlencode(params)}" if params else ""
         headers = {"apikey": self.key, "Authorization": f"Bearer {self.key}",
                    "Content-Type": "application/json"}
         if prefer:
             headers["Prefer"] = prefer
-        return _json_request(f"{self.base}/rest/v1/{path}{query}", method, headers, body)
+        return _json_request(f"{self.base}/rest/v1/{path}{query}", method, headers, body,
+                             timeout=timeout)
 
     def auth_user(self, jwt):
         try:
@@ -88,7 +89,7 @@ class SupabaseRepository:
     def update_follower_username_if_missing(self, follower_id, username):
         return bool(_one(self.rest.request("PATCH", "ig_followers", params={
             "id": f"eq.{follower_id}", "username": "is.null"},
-            body={"username": username}, prefer="return=representation")))
+            body={"username": username}, prefer="return=representation", timeout=2)))
 
     def upsert_inbound(self, mid, follower_id, text):
         inserted = _one(self.rest.request("POST", "inbound_messages", params={"on_conflict": "mid"},
@@ -163,6 +164,24 @@ class SupabaseVault:
         return token if isinstance(token, str) and token else None
 
 
+class SsmProfileTokens:
+    """Separate Instagram Login credentials, keyed by receiving account ID."""
+
+    def __init__(self, ssm_client, prefix):
+        self.ssm = ssm_client
+        self.prefix = prefix.rstrip("/") if prefix else None
+
+    def for_account(self, ig_user_id):
+        if not re.fullmatch(r"[0-9]+", ig_user_id or ""):
+            raise ValueError("Instagram account ID must be numeric")
+        if not self.prefix:
+            return None
+        response = self.ssm.get_parameter(
+            Name=f"{self.prefix}/{ig_user_id}", WithDecryption=True)
+        token = response.get("Parameter", {}).get("Value")
+        return token if isinstance(token, str) and token else None
+
+
 class SqsPublisher:
     def __init__(self, sqs_client, queue_url):
         self.sqs = sqs_client
@@ -182,16 +201,25 @@ class MetaGraph:
         if not re.fullmatch(r"v[0-9]+\.[0-9]+", version or ""):
             raise ValueError("META_GRAPH_API_VERSION must be configured")
         self.base = f"https://graph.facebook.com/{version}"
+        self.profile_base = f"https://graph.instagram.com/{version}"
         self.url = f"{self.base}/me/messages"
 
-    def user_profile(self, token, ig_scoped_id):
-        if not re.fullmatch(r"[0-9]+", ig_scoped_id or ""):
-            raise ValueError("Instagram scoped ID must be numeric")
-        response = _json_request(f"{self.base}/{ig_scoped_id}?{urlencode({'fields': 'username,name'})}",
-                                 "GET", {"Authorization": f"Bearer {token}"}, timeout=4)
-        if not isinstance(response, dict):
-            raise ValueError("Meta profile response must be an object")
-        return {"username": response.get("username"), "name": response.get("name")}
+    def user_profile(self, token, ig_user_id, ig_scoped_id):
+        if any(not re.fullmatch(r"[0-9]+", value or "")
+               for value in (ig_user_id, ig_scoped_id)):
+            raise ValueError("Instagram account and scoped IDs must be numeric")
+        headers = {"Authorization": f"Bearer {token}"}
+        identity = _json_request(f"{self.profile_base}/me?fields=user_id", "GET",
+                                 headers, timeout=2)
+        # Instagram Login's `id` is app-scoped; `user_id` is the webhook account ID.
+        if not isinstance(identity, dict) or identity.get("user_id") != ig_user_id:
+            raise ValueError("Instagram token does not match receiving account")
+        response = _json_request(
+            f"{self.profile_base}/{ig_scoped_id}?{urlencode({'fields': 'id,username,name'})}",
+            "GET", headers, timeout=2)
+        if not isinstance(response, dict) or response.get("id") != ig_scoped_id:
+            raise ValueError("Meta profile does not match webhook sender")
+        return {key: response.get(key) for key in ("id", "username", "name")}
 
     def send(self, token, recipient, text):
         try:

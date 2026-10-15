@@ -78,24 +78,24 @@ class Publisher:
         self.jobs.append((message_id, creator_id))
 
 
-class ProfileVault:
+class ProfileTokens:
     def __init__(self, token="private-test-token"):
         self.token = token
         self.account_ids = []
 
-    def page_token(self, account_id):
+    def for_account(self, account_id):
         self.account_ids.append(account_id)
         return self.token
 
 
 class ProfileGraph:
     def __init__(self, profile=None, error=None):
-        self.profile = profile if profile is not None else {"username": "new_handle", "name": "A name"}
+        self.profile = profile if profile is not None else {"id": "follower-ig-id", "username": "new_handle", "name": "A name"}
         self.error = error
         self.calls = []
 
-    def user_profile(self, token, ig_scoped_id):
-        self.calls.append((token, ig_scoped_id))
+    def user_profile(self, token, ig_user_id, ig_scoped_id):
+        self.calls.append((token, ig_user_id, ig_scoped_id))
         if self.error:
             raise self.error
         return self.profile
@@ -107,8 +107,8 @@ class WebhookTests(unittest.TestCase):
         event = {"httpMethod": "GET", "queryStringParameters": {
             "hub.mode": "subscribe", "hub.verify_token": "test-token", "hub.challenge": "challenge-123",
         }}
-        good = handle_webhook(event, verify_token="test-token", repository=store, publisher=publisher, vault=ProfileVault(), graph=ProfileGraph())
-        bad = handle_webhook(event, verify_token="wrong", repository=store, publisher=publisher, vault=ProfileVault(), graph=ProfileGraph())
+        good = handle_webhook(event, verify_token="test-token", repository=store, publisher=publisher, profile_tokens=ProfileTokens(), graph=ProfileGraph())
+        bad = handle_webhook(event, verify_token="wrong", repository=store, publisher=publisher, profile_tokens=ProfileTokens(), graph=ProfileGraph())
         self.assertEqual((good["statusCode"], good["body"]), (200, "challenge-123"))
         self.assertEqual(bad["statusCode"], 403)
 
@@ -116,7 +116,7 @@ class WebhookTests(unittest.TestCase):
         store, publisher = InboundStore(), Publisher()
         with self.assertLogs("webhook", level="INFO") as logs:
             result = handle_webhook(webhook_event(instagram_message()),
-                                    verify_token="test-token", repository=store, publisher=publisher, vault=ProfileVault(), graph=ProfileGraph())
+                                    verify_token="test-token", repository=store, publisher=publisher, profile_tokens=ProfileTokens(), graph=ProfileGraph())
         self.assertEqual(result["statusCode"], 200)
         self.assertEqual(store.follower_calls, 1)
         self.assertEqual(len(store.messages), 1)
@@ -127,30 +127,33 @@ class WebhookTests(unittest.TestCase):
     def test_get_verification_stays_strict(self):
         result = handle_webhook({"httpMethod": "GET", "queryStringParameters": {
             "hub.mode": "subscribe", "hub.verify_token": "wrong", "hub.challenge": "x",
-        }}, verify_token="test-token", repository=None, publisher=None, vault=None, graph=None)
+        }}, verify_token="test-token", repository=None, publisher=None, profile_tokens=None, graph=None)
         self.assertEqual(result["statusCode"], 403)
 
     def test_post_ignores_signature_headers(self):
         store, publisher = InboundStore(), Publisher()
         event = webhook_event(instagram_message(), headers={"X-Hub-Signature-256": "invalid"})
-        result = handle_webhook(event, verify_token="test-token", repository=store, publisher=publisher, vault=ProfileVault(), graph=ProfileGraph())
+        result = handle_webhook(event, verify_token="test-token", repository=store, publisher=publisher, profile_tokens=ProfileTokens(), graph=ProfileGraph())
         self.assertEqual(result["statusCode"], 200)
         self.assertEqual(publisher.jobs, [(MESSAGE_ID, CREATOR_ID)])
 
     def test_duplicate_mid_creates_one_row_and_uses_stable_job_identity(self):
-        store, publisher = InboundStore(), Publisher()
+        store, publisher = InboundStore(username=None), Publisher()
+        tokens, graph = ProfileTokens(), ProfileGraph()
         event = webhook_event(instagram_message(), encoded=True)
         for _ in range(2):
-            result = handle_webhook(event, verify_token="test-token", repository=store, publisher=publisher, vault=ProfileVault(), graph=ProfileGraph())
+            result = handle_webhook(event, verify_token="test-token", repository=store, publisher=publisher, profile_tokens=tokens, graph=graph)
             self.assertEqual(result["statusCode"], 200)
         self.assertEqual(len(store.messages), 1)
         self.assertEqual(publisher.jobs, [(MESSAGE_ID, CREATOR_ID), (MESSAGE_ID, CREATOR_ID)])
+        self.assertEqual(len(graph.calls), 1)
+        self.assertEqual(store.username_updates, [(FOLLOWER_ID, "new_handle")])
 
     def test_unknown_recipient_and_unsupported_event_do_not_write(self):
         store, publisher = InboundStore(known=False), Publisher()
-        first = handle_webhook(webhook_event(instagram_message()), verify_token="test-token", repository=store, publisher=publisher, vault=ProfileVault(), graph=ProfileGraph())
-        second = handle_webhook(webhook_event({"object": "instagram", "entry": [{"messaging": [{"read": {"mid": "x"}}]}]}), verify_token="test-token", repository=store, publisher=publisher, vault=ProfileVault(), graph=ProfileGraph())
-        third = handle_webhook(webhook_event({"object": "page", "entry": []}), verify_token="test-token", repository=store, publisher=publisher, vault=ProfileVault(), graph=ProfileGraph())
+        first = handle_webhook(webhook_event(instagram_message()), verify_token="test-token", repository=store, publisher=publisher, profile_tokens=ProfileTokens(), graph=ProfileGraph())
+        second = handle_webhook(webhook_event({"object": "instagram", "entry": [{"messaging": [{"read": {"mid": "x"}}]}]}), verify_token="test-token", repository=store, publisher=publisher, profile_tokens=ProfileTokens(), graph=ProfileGraph())
+        third = handle_webhook(webhook_event({"object": "page", "entry": []}), verify_token="test-token", repository=store, publisher=publisher, profile_tokens=ProfileTokens(), graph=ProfileGraph())
         self.assertEqual((first["statusCode"], second["statusCode"], third["statusCode"]), (200, 200, 200))
         self.assertEqual(store.messages, {})
         self.assertEqual(publisher.jobs, [])
@@ -159,49 +162,49 @@ class WebhookTests(unittest.TestCase):
         store, publisher = InboundStore(), Publisher()
         body = instagram_message()
         body["entry"][0]["messaging"][0]["message"] = {"mid": "attachment-mid", "attachments": [{"type": "image"}]}
-        result = handle_webhook(webhook_event(body), verify_token="test-token", repository=store, publisher=publisher, vault=ProfileVault(), graph=ProfileGraph())
+        result = handle_webhook(webhook_event(body), verify_token="test-token", repository=store, publisher=publisher, profile_tokens=ProfileTokens(), graph=ProfileGraph())
         self.assertEqual(result["statusCode"], 200)
         self.assertIsNone(store.messages["attachment-mid"]["text"])
 
     def test_new_follower_username_is_enriched(self):
         store, publisher = InboundStore(username=None, existing=False), Publisher()
-        vault, graph = ProfileVault(), ProfileGraph()
+        tokens, graph = ProfileTokens(), ProfileGraph()
         result = handle_webhook(webhook_event(instagram_message()), verify_token="",
-                                repository=store, publisher=publisher, vault=vault, graph=graph)
+                                repository=store, publisher=publisher, profile_tokens=tokens, graph=graph)
         self.assertEqual(result["statusCode"], 200)
         self.assertEqual(store.username, "new_handle")
         self.assertEqual(store.username_updates, [(FOLLOWER_ID, "new_handle")])
-        self.assertEqual(vault.account_ids, [ACCOUNT_ID])
-        self.assertEqual(graph.calls, [(vault.token, "follower-ig-id")])
+        self.assertEqual(tokens.account_ids, ["creator-ig-id"])
+        self.assertEqual(graph.calls, [(tokens.token, "creator-ig-id", "follower-ig-id")])
         self.assertEqual(publisher.jobs, [(MESSAGE_ID, CREATOR_ID)])
 
     def test_existing_follower_with_null_username_is_enriched(self):
         store, publisher = InboundStore(username=None, existing=True), Publisher()
         result = handle_webhook(webhook_event(instagram_message()), verify_token="",
                                 repository=store, publisher=publisher,
-                                vault=ProfileVault(), graph=ProfileGraph())
+                                profile_tokens=ProfileTokens(), graph=ProfileGraph())
         self.assertEqual(result["statusCode"], 200)
         self.assertEqual(store.username, "new_handle")
         self.assertEqual(store.follower_calls, 1)
 
     def test_existing_username_skips_profile_lookup(self):
         store, publisher = InboundStore(username="known_handle"), Publisher()
-        vault, graph = ProfileVault(), ProfileGraph()
+        tokens, graph = ProfileTokens(), ProfileGraph()
         result = handle_webhook(webhook_event(instagram_message()), verify_token="",
-                                repository=store, publisher=publisher, vault=vault, graph=graph)
+                                repository=store, publisher=publisher, profile_tokens=tokens, graph=graph)
         self.assertEqual(result["statusCode"], 200)
-        self.assertEqual(vault.account_ids, [])
+        self.assertEqual(tokens.account_ids, [])
         self.assertEqual(graph.calls, [])
         self.assertEqual(store.username_updates, [])
         self.assertEqual(publisher.jobs, [(MESSAGE_ID, CREATOR_ID)])
 
     def test_meta_profile_error_does_not_lose_dm_or_log_token(self):
         store, publisher = InboundStore(username=None), Publisher()
-        vault = ProfileVault(token="sensitive-token-must-not-appear")
+        tokens = ProfileTokens(token="sensitive-token-must-not-appear")
         graph = ProfileGraph(error=RestError(400, 100, "OAuthException"))
         with self.assertLogs("webhook", level="INFO") as logs:
             result = handle_webhook(webhook_event(instagram_message()), verify_token="",
-                                    repository=store, publisher=publisher, vault=vault, graph=graph)
+                                    repository=store, publisher=publisher, profile_tokens=tokens, graph=graph)
         self.assertEqual(result["statusCode"], 200)
         self.assertIsNone(store.username)
         self.assertEqual(len(store.messages), 1)
@@ -209,29 +212,98 @@ class WebhookTests(unittest.TestCase):
         output = "\n".join(logs.output)
         self.assertIn("phase=meta_profile_lookup", output)
         self.assertIn("http_status=400", output)
-        self.assertNotIn(vault.token, output)
+        self.assertNotIn(tokens.token, output)
 
     def test_profile_without_username_does_not_block_inbound(self):
         store, publisher = InboundStore(username=None), Publisher()
-        graph = ProfileGraph(profile={"username": None, "name": "A name"})
+        graph = ProfileGraph(profile={"id": "follower-ig-id", "username": None, "name": "A name"})
         result = handle_webhook(webhook_event(instagram_message()), verify_token="",
                                 repository=store, publisher=publisher,
-                                vault=ProfileVault(), graph=graph)
+                                profile_tokens=ProfileTokens(), graph=graph)
         self.assertEqual(result["statusCode"], 200)
         self.assertIsNone(store.username)
         self.assertEqual(store.username_updates, [])
         self.assertEqual(publisher.jobs, [(MESSAGE_ID, CREATOR_ID)])
 
-    def test_missing_vault_token_does_not_block_inbound(self):
+    def test_missing_profile_token_does_not_block_inbound(self):
         store, publisher = InboundStore(username=None), Publisher()
         graph = ProfileGraph()
         result = handle_webhook(webhook_event(instagram_message()), verify_token="",
                                 repository=store, publisher=publisher,
-                                vault=ProfileVault(token=None), graph=graph)
+                                profile_tokens=ProfileTokens(token=None), graph=graph)
         self.assertEqual(result["statusCode"], 200)
         self.assertIsNone(store.username)
         self.assertEqual(graph.calls, [])
         self.assertEqual(publisher.jobs, [(MESSAGE_ID, CREATOR_ID)])
+
+    def test_unmapped_or_invalid_profile_does_not_change_username(self):
+        profiles = [{"id": "another-follower", "username": "wrong_handle"},
+                    {"username": "unmapped_handle"},
+                    {"id": "follower-ig-id", "username": " A display name "},
+                    {"id": "follower-ig-id", "username": ""}]
+        for profile in profiles:
+            with self.subTest(profile=profile):
+                store, publisher = InboundStore(username=None), Publisher()
+                result = handle_webhook(webhook_event(instagram_message()), verify_token="",
+                                        repository=store, publisher=publisher,
+                                        profile_tokens=ProfileTokens(), graph=ProfileGraph(profile=profile))
+                self.assertEqual(result["statusCode"], 200)
+                self.assertIsNone(store.username)
+                self.assertEqual(store.username_updates, [])
+                self.assertEqual(len(store.messages), 1)
+                self.assertEqual(publisher.jobs, [(MESSAGE_ID, CREATOR_ID)])
+
+    def test_every_message_persists_and_publishes_before_enrichment(self):
+        store, publisher = InboundStore(username=None), Publisher()
+        test = self
+
+        class CheckingGraph(ProfileGraph):
+            def user_profile(self, *args):
+                test.assertEqual(len(store.messages), 2)
+                test.assertEqual(len(publisher.jobs), 2)
+                return super().user_profile(*args)
+
+        graph = CheckingGraph()
+        body = instagram_message()
+        second = instagram_message()["entry"][0]["messaging"][0]
+        second["message"]["mid"] = "meta-mid-2"
+        body["entry"][0]["messaging"].append(second)
+        result = handle_webhook(webhook_event(body), verify_token="",
+                                repository=store, publisher=publisher,
+                                profile_tokens=ProfileTokens(), graph=graph)
+        self.assertEqual(result["statusCode"], 200)
+        self.assertEqual(store.username, "new_handle")
+        self.assertEqual(len(graph.calls), 1)
+
+    def test_low_lambda_time_budget_skips_enrichment_after_ingestion(self):
+        store, publisher = InboundStore(username=None), Publisher()
+        tokens, graph = ProfileTokens(), ProfileGraph()
+        result = handle_webhook(webhook_event(instagram_message()), verify_token="",
+                                repository=store, publisher=publisher,
+                                profile_tokens=tokens, graph=graph,
+                                remaining_time_ms=lambda: 11999)
+        self.assertEqual(result["statusCode"], 200)
+        self.assertIsNone(store.username)
+        self.assertEqual(tokens.account_ids, [])
+        self.assertEqual(graph.calls, [])
+        self.assertEqual(len(store.messages), 1)
+        self.assertEqual(publisher.jobs, [(MESSAGE_ID, CREATOR_ID)])
+
+    def test_credential_error_does_not_block_or_leak_secrets(self):
+        class FailingTokens:
+            def for_account(self, account_id):
+                raise RuntimeError("private-credential-error")
+
+        store, publisher = InboundStore(username=None), Publisher()
+        with self.assertLogs("webhook", level="INFO") as logs:
+            result = handle_webhook(webhook_event(instagram_message()), verify_token="",
+                                    repository=store, publisher=publisher,
+                                    profile_tokens=FailingTokens(), graph=ProfileGraph())
+        self.assertEqual(result["statusCode"], 200)
+        self.assertIsNone(store.username)
+        self.assertEqual(len(store.messages), 1)
+        self.assertEqual(publisher.jobs, [(MESSAGE_ID, CREATOR_ID)])
+        self.assertNotIn("private-credential-error", "\n".join(logs.output))
 
     def test_username_update_error_does_not_block_inbound(self):
         class FailingUpdateStore(InboundStore):
@@ -241,7 +313,7 @@ class WebhookTests(unittest.TestCase):
         store, publisher = FailingUpdateStore(username=None), Publisher()
         result = handle_webhook(webhook_event(instagram_message()), verify_token="",
                                 repository=store, publisher=publisher,
-                                vault=ProfileVault(), graph=ProfileGraph())
+                                profile_tokens=ProfileTokens(), graph=ProfileGraph())
         self.assertEqual(result["statusCode"], 200)
         self.assertIsNone(store.username)
         self.assertEqual(len(store.messages), 1)

@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import hmac
 import json
 import logging
+import re
 
 
 logger = logging.getLogger(__name__)
@@ -57,7 +58,38 @@ def _messages(payload):
             yield mid, sender_id, recipient_id, text if isinstance(text, str) else None
 
 
-def handle_webhook(event, *, verify_token, repository, publisher, vault, graph):
+def _enrich_username(follower_id, sender_id, recipient_id, *, repository,
+                     profile_tokens, graph, remaining_time_ms):
+    phase = "token_lookup"
+    try:
+        # Core ingestion has already finished. Leave time for a safe HTTP response.
+        if remaining_time_ms is not None and remaining_time_ms() < 12000:
+            logger.info("Instagram webhook stage=username_enrichment SKIP time_budget")
+            return
+        token = profile_tokens.for_account(recipient_id)
+        if not token:
+            logger.warning("Instagram webhook stage=username_enrichment token_available=false")
+            return
+        phase = "meta_profile_lookup"
+        profile = graph.user_profile(token, recipient_id, sender_id)
+        if not isinstance(profile, dict) or profile.get("id") != sender_id:
+            logger.warning("Instagram webhook stage=username_enrichment SKIP sender_mismatch")
+            return
+        username = profile.get("username")
+        if not isinstance(username, str) or not re.fullmatch(r"[A-Za-z0-9_.]{1,30}", username):
+            logger.info("Instagram webhook stage=username_enrichment username_returned=false updated=false")
+            return
+        phase = "username_update"
+        updated = repository.update_follower_username_if_missing(follower_id, username)
+        logger.info("Instagram webhook stage=username_enrichment username_returned=true updated=%s", updated)
+    except Exception as error:
+        logger.warning("Instagram webhook stage=username_enrichment FAIL phase=%s error_type=%s http_status=%s error_code=%s meta_error_type=%s",
+                       phase, type(error).__name__, getattr(error, "status", None),
+                       getattr(error, "code", None), getattr(error, "error_type", None))
+
+
+def handle_webhook(event, *, verify_token, repository, publisher, profile_tokens, graph,
+                   remaining_time_ms=None):
     method = event.get("httpMethod")
     if method == "GET":
         params = event.get("queryStringParameters") or {}
@@ -82,6 +114,7 @@ def handle_webhook(event, *, verify_token, repository, publisher, vault, graph):
 
     logger.info("Instagram webhook stage=json_parse PASS message_candidates=%d", len(messages))
 
+    pending_profiles = {}
     for mid, sender_id, recipient_id, text in messages:
         account = repository.find_account_by_ig_user_id(recipient_id)
         if not account:
@@ -93,31 +126,6 @@ def handle_webhook(event, *, verify_token, repository, publisher, vault, graph):
             creator_id, sender_id, datetime.now(timezone.utc).isoformat()
         )
         logger.info("Instagram webhook stage=follower_upsert PASS")
-        if follower.get("username") is None:
-            phase = "vault_lookup"
-            try:
-                token = vault.page_token(account["id"])
-                if token:
-                    phase = "meta_profile_lookup"
-                    profile = graph.user_profile(token, sender_id)
-                    username = profile.get("username")
-                    if isinstance(username, str) and username.strip():
-                        phase = "username_update"
-                        updated = repository.update_follower_username_if_missing(
-                            follower["id"], username.strip())
-                        logger.info("Instagram webhook stage=username_enrichment username_returned=true name_returned=%s updated=%s",
-                                    bool(profile.get("name")), updated)
-                    else:
-                        logger.info("Instagram webhook stage=username_enrichment username_returned=false name_returned=%s updated=false",
-                                    bool(profile.get("name")))
-                else:
-                    logger.warning("Instagram webhook stage=username_enrichment token_available=false")
-            except Exception as error:
-                logger.warning("Instagram webhook stage=username_enrichment FAIL phase=%s error_type=%s http_status=%s error_code=%s meta_error_type=%s",
-                               phase, type(error).__name__, getattr(error, "status", None),
-                               getattr(error, "code", None), getattr(error, "error_type", None))
-        else:
-            logger.info("Instagram webhook stage=username_enrichment SKIP already_present")
         inbound = repository.upsert_inbound(mid, follower["id"], text)
         if not inbound or inbound["follower_id"] != follower["id"]:
             logger.warning("Instagram webhook stage=inbound_upsert FAIL mid_conflict")
@@ -125,4 +133,13 @@ def handle_webhook(event, *, verify_token, repository, publisher, vault, graph):
         logger.info("Instagram webhook stage=inbound_upsert PASS")
         publisher.publish(inbound["id"], creator_id)
         logger.info("Instagram webhook stage=sqs_publish PASS")
+        if follower.get("username") is None:
+            pending_profiles.setdefault(follower["id"], (sender_id, recipient_id))
+        else:
+            logger.info("Instagram webhook stage=username_enrichment SKIP already_present")
+
+    for follower_id, (sender_id, recipient_id) in pending_profiles.items():
+        _enrich_username(follower_id, sender_id, recipient_id, repository=repository,
+                         profile_tokens=profile_tokens, graph=graph,
+                         remaining_time_ms=remaining_time_ms)
     return _response(200, "OK")
