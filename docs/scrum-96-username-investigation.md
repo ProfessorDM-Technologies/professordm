@@ -1,8 +1,8 @@
 # Scrum-96: map inbound Instagram senders to usernames
 
-Status: the Instagram Login profile lookup has passed read-only validation for
-both known real followers. The implementation has 33 passing backend tests and
-is deployed to staging. A fresh real DM remains the completion gate.
+Status: complete in staging. A real DM on October 14, 2026 at approximately
+6:20 PM MST passed username enrichment, inbound persistence, SQS publication,
+and HTTP 200. The implementation has 33 passing backend tests.
 
 ## Product requirement
 
@@ -103,9 +103,31 @@ token. An empty Instagram POST returned HTTP 200. These smoke checks did not
 create followers, inbound rows, or SQS events.
 
 Before the real-DM test, both known follower usernames remained NULL and the
-queue had 44 visible messages with zero in flight. A fresh real DM must prove
-the automatic database username update, inbound row, SQS event, and HTTP 200
-before Scrum-96 is marked done. No PR has been created or merged.
+queue had 44 visible messages with zero in flight.
+
+## Real-DM acceptance evidence
+
+The user sent a fresh real DM at approximately **6:20 PM MST on October 14,
+2026**. Lambda request `34c5d7d1-df6d-46bd-ab54-ec53ec3d25f9` processed it between
+`2026-10-15T01:20:14.970Z` and `2026-10-15T01:20:18.021Z`.
+
+| Stage | Evidence | Result |
+| --- | --- | --- |
+| JSON parsing | `stage=json_parse PASS message_candidates=1` | PASS |
+| Receiving account resolution | `stage=account_resolution PASS`; account `f4f57c1c-6317-45c2-8b91-381f0fa58472`, Instagram ID `17841479724216495` | PASS |
+| Follower upsert | `stage=follower_upsert PASS`; row `fd528a98-994f-4dc7-87b7-859de91a7e79`, IGSID `2234200840491090` | PASS |
+| Inbound persistence | `stage=inbound_upsert PASS`; row `0fa115f4-c4ab-46c4-82c8-bb8d635ba136`; exactly one row exists for its MID | PASS |
+| SQS publication | `stage=sqs_publish PASS`; CloudWatch `NumberOfMessagesSent` sum was 1 for the 01:20 UTC minute; visible count 44 to 45, zero in flight | PASS |
+| Username retrieval and update | `username_returned=true updated=True`; follower changed from NULL to `akshayvoora` | PASS |
+| Webhook response | `Instagram webhook method=POST status=200` | PASS |
+
+The follower's creator `9bd6dce3-a884-445f-a3a5-6c4422e945ad` matches the receiving
+account's creator. The Vault secret reference remains
+`4c996ff1-ac6e-452d-988b-cae2429a27bb`; no Vault value was changed. No message
+content, token, or secret was logged or included in this evidence.
+
+Implementation commit: `94f8bcd` on `Scrum-96`. No outbound test, PR, merge, or
+production deployment was performed.
 
 ## Official sources
 
