@@ -1,7 +1,18 @@
 import Link from "next/link";
-import { Placeholder } from "@/components/placeholder";
+import { getCurrentUser } from "@/lib/auth/session";
+import { FREE_ANSWER_LIMIT, freeAnswersLeft } from "@/lib/knowledge/free-answers";
+import { getFreeViewsUsed, getPublishedTags } from "@/lib/knowledge/queries";
+import { popularTopics } from "@/lib/knowledge/search";
 
-export default function HomePage() {
+export default async function HomePage() {
+  const user = await getCurrentUser();
+  const [freeViewsUsed, tagRows] = await Promise.all([
+    user ? getFreeViewsUsed(user.id) : Promise.resolve(0),
+    getPublishedTags(),
+  ]);
+  const left = freeAnswersLeft(freeViewsUsed);
+  const topics = popularTopics(tagRows);
+
   return (
     <div className="space-y-8">
       <div className="space-y-2">
@@ -32,14 +43,34 @@ export default function HomePage() {
         <h2 id="trial-heading" className="text-lg font-semibold">
           Free answers remaining
         </h2>
-        <Placeholder>Your free answer count will appear here.</Placeholder>
+        <p className="rounded-lg border border-flora-border bg-white p-4">
+          <span className="text-2xl font-semibold text-flora-accent-strong">{left}</span>{" "}
+          <span className="text-flora-muted">
+            of {FREE_ANSWER_LIMIT} free answers left
+          </span>
+        </p>
       </section>
 
       <section aria-labelledby="topics-heading" className="space-y-2">
         <h2 id="topics-heading" className="text-lg font-semibold">
           Popular topics
         </h2>
-        <Placeholder>Popular topics will appear here.</Placeholder>
+        {topics.length > 0 ? (
+          <ul className="flex flex-wrap gap-2">
+            {topics.map((topic) => (
+              <li key={topic}>
+                <Link
+                  href={`/search?q=${encodeURIComponent(topic)}`}
+                  className="inline-flex min-h-11 items-center rounded-full border border-flora-border bg-white px-4 text-sm font-medium text-flora-accent-strong hover:bg-flora-tint"
+                >
+                  {topic}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-flora-muted">No topics yet.</p>
+        )}
       </section>
 
       <section aria-labelledby="ask-heading" className="space-y-2 rounded-lg bg-flora-tint p-4">

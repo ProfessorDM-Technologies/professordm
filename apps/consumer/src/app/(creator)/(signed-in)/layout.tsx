@@ -2,14 +2,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { CreatorNav } from "@/components/creator-nav";
+import { getCurrentUser } from "@/lib/auth/session";
 import { LOGIN_PATH } from "@/lib/routes";
-import { createClient } from "@/lib/supabase/server";
 
 export default async function SignedInLayout({ children }: { children: ReactNode }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
   if (!user) {
     redirect(LOGIN_PATH);

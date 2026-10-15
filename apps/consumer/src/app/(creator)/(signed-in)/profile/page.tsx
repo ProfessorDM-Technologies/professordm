@@ -1,12 +1,18 @@
 import type { Metadata } from "next";
-import { Placeholder } from "@/components/placeholder";
 import { signOut } from "@/lib/auth/actions";
+import { getCurrentUser } from "@/lib/auth/session";
+import { getDisplayName } from "@/lib/knowledge/queries";
 
 export const metadata: Metadata = {
   title: "Profile",
 };
 
-export default function ProfilePage() {
+export default async function ProfilePage() {
+  const user = await getCurrentUser();
+  const displayName = user ? await getDisplayName(user.id) : null;
+  const email = user?.email ?? "";
+  const name = displayName && displayName !== email ? displayName : null;
+
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold tracking-tight">Profile</h1>
@@ -15,21 +21,23 @@ export default function ProfilePage() {
         <h2 id="account-heading" className="text-lg font-semibold">
           Account
         </h2>
-        <Placeholder>Name, email, photo and notification settings will appear here.</Placeholder>
+        <dl className="divide-y divide-flora-border rounded-lg border border-flora-border bg-white">
+          <div className="flex flex-col gap-1 p-4 sm:flex-row sm:justify-between">
+            <dt className="text-sm text-flora-muted">Name</dt>
+            <dd className="font-medium">{name ?? "Not set"}</dd>
+          </div>
+          <div className="flex flex-col gap-1 p-4 sm:flex-row sm:justify-between">
+            <dt className="text-sm text-flora-muted">Email</dt>
+            <dd className="font-medium break-all">{email}</dd>
+          </div>
+        </dl>
       </section>
 
       <section aria-labelledby="plan-heading" className="space-y-2">
         <h2 id="plan-heading" className="text-lg font-semibold">
-          Plan and billing
+          Plan
         </h2>
-        <Placeholder>Your plan, free answers remaining, renewal date and saved card will appear here.</Placeholder>
-      </section>
-
-      <section aria-labelledby="history-heading" className="space-y-2">
-        <h2 id="history-heading" className="text-lg font-semibold">
-          Question history
-        </h2>
-        <Placeholder>Your past questions will appear here.</Placeholder>
+        <p className="rounded-lg border border-flora-border bg-white p-4 font-medium">Free Trial</p>
       </section>
 
       <form action={signOut}>
