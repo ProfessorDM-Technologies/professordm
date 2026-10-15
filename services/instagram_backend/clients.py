@@ -42,26 +42,28 @@ def _json_request(url, method, headers, body=None, timeout=8):
 
 
 class SupabaseRest:
-    def __init__(self, url, service_role_key):
+    def __init__(self, url, service_role_key, timeout=8):
         parsed = urlsplit(url)
         if parsed.scheme != "https" or not parsed.netloc:
             raise ValueError("Supabase URL must be HTTPS")
         self.base = f"{parsed.scheme}://{parsed.netloc}"
         self.key = service_role_key
+        self.timeout = timeout
 
-    def request(self, method, path, *, params=None, body=None, prefer=None, timeout=8):
+    def request(self, method, path, *, params=None, body=None, prefer=None, timeout=None):
         query = f"?{urlencode(params)}" if params else ""
         headers = {"apikey": self.key, "Authorization": f"Bearer {self.key}",
                    "Content-Type": "application/json"}
         if prefer:
             headers["Prefer"] = prefer
         return _json_request(f"{self.base}/rest/v1/{path}{query}", method, headers, body,
-                             timeout=timeout)
+                             timeout=self.timeout if timeout is None else timeout)
 
     def auth_user(self, jwt):
         try:
             return _json_request(f"{self.base}/auth/v1/user", "GET",
-                                 {"apikey": self.key, "Authorization": f"Bearer {jwt}"})
+                                 {"apikey": self.key, "Authorization": f"Bearer {jwt}"},
+                                 timeout=self.timeout)
         except RestError as error:
             if error.status in (401, 403):
                 return None
@@ -114,7 +116,7 @@ class SupabaseRepository:
 
     def get_ig_account(self, creator_id):
         rows = self.rest.request("GET", "ig_accounts", params={
-            "creator_id": f"eq.{creator_id}", "select": "id,creator_id,vault_token_id", "limit": "2"})
+            "creator_id": f"eq.{creator_id}", "select": "id,creator_id,ig_user_id,vault_token_id", "limit": "2"})
         return rows[0] if isinstance(rows, list) and len(rows) == 1 else None
 
     def create_outbound(self, row):
@@ -129,10 +131,12 @@ class SupabaseRepository:
     def get_outbound_by_client_request_id(self, request_id):
         return _one(self.rest.request("GET", "outbound_messages", params={
             "client_request_id": f"eq.{request_id}",
-            "select": "id,creator_id,status,meta_message_id", "limit": "1"}))
+            "select": "id,creator_id,inbound_message_id,text,status,meta_message_id", "limit": "1"}))
 
-    def update_outbound(self, outbound_id, *, status, meta_message_id=None):
+    def update_outbound(self, outbound_id, *, status, meta_message_id=None, attempts=None):
         body = {"status": status}
+        if attempts is not None:
+            body["attempts"] = attempts
         if meta_message_id is not None:
             body["meta_message_id"] = meta_message_id
         result = self.rest.request("PATCH", "outbound_messages", params={"id": f"eq.{outbound_id}"},
@@ -202,7 +206,6 @@ class MetaGraph:
             raise ValueError("META_GRAPH_API_VERSION must be configured")
         self.base = f"https://graph.facebook.com/{version}"
         self.profile_base = f"https://graph.instagram.com/{version}"
-        self.url = f"{self.base}/me/messages"
 
     def user_profile(self, token, ig_user_id, ig_scoped_id):
         if any(not re.fullmatch(r"[0-9]+", value or "")
@@ -221,12 +224,24 @@ class MetaGraph:
             raise ValueError("Meta profile does not match webhook sender")
         return {key: response.get(key) for key in ("id", "username", "name")}
 
-    def send(self, token, recipient, text):
-        try:
-            response = _json_request(self.url, "POST",
-                                     {"Authorization": f"Bearer {token}",
-                                      "Content-Type": "application/json"},
-                                     {"recipient": {"id": recipient}, "message": {"text": text}})
-        except RestError:
-            raise RuntimeError("Meta delivery failed") from None
-        return response.get("message_id") if isinstance(response, dict) else None
+    def validate_send_account(self, token, ig_user_id):
+        if not re.fullmatch(r"[0-9]+", ig_user_id or ""):
+            raise ValueError("Instagram account ID must be numeric")
+        identity = _json_request(f"{self.profile_base}/me?fields=user_id", "GET",
+                                 {"Authorization": f"Bearer {token}"}, timeout=3)
+        if not isinstance(identity, dict) or identity.get("user_id") != ig_user_id:
+            raise ValueError("Instagram send token does not match receiving account")
+
+    def send(self, token, ig_user_id, recipient, text):
+        if any(not re.fullmatch(r"[0-9]+", value or "")
+               for value in (ig_user_id, recipient)):
+            raise ValueError("Instagram account and recipient IDs must be numeric")
+        response = _json_request(f"{self.profile_base}/{ig_user_id}/messages", "POST",
+                                 {"Authorization": f"Bearer {token}",
+                                  "Content-Type": "application/json"},
+                                 {"recipient": {"id": recipient}, "message": {"text": text}},
+                                 timeout=5)
+        if (not isinstance(response, dict) or response.get("recipient_id") != recipient
+                or not isinstance(response.get("message_id"), str) or not response["message_id"]):
+            raise ValueError("Meta did not confirm the message and recipient")
+        return response["message_id"]
