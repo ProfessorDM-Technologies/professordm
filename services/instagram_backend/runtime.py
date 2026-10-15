@@ -7,7 +7,7 @@ import os
 import boto3
 from botocore.config import Config
 
-from clients import MetaGraph, SqsPublisher, SsmProfileTokens, SupabaseAuth, SupabaseRepository, SupabaseRest, SupabaseVault
+from clients import MetaGraph, SqsPublisher, SsmProfileTokens, SupabaseAuth, SupabaseRepository, SupabaseRest
 from sender import handle_send
 from webhook import handle_webhook
 
@@ -33,9 +33,9 @@ def _parameter(variable, decrypt=True):
     return value
 
 
-def _supabase():
+def _supabase(timeout=8):
     return SupabaseRest(_parameter("SSM_SUPABASE_URL", decrypt=False),
-                        _parameter("SSM_SUPABASE_KEY"))
+                        _parameter("SSM_SUPABASE_KEY"), timeout=timeout)
 
 
 def webhook_handler(event, context):
@@ -63,12 +63,15 @@ def webhook_handler(event, context):
 
 def send_handler(event, context):
     try:
-        rest = _supabase()
-        return handle_send(event, auth=SupabaseAuth(rest),
-                           repository=SupabaseRepository(rest),
-                           vault=SupabaseVault(rest),
-                           graph=MetaGraph(os.environ.get("META_GRAPH_API_VERSION")))
+        rest = _supabase(timeout=3)
+        result = handle_send(event, auth=SupabaseAuth(rest),
+                              repository=SupabaseRepository(rest),
+                              profile_tokens=SsmProfileTokens(
+                                  _profile_ssm, os.environ.get("SSM_INSTAGRAM_PROFILE_TOKEN_PREFIX")),
+                              graph=MetaGraph(os.environ.get("META_GRAPH_API_VERSION")))
+        logger.info("Instagram send method=%s status=%s", event.get("httpMethod"), result["statusCode"])
+        return result
     except Exception as error:
-        logger.error("Instagram send failed", extra={"error_type": type(error).__name__})
+        logger.error("Instagram send failed error_type=%s", type(error).__name__)
         return {"statusCode": 500, "headers": {"Content-Type": "application/json"},
                 "body": '{"error":"Send processing failed"}'}

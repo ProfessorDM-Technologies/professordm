@@ -36,7 +36,7 @@ export function ReplyBox({ inboundMessageId, recipient }: { inboundMessageId: st
         rows={4}
         value={text}
         onChange={(event) => setText(event.target.value)}
-        readOnly={pending}
+        readOnly={pending || state.status === "pending"}
         maxLength={MAX_REPLY_LENGTH}
         aria-invalid={state.status === "error" ? true : undefined}
         aria-describedby="reply-status"
@@ -50,7 +50,9 @@ export function ReplyBox({ inboundMessageId, recipient }: { inboundMessageId: st
               {state.message}
             </p>
           ) : state.status === "sent" ? (
-            <p className="font-medium text-green-800">Reply submitted. Check the conversation for delivery status.</p>
+            <p className="font-medium text-green-800">Reply sent to Instagram.</p>
+          ) : state.status === "pending" ? (
+            <p>This reply is processing. Check its status before composing another reply.</p>
           ) : null}
         </div>
 
@@ -59,7 +61,7 @@ export function ReplyBox({ inboundMessageId, recipient }: { inboundMessageId: st
           disabled={pending || empty}
           className="min-h-11 rounded-lg bg-pdm-accent px-5 font-semibold text-white hover:bg-pdm-accent-strong disabled:opacity-60"
         >
-          {pending ? "Sending…" : "Send"}
+          {pending ? "Sending…" : state.status === "pending" ? "Check status" : "Send"}
         </button>
       </div>
     </form>

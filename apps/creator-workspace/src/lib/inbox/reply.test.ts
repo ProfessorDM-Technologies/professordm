@@ -25,6 +25,12 @@ describe("parseReply", () => {
     expect(parseReply(fields("a".repeat(MAX_REPLY_LENGTH + 1))).ok).toBe(false);
   });
 
+  it("enforces the UTF-8 byte limit for emoji and other multibyte text", () => {
+    expect(parseReply(fields("🌱".repeat(250))).ok).toBe(true);
+    expect(parseReply(fields("🌱".repeat(251))).ok).toBe(false);
+    expect(parseReply(fields("é".repeat(501))).ok).toBe(false);
+  });
+
   it("rejects missing or malformed ids", () => {
     expect(parseReply({ text: "Hi", inboundMessageId: "not-a-uuid", clientRequestId: REQUEST_ID }).ok).toBe(false);
     expect(parseReply({ text: "Hi", inboundMessageId: INBOUND_ID, clientRequestId: null }).ok).toBe(false);

@@ -136,11 +136,29 @@ class ClientTests(unittest.TestCase):
             provider.for_account("../different-account")
         self.assertEqual(len(ssm.calls), 1)
 
-    def test_outbound_keeps_existing_facebook_host(self):
-        with patch("clients._json_request", return_value={"message_id": "outbound-id"}) as request:
-            result = MetaGraph("v26.0").send("private-token", "recipient", "A reply")
+    def test_send_uses_instagram_host_account_and_scoped_recipient(self):
+        with patch("clients._json_request", return_value={"recipient_id": "456", "message_id": "outbound-id"}) as request:
+            result = MetaGraph("v26.0").send("private-token", "123", "456", "A reply")
         self.assertEqual(result, "outbound-id")
-        self.assertEqual(request.call_args.args[0], "https://graph.facebook.com/v26.0/me/messages")
+        self.assertEqual(request.call_args.args[0], "https://graph.instagram.com/v26.0/123/messages")
+        self.assertEqual(request.call_args.args[1], "POST")
+        self.assertEqual(request.call_args.args[3], {"recipient": {"id": "456"}, "message": {"text": "A reply"}})
+
+    def test_send_does_not_accept_unconfirmed_recipient_or_message(self):
+        for response in ({"message_id": "mid"}, {"recipient_id": "999", "message_id": "mid"},
+                         {"recipient_id": "456"}, None):
+            with self.subTest(response=response):
+                with patch("clients._json_request", return_value=response):
+                    with self.assertRaises(ValueError):
+                        MetaGraph("v26.0").send("private-token", "123", "456", "A reply")
+
+    def test_send_token_identity_requires_webhook_user_id(self):
+        with patch("clients._json_request", return_value={"user_id": "123"}):
+            MetaGraph("v26.0").validate_send_account("private-token", "123")
+        for identity in ({"id": "123"}, {"user_id": "999"}, None):
+            with patch("clients._json_request", return_value=identity):
+                with self.assertRaises(ValueError):
+                    MetaGraph("v26.0").validate_send_account("private-token", "123")
 
     def test_meta_nested_error_code_and_type_are_available_for_safe_logs(self):
         body = BytesIO(b'{"error":{"message":"Page is not linked","type":"OAuthException","code":100}}')

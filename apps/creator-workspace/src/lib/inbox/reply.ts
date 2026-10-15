@@ -1,7 +1,8 @@
 // Pure: validates the reply form. No Supabase access here so it can be unit tested.
 
-// Instagram rejects text messages of 1000 characters or more.
+// Keep the existing character limit and enforce Meta's UTF-8 byte limit too.
 export const MAX_REPLY_LENGTH = 999;
+export const MAX_REPLY_BYTES = 1000;
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -14,8 +15,8 @@ export function parseReply(fields: { text: unknown; inboundMessageId: unknown; c
   if (!text) {
     return { ok: false, error: "Write a reply before sending." };
   }
-  if (text.length > MAX_REPLY_LENGTH) {
-    return { ok: false, error: `Keep your reply under ${MAX_REPLY_LENGTH + 1} characters.` };
+  if (text.length > MAX_REPLY_LENGTH || new TextEncoder().encode(text).length > MAX_REPLY_BYTES) {
+    return { ok: false, error: "Your reply is too long. Shorten it before sending." };
   }
 
   const { inboundMessageId, clientRequestId } = fields;

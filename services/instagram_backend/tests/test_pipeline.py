@@ -337,7 +337,7 @@ class OutboundStore:
         return {"id": CREATOR_ID} if profile_id == "signed-in-user" else None
 
     def get_ig_account(self, creator_id):
-        return {"id": ACCOUNT_ID, "creator_id": creator_id, "vault_token_id": "vault-id"}
+        return {"id": ACCOUNT_ID, "creator_id": creator_id, "ig_user_id": "17841479724216495"}
 
     def create_outbound(self, row):
         with self.lock:
@@ -351,10 +351,12 @@ class OutboundStore:
     def get_outbound_by_client_request_id(self, request_id):
         return self.outbound.get(request_id)
 
-    def update_outbound(self, outbound_id, *, status, meta_message_id=None):
+    def update_outbound(self, outbound_id, *, status, meta_message_id=None, attempts=None):
         with self.lock:
             row = self.outbound[REQUEST_ID]
             row.update(status=status, meta_message_id=meta_message_id)
+            if attempts is not None:
+                row["attempts"] = attempts
             self.updated.append(status)
             return row.copy()
 
@@ -364,18 +366,16 @@ class Auth:
         return "signed-in-user" if jwt == "user-jwt" else None
 
 
-class Vault:
-    def page_token(self, account_id):
-        return "test-page-token"
-
-
 class Graph:
     def __init__(self, fail=False):
         self.calls = 0
         self.fail = fail
         self.lock = threading.Lock()
 
-    def send(self, token, recipient, text):
+    def validate_send_account(self, token, account_id):
+        pass
+
+    def send(self, token, account_id, recipient, text):
         with self.lock:
             self.calls += 1
         if self.fail:
@@ -389,7 +389,10 @@ class BlockingGraph(Graph):
         self.started = threading.Event()
         self.release = threading.Event()
 
-    def send(self, token, recipient, text):
+    def validate_send_account(self, token, account_id):
+        pass
+
+    def send(self, token, account_id, recipient, text):
         with self.lock:
             self.calls += 1
         self.started.set()
@@ -407,7 +410,7 @@ def send_event(request_id=REQUEST_ID):
 class SenderTests(unittest.TestCase):
     def setUp(self):
         self.store, self.graph = OutboundStore(), Graph()
-        self.deps = {"auth": Auth(), "repository": self.store, "vault": Vault(), "graph": self.graph}
+        self.deps = {"auth": Auth(), "repository": self.store, "profile_tokens": ProfileTokens(), "graph": self.graph}
 
     def test_duplicate_client_request_id_never_sends_again(self):
         first = handle_send(send_event(), **self.deps)
@@ -436,7 +439,7 @@ class SenderTests(unittest.TestCase):
         self.graph.fail = True
         result = handle_send(send_event(), **self.deps)
         self.assertEqual(result["statusCode"], 502)
-        self.assertEqual(self.store.updated, ["failed"])
+        self.assertEqual(self.store.updated, ["pending", "failed"])
         self.assertEqual(self.store.outbound[REQUEST_ID]["status"], "failed")
 
     def test_unauthenticated_request_never_reserves_or_sends(self):
@@ -446,6 +449,123 @@ class SenderTests(unittest.TestCase):
         self.assertEqual(result["statusCode"], 401)
         self.assertEqual(self.store.insert_count, 0)
         self.assertEqual(self.graph.calls, 0)
+
+    def test_valid_reply_records_attempt_before_send(self):
+        test = self
+        class CheckedGraph(Graph):
+            def send(inner, token, account_id, recipient, text):
+                row = test.store.outbound[REQUEST_ID]
+                test.assertEqual((row["status"], row["attempts"]), ("pending", 1))
+                test.assertEqual((token, account_id, recipient),
+                                 ("private-test-token", "17841479724216495", "follower-ig-id"))
+                return super().send(token, account_id, recipient, text)
+        self.deps["graph"] = CheckedGraph()
+        result = handle_send(send_event(), **self.deps)
+        self.assertEqual(result["statusCode"], 200)
+        row = self.store.outbound[REQUEST_ID]
+        self.assertEqual((row["status"], row["meta_message_id"], row["attempts"]),
+                         ("sent", "meta-message-id", 1))
+        self.assertEqual(self.deps["profile_tokens"].account_ids, ["17841479724216495"])
+
+    def test_invalid_jwt_rejected(self):
+        event = send_event()
+        event["headers"]["Authorization"] = "Bearer invalid-jwt"
+        self.assertEqual(handle_send(event, **self.deps)["statusCode"], 401)
+        self.assertEqual(self.graph.calls, 0)
+        self.assertEqual(self.store.insert_count, 0)
+
+    def test_other_creator_rejected_even_with_spoofed_browser_ids(self):
+        self.store.get_follower = lambda _: {"id": FOLLOWER_ID, "creator_id": "another-creator"}
+        event = send_event()
+        data = json.loads(event["body"])
+        data.update(creator_id=CREATOR_ID, follower_id=FOLLOWER_ID, ig_account_id=ACCOUNT_ID)
+        event["body"] = json.dumps(data)
+        self.assertEqual(handle_send(event, **self.deps)["statusCode"], 403)
+        self.assertEqual(self.graph.calls, 0)
+        self.assertEqual(self.store.insert_count, 0)
+
+    def test_missing_inbound_rejected(self):
+        self.store.get_inbound = lambda _: None
+        self.assertEqual(handle_send(send_event(), **self.deps)["statusCode"], 404)
+        self.assertEqual(self.store.insert_count, 0)
+
+    def test_ambiguous_account_rejected(self):
+        self.store.get_ig_account = lambda _: None
+        self.assertEqual(handle_send(send_event(), **self.deps)["statusCode"], 409)
+        self.assertEqual(self.graph.calls, 0)
+
+    def test_invalid_text_and_ids_rejected_before_reservation(self):
+        for fields in ({"text": " "}, {"text": "a" * 1000}, {"text": "😀" * 251},
+                       {"client_request_id": "bad"}, {"inbound_message_id": "bad"}):
+            with self.subTest(fields=fields):
+                event = send_event()
+                data = json.loads(event["body"])
+                data.update(fields)
+                event["body"] = json.dumps(data)
+                self.assertEqual(handle_send(event, **self.deps)["statusCode"], 400)
+        self.assertEqual(self.store.insert_count, 0)
+        self.assertEqual(self.graph.calls, 0)
+
+    def test_same_request_id_with_different_reply_rejected(self):
+        handle_send(send_event(), **self.deps)
+        event = send_event()
+        data = json.loads(event["body"])
+        data["text"] = "Different reply"
+        event["body"] = json.dumps(data)
+        self.assertEqual(handle_send(event, **self.deps)["statusCode"], 409)
+        self.assertEqual(self.graph.calls, 1)
+
+    def test_failed_meta_duplicate_never_retries_send(self):
+        self.graph.fail = True
+        self.assertEqual(handle_send(send_event(), **self.deps)["statusCode"], 502)
+        duplicate = handle_send(send_event(), **self.deps)
+        self.assertEqual(json.loads(duplicate["body"])["status"], "failed")
+        self.assertEqual(self.graph.calls, 1)
+
+    def test_credential_failure_safe_and_no_send(self):
+        class FailingTokens:
+            def for_account(self, account_id):
+                raise RuntimeError("private-credential-value")
+        self.deps["profile_tokens"] = FailingTokens()
+        with self.assertLogs("sender", level="INFO") as logs:
+            result = handle_send(send_event(), **self.deps)
+        self.assertEqual(result["statusCode"], 502)
+        self.assertNotIn("private-credential-value", "\n".join(logs.output) + result["body"])
+        self.assertEqual(self.store.outbound[REQUEST_ID]["attempts"], 0)
+        self.assertEqual(self.graph.calls, 0)
+
+    def test_token_identity_mismatch_never_sends(self):
+        def reject(*args):
+            raise ValueError("wrong account")
+        self.graph.validate_send_account = reject
+        self.assertEqual(handle_send(send_event(), **self.deps)["statusCode"], 502)
+        self.assertEqual(self.graph.calls, 0)
+        self.assertEqual(self.store.outbound[REQUEST_ID]["attempts"], 0)
+
+    def test_status_update_failure_does_not_repeat_meta(self):
+        original = self.store.update_outbound
+        def fail_sent(*args, **kwargs):
+            if kwargs["status"] == "sent":
+                raise RestError(503, "unavailable")
+            return original(*args, **kwargs)
+        self.store.update_outbound = fail_sent
+        result = handle_send(send_event(), **self.deps)
+        self.assertEqual(result["statusCode"], 503)
+        self.assertEqual(json.loads(result["body"])["status"], "pending")
+        handle_send(send_event(), **self.deps)
+        self.assertEqual(self.graph.calls, 1)
+
+    def test_transient_status_update_retried_without_resending(self):
+        original = self.store.update_outbound
+        failures = []
+        def fail_once(*args, **kwargs):
+            if kwargs["status"] == "sent" and not failures:
+                failures.append(True)
+                raise RestError(503, "unavailable")
+            return original(*args, **kwargs)
+        self.store.update_outbound = fail_once
+        self.assertEqual(handle_send(send_event(), **self.deps)["statusCode"], 200)
+        self.assertEqual(self.graph.calls, 1)
 
 
 if __name__ == "__main__":
