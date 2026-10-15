@@ -73,3 +73,13 @@ Live acceptance is pending. A user must deploy this branch to the existing demo 
 
 - [Instagram Login messaging API](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/messaging-api): Instagram User token, permissions, versioned Instagram host, send contract and response.
 - [Instagram user profile API](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/messaging-api/user-profile): supported sender profile lookup used by inbound.
+
+### Deployed sender verification (October 14 MST / October 15 UTC)
+
+Implementation commit `23c77134a23850dc667a5347e84cab963e5f7aeb` is pushed. Reviewed change set `outbound-instagram-replies-20261015` updated the existing sender Lambda and its SAM-managed role, without replacements. The processed API properties and deployment resource IDs are identical to the prior template. CloudFormation pre-deployment operation succeeded; the executed stack reached `UPDATE_COMPLETE`.
+
+The live API remains `POST /api/send`, `AWS_PROXY`, integration HTTP method POST, Lambda `professordm-staging-instagram-send`, no request templates. Downloaded deployed `sender.py`, `clients.py`, `runtime.py`, and `send_handler.py` match the implementation commit exactly. The Lambda is Active and uses Graph v26.0 plus the existing staging SSM parameter names/prefix.
+
+Deployed smoke requests returned 401 without auth, 401 with a controlled invalid JWT, and 400 for invalid body. They created no outbound row and made no Meta send. The working inbound Lambda code SHA remains `T68OgmNgyd9iIdNS6fcpc2Tn2PAgWsRhj+d1cY0KmLw=` (unchanged).
+
+The branch is ready for user-assisted Vercel deployment and one authenticated Creator Workspace live reply. Real Meta delivery, final outbound IDs, and receipt confirmation remain unverified; this task is not marked done.
