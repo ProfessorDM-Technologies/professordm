@@ -5,8 +5,9 @@ import logging
 import os
 
 import boto3
+from botocore.config import Config
 
-from clients import MetaGraph, SqsPublisher, SupabaseAuth, SupabaseRepository, SupabaseRest, SupabaseVault
+from clients import MetaGraph, SqsPublisher, SsmProfileTokens, SupabaseAuth, SupabaseRepository, SupabaseRest, SupabaseVault
 from sender import handle_send
 from webhook import handle_webhook
 
@@ -16,6 +17,9 @@ logger.setLevel(logging.INFO)
 _session = boto3.Session()
 _ssm = _session.client("ssm")
 _sqs = _session.client("sqs")
+_profile_ssm = _session.client("ssm", config=Config(
+    connect_timeout=1, read_timeout=1,
+    retries={"total_max_attempts": 1, "mode": "standard"}))
 
 
 @lru_cache(maxsize=4)
@@ -38,13 +42,17 @@ def webhook_handler(event, context):
     try:
         if event.get("httpMethod") == "GET":
             result = handle_webhook(event, verify_token=_parameter("SSM_META_VERIFY_TOKEN"),
-                                    repository=None, publisher=None)
+                                    repository=None, publisher=None, profile_tokens=None, graph=None)
             logger.info("Instagram webhook method=GET status=%s", result["statusCode"])
             return result
         rest = _supabase()
         publisher = SqsPublisher(_sqs, os.environ["QUEUE_URL"])
         result = handle_webhook(event, verify_token="",
-                                repository=SupabaseRepository(rest), publisher=publisher)
+                                repository=SupabaseRepository(rest), publisher=publisher,
+                                profile_tokens=SsmProfileTokens(
+                                    _profile_ssm, os.environ.get("SSM_INSTAGRAM_PROFILE_TOKEN_PREFIX")),
+                                graph=MetaGraph(os.environ.get("META_GRAPH_API_VERSION")),
+                                remaining_time_ms=context.get_remaining_time_in_millis)
         logger.info("Instagram webhook method=%s status=%s", event.get("httpMethod"),
                     result["statusCode"])
         return result
