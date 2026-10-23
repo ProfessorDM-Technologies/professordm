@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import time
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -12,7 +13,8 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MODERATION_URL = "https://api.openai.com/v1/moderations"
 DEFAULT_MODEL = "google/gemini-3.1-flash-lite"
 MODERATION_MODEL = "omni-moderation-latest"
-MAX_CLARIFICATION_CHARS = 500
+MAX_CLARIFICATION_CHARS = 200
+MEDIA_WORDS = re.compile(r"\b(photos?|pics?|pictures?|images?|videos?|screenshots?)\b", re.IGNORECASE)
 TIMEOUT = 10
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -171,7 +173,7 @@ def moderate(text):
 def write_clarification(text, recent_messages, profile):
     content, meta = _openrouter(clarify_prompt(profile), _conversation(text, recent_messages))
     prompt = content.strip() if isinstance(content, str) else ""
-    if not prompt or len(prompt) > MAX_CLARIFICATION_CHARS:
+    if not prompt or len(prompt) >= MAX_CLARIFICATION_CHARS or MEDIA_WORDS.search(prompt):
         logger.warning("Triage stage=clarify FAIL error_type=invalid_output chars=%d latency_ms=%d",
                        len(prompt), meta["latency_ms"])
         raise InvalidOutput("bad_clarification")

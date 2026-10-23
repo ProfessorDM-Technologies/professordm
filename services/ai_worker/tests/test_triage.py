@@ -113,7 +113,7 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(decision, {
             "status": "awaiting_clarification", "category": "needs_clarification", "service_kind": None,
             "confidence": 0.9, "reason": "Asks about crispy calathea leaf tips",
-            "prompt_version": "triage-v3+clarify-v1+sweetlife-v1", "model": "test-model",
+            "prompt_version": "triage-v3+clarify-v2+sweetlife-v1", "model": "test-model",
             "safety_flags": [], "question": None,
             "clarification": {"round": 1, "prompt": CLARIFY_TEXT},
             "outbound": {"type": "clarification", "text": CLARIFY_TEXT}})
@@ -347,7 +347,8 @@ class LlmTests(unittest.TestCase):
     def test_clarification_must_be_short_plain_text(self):
         with patch("llm._json_request", return_value=completion(f"  {CLARIFY_TEXT}\n")):
             self.assertEqual(llm.write_clarification("why yellow", [], SWEETLIFE_FLORA), CLARIFY_TEXT)
-        for content in ("", "   ", None, "x" * 501):
+        for content in ("", "   ", None, "x" * 200, "Which plant is it? Could you send a photo of the leaves?",
+                        "Can you share a quick video?"):
             with patch("llm._json_request", return_value=completion(content)), \
                     self.assertLogs("llm", level="WARNING") as logs:
                 with self.assertRaises(llm.InvalidOutput):
