@@ -88,13 +88,20 @@ def _openrouter(system, user, schema=None):
                      "cost": usage.get("cost")}
 
 
-def _conversation(text, recent_messages):
+def _conversation(text, recent_messages, rounds=None):
     lines = []
     if recent_messages:
         lines.append("Earlier messages, oldest first:")
         lines += [f"{i}. {json.dumps(m, ensure_ascii=False)}" for i, m in enumerate(recent_messages, 1)]
-    lines.append("Latest message:")
+    lines.append("Original message:" if rounds else "Latest message:")
     lines.append(json.dumps(text, ensure_ascii=False))
+    if rounds:
+        lines.append("Clarification so far:")
+        for item in rounds:
+            lines.append(f"Round {item['round']} question from the creator: "
+                         f"{json.dumps(item.get('prompt') or '', ensure_ascii=False)}")
+            lines.append(f"Round {item['round']} reply from the follower: "
+                         f"{json.dumps(item.get('reply') or '', ensure_ascii=False)}")
     return "\n".join(lines)
 
 
@@ -139,8 +146,8 @@ def _parse_classification(content, profile):
             "risk_flag": data["risk_flag"], "risk_reason": risk_reason}
 
 
-def classify(text, recent_messages, profile):
-    content, meta = _openrouter(triage_prompt(profile), _conversation(text, recent_messages),
+def classify(text, recent_messages, profile, rounds=None):
+    content, meta = _openrouter(triage_prompt(profile), _conversation(text, recent_messages, rounds),
                                 _classify_schema(profile))
     try:
         result = _parse_classification(content, profile)
@@ -170,8 +177,8 @@ def moderate(text):
     return flagged
 
 
-def write_clarification(text, recent_messages, profile):
-    content, meta = _openrouter(clarify_prompt(profile), _conversation(text, recent_messages))
+def write_clarification(text, recent_messages, profile, rounds=None):
+    content, meta = _openrouter(clarify_prompt(profile), _conversation(text, recent_messages, rounds))
     prompt = content.strip() if isinstance(content, str) else ""
     if not prompt or len(prompt) >= MAX_CLARIFICATION_CHARS or MEDIA_WORDS.search(prompt):
         logger.warning("Triage stage=clarify FAIL error_type=invalid_output chars=%d latency_ms=%d",

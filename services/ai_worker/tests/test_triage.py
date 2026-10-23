@@ -47,15 +47,15 @@ class FakeLLM:
             raise self.moderation_error
         return self.flagged
 
-    def classify(self, text, recent_messages, profile):
-        self.calls.append(("classify", text, recent_messages))
+    def classify(self, text, recent_messages, profile, rounds=None):
+        self.calls.append(("classify", text, recent_messages, rounds))
         outcome = self.results.pop(0)
         if isinstance(outcome, Exception):
             raise outcome
         return outcome
 
-    def write_clarification(self, text, recent_messages, profile):
-        self.calls.append(("clarify", text, recent_messages))
+    def write_clarification(self, text, recent_messages, profile, rounds=None):
+        self.calls.append(("clarify", text, recent_messages, rounds))
         outcome = self.clarifications.pop(0)
         if isinstance(outcome, Exception):
             raise outcome
@@ -71,6 +71,15 @@ class FakeLLM:
 def run(fake, text=DM, recent_messages=None, profile=None):
     with patch.object(triage, "llm", fake):
         return triage.triage(text, recent_messages, profile)
+
+
+def rerun(fake, original, rounds, recent_messages=None):
+    with patch.object(triage, "llm", fake):
+        return triage.reassess(original, rounds, recent_messages)
+
+
+ROUND_1 = {"round": 1, "prompt": CLARIFY_TEXT, "reply": "  a calathea, north window, I water every week  "}
+ROUND_2 = {"round": 2, "prompt": "How long has it been happening?", "reply": "about two weeks"}
 
 
 def contract_values(name):
@@ -102,7 +111,7 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(decision, {
             "status": "ready_for_question", "category": "expert_question", "service_kind": None,
             "confidence": 0.94, "reason": "Asks about crispy calathea leaf tips",
-            "prompt_version": "triage-v3+sweetlife-v1", "model": "test-model", "safety_flags": [],
+            "prompt_version": "triage-v4+sweetlife-v1", "model": "test-model", "safety_flags": [],
             "question": {"question_text": DM, "safety_flagged": False},
             "clarification": None, "outbound": None})
         self.assertEqual(fake.names(), ["moderate", "classify"])
@@ -113,7 +122,7 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(decision, {
             "status": "awaiting_clarification", "category": "needs_clarification", "service_kind": None,
             "confidence": 0.9, "reason": "Asks about crispy calathea leaf tips",
-            "prompt_version": "triage-v3+clarify-v2+sweetlife-v1", "model": "test-model",
+            "prompt_version": "triage-v4+clarify-v4+sweetlife-v1", "model": "test-model",
             "safety_flags": [], "question": None,
             "clarification": {"round": 1, "prompt": CLARIFY_TEXT},
             "outbound": {"type": "clarification", "text": CLARIFY_TEXT}})
@@ -176,7 +185,7 @@ class SafetyTests(unittest.TestCase):
                 self.assertEqual(decision, {
                     "status": "blocked", "category": "safety_concern", "service_kind": None,
                     "confidence": None, "reason": f"Moderation flagged {category}",
-                    "prompt_version": "triage-v3+sweetlife-v1", "model": "omni-moderation-latest",
+                    "prompt_version": "triage-v4+sweetlife-v1", "model": "omni-moderation-latest",
                     "safety_flags": [{"layer": "moderation", "category": "harassment", "detail": None},
                                      {"layer": "moderation", "category": category, "detail": None}],
                     "question": None, "clarification": None,
@@ -243,7 +252,7 @@ class FailureTests(unittest.TestCase):
                 self.assertEqual(decision, {
                     "status": "awaiting_clarification", "category": "needs_clarification", "service_kind": None,
                     "confidence": None, "reason": "No text in the message, asks for a description in words",
-                    "prompt_version": "triage-v3+sweetlife-v1", "model": None, "safety_flags": [],
+                    "prompt_version": "triage-v4+sweetlife-v1", "model": None, "safety_flags": [],
                     "question": None,
                     "clarification": {"round": 1, "prompt": SWEETLIFE_FLORA["empty_text_prompt"]},
                     "outbound": {"type": "clarification", "text": SWEETLIFE_FLORA["empty_text_prompt"]}})
@@ -254,7 +263,7 @@ class FailureTests(unittest.TestCase):
         decision = run(fake)
         self.assertEqual(decision, {
             "status": "creator_decision", "category": None, "service_kind": None, "confidence": None,
-            "reason": "Model returned invalid output twice", "prompt_version": "triage-v3+sweetlife-v1",
+            "reason": "Model returned invalid output twice", "prompt_version": "triage-v4+sweetlife-v1",
             "model": "test-model",
             "safety_flags": [{"layer": "moderation", "category": "violence", "detail": None}],
             "question": None, "clarification": None, "outbound": None})
@@ -296,6 +305,100 @@ class FailureTests(unittest.TestCase):
             self.assertNotIn(fragment, output)
 
 
+class ReassessTests(unittest.TestCase):
+    def test_clear_after_round_one_is_ready_with_combined_question(self):
+        fake = FakeLLM(result())
+        decision = rerun(fake, "why are the tips brown", [ROUND_1])
+        self.assertEqual(decision, {
+            "status": "ready_for_question", "category": "expert_question", "service_kind": None,
+            "confidence": 0.94, "reason": "Asks about crispy calathea leaf tips",
+            "prompt_version": "triage-v4+sweetlife-v1", "model": "test-model", "safety_flags": [],
+            "question": {"question_text": "why are the tips brown\na calathea, north window, I water every week",
+                         "safety_flagged": False},
+            "clarification": None, "outbound": None})
+        self.assertEqual(fake.calls[0], ("moderate", "a calathea, north window, I water every week"))
+        self.assertEqual(fake.calls[1][1], "why are the tips brown")
+        self.assertEqual(fake.calls[1][3], [{"round": 1, "prompt": CLARIFY_TEXT,
+                                             "reply": "a calathea, north window, I water every week"}])
+
+    def test_still_vague_after_round_one_asks_round_two(self):
+        fake = FakeLLM(result("needs_clarification", 0.9), clarifications=("How long has it been happening?",))
+        decision = rerun(fake, "why are the tips brown", [ROUND_1], ["hi"])
+        self.assertEqual(decision["status"], "awaiting_clarification")
+        self.assertEqual(decision["clarification"], {"round": 2, "prompt": "How long has it been happening?"})
+        self.assertEqual(decision["outbound"], {"type": "clarification", "text": "How long has it been happening?"})
+        self.assertEqual(decision["prompt_version"], "triage-v4+clarify-v4+sweetlife-v1")
+        clarify = fake.calls[-1]
+        self.assertEqual((clarify[0], clarify[1], clarify[2], len(clarify[3])),
+                         ("clarify", "why are the tips brown", ["hi"], 1))
+
+    def test_still_vague_after_round_two_goes_to_creator(self):
+        fake = FakeLLM(result("needs_clarification", 0.9))
+        decision = rerun(fake, "why are the tips brown", [ROUND_2, ROUND_1])
+        self.assertEqual((decision["status"], decision["category"], decision["reason"]),
+                         ("creator_decision", "needs_clarification", "Still unclear after 2 clarification rounds"))
+        self.assertEqual((decision["clarification"], decision["outbound"], decision["question"]), (None, None, None))
+        self.assertEqual(fake.names(), ["moderate", "classify"])
+        self.assertEqual([r["round"] for r in fake.calls[1][3]], [1, 2])
+        self.assertEqual(fake.calls[0], ("moderate", "about two weeks"))
+
+    def test_clear_after_round_two_joins_every_reply(self):
+        decision = rerun(FakeLLM(result()), "why are the tips brown", [ROUND_1, ROUND_2], ["hey"])
+        self.assertEqual(decision["question"]["question_text"],
+                         "hey\nwhy are the tips brown\na calathea, north window, I water every week\nabout two weeks")
+
+    def test_reply_is_screened_before_classify(self):
+        severe = FakeLLM(flagged={"self-harm/intent": 0.9})
+        decision = rerun(severe, "why are the tips brown", [{**ROUND_1, "reply": "a reply in crisis"}])
+        self.assertEqual((decision["status"], decision["outbound"]["text"]),
+                         ("blocked", SWEETLIFE_FLORA["crisis_text"]))
+        self.assertEqual(severe.names(), ["moderate"])
+        rules = FakeLLM()
+        decision = rerun(rules, "why are the tips brown", [{**ROUND_1, "reply": "kys"}])
+        self.assertEqual((decision["status"], decision["safety_flags"][-1]["layer"]), ("blocked", "rules"))
+        self.assertEqual(rules.names(), ["moderate"])
+
+    def test_mild_flag_on_reply_is_kept(self):
+        decision = rerun(FakeLLM(result(), flagged={"violence": 0.8}), "why are the tips brown", [ROUND_1])
+        self.assertEqual(decision["safety_flags"], [{"layer": "moderation", "category": "violence", "detail": None}])
+        self.assertTrue(decision["question"]["safety_flagged"])
+
+    def test_empty_reply_and_original_skip_moderation(self):
+        fake = FakeLLM(result("needs_clarification", 0.9))
+        decision = rerun(fake, None, [{**ROUND_1, "reply": None}])
+        self.assertEqual(decision["clarification"]["round"], 2)
+        self.assertEqual(fake.names(), ["classify", "clarify"])
+        self.assertEqual(fake.calls[0][1], "")
+
+    def test_social_reply_closes_and_service_reply_routes(self):
+        self.assertEqual(rerun(FakeLLM(result("social", 0.95)), "why brown", [ROUND_1])["status"], "closed_no_action")
+        decision = rerun(FakeLLM(result("service_request", 0.95, service_kind="platform")), "why brown", [ROUND_1])
+        self.assertEqual((decision["status"], decision["service_kind"]), ("service_routed", "platform"))
+
+    def test_invalid_output_twice_goes_to_creator(self):
+        fake = FakeLLM(llm.InvalidOutput("not_json"), llm.InvalidOutput("not_json"))
+        decision = rerun(fake, "why brown", [ROUND_1])
+        self.assertEqual((decision["status"], decision["reason"]),
+                         ("creator_decision", "Model returned invalid output twice"))
+
+    def test_api_error_raises(self):
+        with self.assertRaises(llm.LLMError):
+            rerun(FakeLLM(llm.LLMError("openrouter", 500)), "why brown", [ROUND_1])
+
+    def test_reassess_requires_a_round(self):
+        for rounds in (None, []):
+            with self.assertRaises(ValueError):
+                rerun(FakeLLM(), "why brown", rounds)
+
+    def test_reassess_logs_never_contain_dm_text(self):
+        with self.assertLogs("triage", level="INFO") as logs:
+            rerun(FakeLLM(result()), "secret original about Priya", [{**ROUND_1, "reply": "reply with 555-0100"}])
+        output = "\n".join(logs.output)
+        self.assertIn("stage=reassess status=ready_for_question", output)
+        for fragment in ("Priya", "555-0100", "secret original"):
+            self.assertNotIn(fragment, output)
+
+
 def completion(content, model="google/gemini-3.1-flash-lite"):
     return {"model": model, "choices": [{"message": {"content": content}}],
             "usage": {"prompt_tokens": 100, "completion_tokens": 20, "cost": 0.00005}}
@@ -334,6 +437,15 @@ class LlmTests(unittest.TestCase):
                     with self.assertRaises(llm.InvalidOutput):
                         llm.classify("text", [], SWEETLIFE_FLORA)
                 self.assertIn("stage=classify FAIL error_type=invalid_output", logs.output[0])
+
+    def test_rounds_are_sent_after_the_original_message(self):
+        with patch("llm._json_request", return_value=completion(json.dumps(VALID))) as request:
+            llm.classify("why brown", ["hi"], SWEETLIFE_FLORA, [ROUND_1])
+        user = request.call_args.args[3]["messages"][1]["content"]
+        self.assertEqual(user.splitlines(), [
+            "Earlier messages, oldest first:", '1. "hi"', "Original message:", '"why brown"',
+            "Clarification so far:", f'Round 1 question from the creator: "{CLARIFY_TEXT}"',
+            'Round 1 reply from the follower: "  a calathea, north window, I water every week  "'])
 
     def test_moderate_returns_flagged_categories_with_scores(self):
         response = {"results": [{"flagged": True,

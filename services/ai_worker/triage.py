@@ -71,19 +71,19 @@ def _screen(text, profile):
     return None, flags
 
 
-def _classify(text, recent_messages, profile):
+def _classify(text, recent_messages, profile, rounds=None):
     for _ in range(2):
         try:
-            return llm.classify(text, recent_messages, profile)
+            return llm.classify(text, recent_messages, profile, rounds)
         except llm.InvalidOutput:
             continue
     return None
 
 
-def _clarification(text, recent_messages, profile):
+def _clarification(text, recent_messages, profile, rounds=None):
     for _ in range(2):
         try:
-            return llm.write_clarification(text, recent_messages, profile)
+            return llm.write_clarification(text, recent_messages, profile, rounds)
         except llm.InvalidOutput:
             continue
     return None
@@ -106,7 +106,8 @@ def _route(result, profile, flags, question_text, next_round, clarify):
             "question_text": question_text, "safety_flagged": bool(flags)})
     if category == "needs_clarification":
         if next_round > MAX_ROUNDS:
-            return _decision("creator_decision", profile, **fields)
+            return _decision("creator_decision", profile, **{
+                **fields, "reason": f"Still unclear after {MAX_ROUNDS} clarification rounds"})
         prompt = clarify()
         if prompt is None:
             return _decision("creator_decision", profile,
@@ -126,10 +127,19 @@ def _log(stage, decision, started):
     return decision
 
 
+def _recent(recent_messages):
+    return [m.strip() for m in recent_messages or [] if isinstance(m, str) and m.strip()]
+
+
+def _invalid(profile, flags):
+    return _decision("creator_decision", profile, model=llm.model_id(), safety_flags=flags,
+                     reason="Model returned invalid output twice")
+
+
 def triage(text, recent_messages=None, profile=None):
     started = time.monotonic()
     profile = profile or SWEETLIFE_FLORA
-    recent_messages = [m for m in recent_messages or [] if isinstance(m, str) and m.strip()]
+    recent_messages = _recent(recent_messages)
     if not isinstance(text, str) or not text.strip():
         return _log("triage", _clarifying(profile, 1, profile["empty_text_prompt"], category="needs_clarification",
                                           reason="No text in the message, asks for a description in words"), started)
@@ -139,7 +149,29 @@ def triage(text, recent_messages=None, profile=None):
         return _log("triage", blocked, started)
     result = _classify(text, recent_messages, profile)
     if result is None:
-        return _log("triage", _decision("creator_decision", profile, model=llm.model_id(), safety_flags=flags,
-                                        reason="Model returned invalid output twice"), started)
+        return _log("triage", _invalid(profile, flags), started)
     return _log("triage", _route(result, profile, flags, "\n".join([*recent_messages, text]), 1,
                                  lambda: _clarification(text, recent_messages, profile)), started)
+
+
+def reassess(original_text, rounds, recent_messages=None, profile=None):
+    started = time.monotonic()
+    profile = profile or SWEETLIFE_FLORA
+    recent_messages = _recent(recent_messages)
+    if not rounds:
+        raise ValueError("reassess needs at least one clarification round")
+    original = original_text.strip() if isinstance(original_text, str) else ""
+    rounds = [{"round": item["round"], "prompt": item.get("prompt") or "",
+               "reply": item["reply"].strip() if isinstance(item.get("reply"), str) else ""}
+              for item in sorted(rounds, key=lambda item: item["round"])]
+    flags = []
+    if rounds[-1]["reply"]:
+        blocked, flags = _screen(rounds[-1]["reply"], profile)
+        if blocked:
+            return _log("reassess", blocked, started)
+    result = _classify(original, recent_messages, profile, rounds)
+    if result is None:
+        return _log("reassess", _invalid(profile, flags), started)
+    question_text = "\n".join(part for part in [*recent_messages, original, *(r["reply"] for r in rounds)] if part)
+    return _log("reassess", _route(result, profile, flags, question_text, len(rounds) + 1,
+                                   lambda: _clarification(original, recent_messages, profile, rounds)), started)
