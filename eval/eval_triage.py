@@ -3,6 +3,7 @@ import json
 import os
 import re
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -14,6 +15,7 @@ sys.path.insert(0, str(HERE.parent / "services" / "ai_worker"))
 
 import llm
 from prompts import CATEGORIES, SWEETLIFE_FLORA, prompt_version
+from triage import triage
 
 SPLITS = ("dev", "test")
 NEAR_MATCH = 0.9
@@ -45,22 +47,39 @@ def few_shot_overlaps(rows, profile):
     return overlaps
 
 
+_calls = threading.local()
+_openrouter = llm._openrouter
+
+
+def _recording_openrouter(*args, **kwargs):
+    content, meta = _openrouter(*args, **kwargs)
+    _calls.meta.append(meta)
+    return content, meta
+
+
+llm._openrouter = _recording_openrouter
+
+
 def predict(row):
+    _calls.meta = []
     started = time.monotonic()
-    try:
-        result = llm.classify(row["text"], row.get("recent_messages") or [], SWEETLIFE_FLORA)
-    except llm.InvalidOutput as error:
-        result = {"category": None, "service_kind": None, "confidence": 0.0,
-                  "reason": f"invalid output: {error}", "risk_flag": False, "risk_reason": None,
-                  "prompt_tokens": 0, "completion_tokens": 0, "cost": None, "model": None}
+    decision = triage(row["text"], row.get("recent_messages") or [], SWEETLIFE_FLORA)
+    risks = [f["detail"] for f in decision["safety_flags"] if f["category"] == "risk_topic"]
+    confidence = decision["confidence"]
+    if confidence is None:
+        confidence = 0.0 if decision["category"] is None else 1.0
+    costs = [m["cost"] for m in _calls.meta if m["cost"] is not None]
     return {"id": row["id"], "split": row["split"], "label": row["label"],
-            "predicted": result["category"], "service_kind_label": row.get("service_kind"),
-            "service_kind": result["service_kind"], "confidence": result["confidence"],
-            "reason": result["reason"], "risk_flag": result["risk_flag"],
-            "risk_reason": result["risk_reason"],
+            "predicted": decision["category"], "status": decision["status"],
+            "service_kind_label": row.get("service_kind"), "service_kind": decision["service_kind"],
+            "confidence": confidence, "reason": decision["reason"],
+            "risk_flag": bool(risks), "risk_reason": risks[0] if risks else None,
+            "safety_flags": decision["safety_flags"],
+            "clarification": (decision["clarification"] or {}).get("prompt"),
             "latency_ms": int((time.monotonic() - started) * 1000),
-            "tokens": result["prompt_tokens"] + result["completion_tokens"],
-            "cost": result["cost"], "model": result["model"]}
+            "tokens": sum(m["prompt_tokens"] + m["completion_tokens"] for m in _calls.meta),
+            "cost": sum(costs) if costs else None,
+            "model": next((m["model"] for m in _calls.meta), None)}
 
 
 def per_category(results):
@@ -136,9 +155,18 @@ def report(split, results, summary):
     print(f"\nWrong predictions ({len(wrong)})")
     for r in wrong:
         kind = f" [{r['service_kind_label']} -> {r['service_kind']}]" if r["predicted"] == "service_request" else ""
-        print(f"  {r['id']}: {r['label']} -> {r['predicted']}{kind} ({r['confidence']:.2f}) {r['reason']}")
+        print(f"  {r['id']}: {r['label']} -> {r['predicted']}{kind} status={r['status']} "
+              f"({r['confidence']:.2f}) {r['reason']}")
     flagged = [r for r in results if r["risk_flag"]]
     print(f"\nRisk flags ({len(flagged)}): " + ", ".join(f"{r['id']} [{r['risk_reason']}]" for r in flagged))
+    other = [r for r in results if any(f["category"] != "risk_topic" for f in r["safety_flags"])]
+    print(f"Other safety flags ({len(other)}): " + ", ".join(
+        f"{r['id']} [{'/'.join(f['layer'] + ':' + f['category'] for f in r['safety_flags'] if f['category'] != 'risk_topic')}]"
+        for r in other))
+    statuses = {}
+    for r in results:
+        statuses[r["status"]] = statuses.get(r["status"], 0) + 1
+    print("Statuses: " + ", ".join(f"{k}={v}" for k, v in sorted(statuses.items())))
     print("\nConfidence cutoff   above  acc_above   below  acc_below")
     for row in summary["cutoffs"]:
         print(f"  {row['cutoff']:<17.2f}{row['above']:>6} {pct(row['accuracy_above']):>10}"
