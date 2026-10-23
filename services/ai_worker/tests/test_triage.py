@@ -34,9 +34,9 @@ class FakeLLM:
     LLMError = llm.LLMError
     MODERATION_MODEL = "omni-moderation-latest"
 
-    def __init__(self, *results, flagged=(), clarifications=(CLARIFY_TEXT,), moderation_error=None):
+    def __init__(self, *results, flagged=None, clarifications=(CLARIFY_TEXT,), moderation_error=None):
         self.results = list(results)
-        self.flagged = list(flagged)
+        self.flagged = dict(flagged or {})
         self.clarifications = list(clarifications)
         self.moderation_error = moderation_error
         self.calls = []
@@ -170,8 +170,9 @@ class SafetyTests(unittest.TestCase):
     def test_severe_moderation_hit_blocks_without_classify(self):
         for category in sorted(triage.SEVERE):
             with self.subTest(category=category):
-                fake = FakeLLM(flagged=["harassment", category])
+                fake = FakeLLM(flagged={"harassment": 0.7, category: 0.3})
                 decision = run(fake, "a harmful message")
+                reply = "crisis_text" if category.startswith("self-harm") else "decline_text"
                 self.assertEqual(decision, {
                     "status": "blocked", "category": "safety_concern", "service_kind": None,
                     "confidence": None, "reason": f"Moderation flagged {category}",
@@ -179,8 +180,14 @@ class SafetyTests(unittest.TestCase):
                     "safety_flags": [{"layer": "moderation", "category": "harassment", "detail": None},
                                      {"layer": "moderation", "category": category, "detail": None}],
                     "question": None, "clarification": None,
-                    "outbound": {"type": "decline", "text": SWEETLIFE_FLORA["decline_text"]}})
+                    "outbound": {"type": "decline", "text": SWEETLIFE_FLORA[reply]}})
                 self.assertEqual(fake.names(), ["moderate"])
+
+    def test_self_harm_block_sends_crisis_text_not_decline(self):
+        decision = run(FakeLLM(flagged={"self-harm": 0.78, "self-harm/intent": 0.82}), "a message in crisis")
+        self.assertEqual(decision["outbound"], {"type": "decline", "text": SWEETLIFE_FLORA["crisis_text"]})
+        self.assertIn("988", decision["outbound"]["text"])
+        self.assertNotEqual(SWEETLIFE_FLORA["crisis_text"], SWEETLIFE_FLORA["decline_text"])
 
     def test_blocked_term_blocks_without_classify(self):
         fake = FakeLLM()
@@ -195,16 +202,28 @@ class SafetyTests(unittest.TestCase):
         profile = {**SWEETLIFE_FLORA, "extra_blocked_terms": ["leaf thief"]}
         self.assertEqual(run(FakeLLM(), "the leaf  thief struck", profile=profile)["status"], "blocked")
         for text in ("The skys are gray, my fern is drooping, it's by a window and watered weekly",
-                     "a leaf thiefs guide"):
+                     "a leaf thiefs guide", "someone tried to doxx me after I posted my plant shelf, what do I do"):
             with self.subTest(text=text):
                 self.assertEqual(run(FakeLLM(result()), text, profile=profile)["status"], "ready_for_question")
 
-    def test_mild_moderation_hit_flags_and_continues(self):
-        fake = FakeLLM(result(), flagged=["violence"])
-        decision = run(fake, "How do I kill the fungus gnats in my pothos soil?")
+    def test_mild_moderation_hit_above_threshold_flags_and_continues(self):
+        fake = FakeLLM(result(), flagged={"violence": 0.85})
+        decision = run(fake, "a message moderation scores as violent")
         self.assertEqual(decision["status"], "ready_for_question")
         self.assertEqual(decision["safety_flags"], [{"layer": "moderation", "category": "violence", "detail": None}])
         self.assertTrue(decision["question"]["safety_flagged"])
+
+    def test_pest_killing_phrases_below_threshold_do_not_flag(self):
+        cases = {"How do I kill the fungus gnats in my pothos soil?": {"violence": 0.401},
+                 "how do i kill mealybugs on my hoya": {},
+                 "whats the best spray to kill spider mites": {"violence": 0.2},
+                 "gonna nuke these aphids with neem lol": {"violence": 0.427}}
+        for text, flagged in cases.items():
+            with self.subTest(text=text):
+                decision = run(FakeLLM(result(), flagged=flagged), text)
+                self.assertEqual((decision["status"], decision["safety_flags"]), ("ready_for_question", []))
+                self.assertFalse(decision["question"]["safety_flagged"])
+        self.assertEqual(triage.MILD_FLAG_THRESHOLD, 0.5)
 
     def test_risk_flag_adds_policy_flag_and_keeps_status(self):
         decision = run(FakeLLM(result(risk_reason="plants toxic to pets or kids")),
@@ -231,7 +250,7 @@ class FailureTests(unittest.TestCase):
                 self.assertEqual(fake.calls, [])
 
     def test_invalid_output_twice_goes_to_creator(self):
-        fake = FakeLLM(llm.InvalidOutput("not_json"), llm.InvalidOutput("bad_category"), flagged=["violence"])
+        fake = FakeLLM(llm.InvalidOutput("not_json"), llm.InvalidOutput("bad_category"), flagged={"violence": 0.9})
         decision = run(fake)
         self.assertEqual(decision, {
             "status": "creator_decision", "category": None, "service_kind": None, "confidence": None,
@@ -263,7 +282,7 @@ class FailureTests(unittest.TestCase):
     def test_every_decision_has_the_same_shape(self):
         cases = [FakeLLM(result(c, 0.9, service_kind="platform" if c == "service_request" else None))
                  for c in CATEGORIES]
-        cases += [FakeLLM(flagged=["self-harm/intent"]), FakeLLM(llm.InvalidOutput("x"), llm.InvalidOutput("x"))]
+        cases += [FakeLLM(flagged={"self-harm/intent": 0.9}), FakeLLM(llm.InvalidOutput("x"), llm.InvalidOutput("x"))]
         for fake in cases:
             self.assertEqual(set(run(fake)), DECISION_KEYS)
 
@@ -316,11 +335,12 @@ class LlmTests(unittest.TestCase):
                         llm.classify("text", [], SWEETLIFE_FLORA)
                 self.assertIn("stage=classify FAIL error_type=invalid_output", logs.output[0])
 
-    def test_moderate_returns_flagged_categories(self):
-        response = {"results": [{"flagged": True, "categories": {
-            "violence": True, "self-harm/intent": False, "harassment": True}}]}
+    def test_moderate_returns_flagged_categories_with_scores(self):
+        response = {"results": [{"flagged": True,
+                                 "categories": {"violence": True, "self-harm/intent": False, "harassment": True},
+                                 "category_scores": {"violence": 0.4, "self-harm/intent": 0.6, "harassment": 0.9}}]}
         with patch("llm._json_request", return_value=response) as request:
-            self.assertEqual(llm.moderate("text"), ["harassment", "violence"])
+            self.assertEqual(llm.moderate("text"), {"harassment": 0.9, "violence": 0.4})
         self.assertEqual(request.call_args.args[3], {"model": "omni-moderation-latest", "input": "text"})
         self.assertEqual(request.call_args.args[2]["Authorization"], "Bearer test-openai")
 

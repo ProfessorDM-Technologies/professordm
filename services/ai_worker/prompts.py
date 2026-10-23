@@ -67,6 +67,7 @@ SWEETLIFE_FLORA = {
     "voice": "warm, short, encouraging, like a friendly plant expert",
     "empty_text_prompt": "Thanks for reaching out! Could you tell me in words what's going on with your plant? Which plant is it, and what are you noticing?",
     "decline_text": "Thanks for your message. This isn't something we can help with here.",
+    "crisis_text": "I'm really sorry you're going through this, and you don't have to face it alone. In the US or Canada you can call or text 988 any time to talk with someone who can help. If you're in immediate danger, please call your local emergency number.",
     "examples": [
         {"text": "My snake plant leaves are going soft and mushy at the base. It's in a plastic pot in medium light and I water every week.", "label": "expert_question"},
         {"text": "How often should I water a ZZ plant in a north-facing window during winter?", "label": "expert_question"},

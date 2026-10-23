@@ -158,11 +158,11 @@ def moderate(text):
                               "Content-Type": "application/json"},
                              {"model": MODERATION_MODEL, "input": text})
     results = response.get("results") if isinstance(response, dict) else None
-    categories = results[0].get("categories") if isinstance(results, list) and results \
-        and isinstance(results[0], dict) else None
-    if not isinstance(categories, dict):
+    result = results[0] if isinstance(results, list) and results and isinstance(results[0], dict) else {}
+    categories, scores = result.get("categories"), result.get("category_scores")
+    if not isinstance(categories, dict) or not isinstance(scores, dict):
         raise LLMError("openai", None, "bad_response")
-    flagged = sorted(name for name, hit in categories.items() if hit is True)
+    flagged = {name: float(scores.get(name) or 0) for name, hit in sorted(categories.items()) if hit is True}
     logger.info("Triage stage=moderation PASS flagged=%s latency_ms=%d",
                 ",".join(flagged) or "none", int((time.monotonic() - started) * 1000))
     return flagged

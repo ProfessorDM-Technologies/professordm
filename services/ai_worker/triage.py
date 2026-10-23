@@ -7,6 +7,7 @@ from prompts import CLARIFY_VERSION, SWEETLIFE_FLORA, TRIAGE_VERSION, prompt_ver
 
 
 CONFIDENCE_CUTOFF = 0.6
+MILD_FLAG_THRESHOLD = 0.5
 MAX_ROUNDS = 2
 SEVERE = {
     "self-harm/intent",
@@ -21,8 +22,6 @@ BLOCKED_TERMS = (
     "kys",
     "send nudes",
     "child porn",
-    "doxx",
-    "doxxing",
 )
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -47,9 +46,9 @@ def _clarifying(profile, round_, prompt, version=TRIAGE_VERSION, **fields):
                      outbound={"type": "clarification", "text": prompt}, version=version, **fields)
 
 
-def _blocked(profile, flags, reason, model=None):
+def _blocked(profile, flags, reason, model=None, text_key="decline_text"):
     return _decision("blocked", profile, category="safety_concern", reason=reason, model=model,
-                     safety_flags=flags, outbound={"type": "decline", "text": profile["decline_text"]})
+                     safety_flags=flags, outbound={"type": "decline", "text": profile[text_key]})
 
 
 def _blocked_term(text, profile):
@@ -60,10 +59,13 @@ def _blocked_term(text, profile):
 
 def _screen(text, profile):
     hits = llm.moderate(text)
-    flags = [_flag("moderation", category) for category in hits]
     severe = [category for category in hits if category in SEVERE]
+    flags = [_flag("moderation", category) for category, score in hits.items()
+             if category in SEVERE or score >= MILD_FLAG_THRESHOLD]
     if severe:
-        return _blocked(profile, flags, f"Moderation flagged {', '.join(severe)}", llm.MODERATION_MODEL), flags
+        crisis = any(category.startswith("self-harm") for category in severe)
+        return _blocked(profile, flags, f"Moderation flagged {', '.join(severe)}", llm.MODERATION_MODEL,
+                        "crisis_text" if crisis else "decline_text"), flags
     if _blocked_term(text, profile):
         return _blocked(profile, [*flags, _flag("rules", "blocked_term")], "Matched a blocked term"), flags
     return None, flags
