@@ -1,6 +1,8 @@
 {
   "created_at": "2026-10-24T02:11:46+00:00",
   "script_sha256": "a767b9f75fa992919939e7a12fe91302c8ffc27e4321066921a14788bb35d443",
+  "script_commit": "0f91951",
+  "script_note": "script_sha256 is the hash of generate_synthetic.py at script_commit, the version that generated this data. Later commits only added comments and docstrings (the code is unchanged).",
   "generator": {
     "model": "anthropic/claude-sonnet-5.5",
     "served": [

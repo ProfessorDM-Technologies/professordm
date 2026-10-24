@@ -1,3 +1,38 @@
+"""Generate, blind-label and freeze the synthetic test split for triage eval.
+
+There are no real labeled DMs yet, so the test split is synthetic. To keep it
+independent of the triage prompt, the generator and labeler models never see
+prompts.py, its few-shot examples or the dev split. They get only fresh
+one-line category descriptions written here, "a houseplant-care Instagram
+account", the Houseplant Academy topics and style rules.
+
+Commands:
+    estimate   print the spec mix and an estimated cost (no API calls)
+    generate   write DMs with GENERATOR, filter and dedupe them, then label
+               every one blind with LABELER (calls label automatically)
+    label      label (or resume labeling) the saved candidates
+    freeze     append the reviewed candidates to triage_golden.jsonl as
+               split "test" and write triage_test_meta.json
+
+Usage:
+    set -a; source .env; set +a
+    uv run --python 3.11 python eval/generate_synthetic.py estimate
+    uv run --python 3.11 python eval/generate_synthetic.py generate --budget 3
+
+Outputs:
+    eval/private/synthetic_candidates.jsonl       candidates for review (git-ignored)
+    eval/private/synthetic_candidates.meta.json   models, seed, cost (git-ignored)
+    eval/triage_golden.jsonl                      the frozen test rows (freeze only)
+    eval/triage_test_meta.json                    committed metadata (freeze only)
+
+Depends on: OPENROUTER_API_KEY and the standard library. It deliberately does
+not import services/ai_worker, so nothing from the triage prompt can reach
+the models.
+
+Never does: change prompts.py, touch the dev split, or freeze twice. A human
+reviews the candidates (disagreements, boundary cases) before freeze.
+"""
+
 import argparse
 import hashlib
 import json
@@ -14,24 +49,48 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+# Where the golden set, the private review files and the committed metadata live.
 HERE = Path(__file__).resolve().parent
 GOLDEN = HERE / "triage_golden.jsonl"
 CANDIDATES = HERE / "private" / "synthetic_candidates.jsonl"
 CANDIDATES_META = HERE / "private" / "synthetic_candidates.meta.json"
 TEST_META = HERE / "triage_test_meta.json"
+# Seconds between labeler calls. OpenRouter limits new accounts to 20 requests
+# a minute for gpt-6.1-sol; 3.5 s stays just under 18 a minute.
 LABELER_INTERVAL = 3.5
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+# The generator is a non-Gemini model, so the test DMs are not written by the
+# same family as the classifier. Sonnet writes realistic, messy DM text.
 GENERATOR = "anthropic/claude-sonnet-5.5"
+# A second, different family labels every DM blind, so a disagreement with the
+# generator's intended category points at an ambiguous DM for human review.
 LABELER = "openai/gpt-6.1-sol"
+# None means the provider default. Both models reject an explicit temperature
+# with a strict JSON schema on OpenRouter (404, no endpoint), so none is sent.
 GENERATOR_TEMPERATURE = None
+# Same reason for the labeler.
 LABELER_TEMPERATURE = None
+# The only description of the account the models get, so they never see the
+# creator profile from prompts.py.
 ACCOUNT = "a houseplant-care Instagram account run by one expert creator"
+# Generate 40% more than needed so filtering and dedupe can drop rows and
+# every category still reaches its count.
 OVERSAMPLE = 1.4
+# DMs per generator call. Small enough that a refusal only loses a few rows,
+# and batches stay within one category so refusals show up per category.
 BATCH = 10
+# difflib ratio at which two candidates count as duplicates.
 NEAR_DUPLICATE = 0.85
+# Stricter ratio for the dev split: a test row this close to a dev row would
+# leak what the prompt was tuned on.
 NEAR_DEV = 0.8
+# Triage handles text only, so candidates that mention photos, videos or
+# attachments are dropped.
 MEDIA = re.compile(r"\b(photos?|pics?|pictures?|images?|videos?|screenshots?|attach\w*|sent you a)\b", re.I)
 
+# Fresh one-line category descriptions, written for this script and worded
+# differently from TRIAGE_TEMPLATE, so the test split does not mirror the prompt.
+# Shared by the generator and the blind labeler.
 DESCRIPTIONS = {
     "expert_question": "A houseplant care question specific enough that an expert could answer it right away.",
     "needs_clarification": "About houseplant care but too vague to answer without follow-up questions.",
@@ -46,13 +105,18 @@ DESCRIPTIONS = {
     "safety_concern": "Harmful or urgent: a pet or child poisoning or health emergency happening right now, "
                       "harassment, threats against the creator, or hints of self-harm.",
 }
+# The Houseplant Academy topics; care DMs cycle through them for coverage.
 TOPICS = ["watering", "light", "soil and substrates", "pots and drainage", "repotting", "fertilizing", "humidity",
           "temperature and airflow", "water quality", "grow lights", "bringing a new plant home", "yellow leaves",
           "brown leaves", "wilting", "root rot", "pests or disease", "spider mites", "golden pothos", "propagation"]
+# How real followers type; one is drawn per DM.
 STYLES = ["all lowercase with a typo or two", "lots of emojis", "casual slang", "one long run-on with no punctuation",
           "voice-to-text with a misheard word or two", "short and blunt", "polite and a little formal",
           "rambling with a side story"]
+# Forced on pest topics (and 10% of other care DMs) to test that violent-sounding
+# pest language is not blocked or flagged.
 PEST_STYLE = "pest-killing phrasing like kill, murder, nuke or destroy the bugs"
+# Required sub-mixes: the service_request kinds and the safety_concern kinds.
 SUBTYPES = {
     "service_request": ["platform"] * 8 + ["business"] * 9 + ["out_of_domain"] * 8,
     "safety_concern": ["pet or child poisoning or health emergency happening now"] * 5 + ["harassment"] * 4
@@ -61,6 +125,7 @@ SUBTYPES = {
     "spam_irrelevant": ["growth or follower scam", "crypto or money scam", "unrelated product promo", "bot gibberish",
                         "follow-for-follow"] * 3,
 }
+# The 10 boundary cases, left unlabeled for a human to decide.
 BOUNDARIES = ["expert_question vs service_request: a care question bundled with an order",
               "expert_question vs needs_clarification: some detail but not quite enough",
               "social vs needs_clarification: a reaction that hints something is still wrong",
@@ -71,9 +136,11 @@ BOUNDARIES = ["expert_question vs service_request: a care question bundled with 
               "service_request platform vs expert_question: a follow-up on an answer already paid for",
               "needs_clarification vs safety_concern: a sick pet near a plant, unclear if urgent",
               "expert_question vs needs_clarification: split across messages with key detail only at the end"]
+# Final rows per category (150 with the 10 boundary cases).
 COUNTS = {"expert_question": 40, "needs_clarification": 25, "service_request": 25, "social": 20,
           "spam_irrelevant": 15, "safety_concern": 15}
 
+# System prompt for the generator: style rules only, no triage prompt content.
 GENERATOR_SYSTEM = f"""You write realistic test data for a message-sorting system used by {ACCOUNT}. Write Instagram text DMs the way real followers type them.
 
 Style rules
@@ -86,6 +153,7 @@ Style rules
 
 Reply with one JSON object: {{"items": [{{"spec": <number>, "recent_messages": [...], "text": "..."}}]}} with one item per spec."""
 
+# System prompt for the blind labeler, built from DESCRIPTIONS.
 LABELER_SYSTEM = f"""You label Instagram DMs sent to {ACCOUNT}. Pick the one category that fits best.
 
 """ + "\n".join(f"- {name}: {text}" for name, text in DESCRIPTIONS.items()) + """
@@ -105,7 +173,24 @@ LABELER_SCHEMA = {"type": "object", "additionalProperties": False, "required": [
 
 
 class Spend:
+    """Thread-safe spend tracker with a hard budget.
+
+    Attributes:
+        budget (float): The most this run may spend, in USD.
+        cost (float): USD spent so far, from OpenRouter's usage.cost.
+        tokens (int): Prompt plus completion tokens so far.
+        served (dict[str, set[str]]): Requested model -> the model ids
+            OpenRouter actually served, recorded for traceability.
+    """
+
     def __init__(self, budget):
+        """Start a tracker at zero spend.
+
+        Args:
+            budget (float): The hard limit in USD.
+
+        Side effects: none.
+        """
         self.budget = budget
         self.cost = 0.0
         self.tokens = 0
@@ -113,6 +198,19 @@ class Spend:
         self.lock = threading.Lock()
 
     def add(self, model, served, usage):
+        """Record one call's usage and stop the run if the budget is passed.
+
+        Args:
+            model (str): The requested model.
+            served (str | None): The model id OpenRouter reported.
+            usage (dict): OpenRouter's usage block (cost, prompt_tokens,
+                completion_tokens).
+
+        Raises:
+            SystemExit: If total spend passes the budget.
+
+        Side effects: updates the counters under a lock.
+        """
         with self.lock:
             self.served.setdefault(model, set()).add(served or "unknown")
             self.cost += usage.get("cost") or 0
@@ -123,6 +221,29 @@ class Spend:
 
 
 def chat(model, system, user, schema, spend, temperature):
+    """Call one OpenRouter model with a strict JSON schema and parse the reply.
+
+    Args:
+        model (str): GENERATOR or LABELER.
+        system (str): The system prompt.
+        user (str): The user message.
+        schema (dict): The JSON schema the reply must follow.
+        spend (Spend): The run's spend tracker.
+        temperature (float | None): Sent only when not None. Both current
+            models reject an explicit temperature with a strict schema.
+
+    Returns:
+        dict | None: The parsed JSON reply, or None if it was not valid JSON
+        (counted as an empty or refused batch).
+
+    Raises:
+        RuntimeError: After 5 failed attempts, or at once for 400, 401, 402
+            or 404 (bad request, auth, credits, or no provider for these
+            parameters), with OpenRouter's error message.
+        SystemExit: Through Spend.add when the budget is passed.
+
+    Side effects: HTTPS requests, sleeps between retries, spend tracking.
+    """
     body = {"model": model, "usage": {"include": True},
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
             "response_format": {"type": "json_schema", "json_schema": {"name": "out", "strict": True, "schema": schema}},
@@ -131,6 +252,8 @@ def chat(model, system, user, schema, spend, temperature):
         body["temperature"] = temperature
     request = Request(OPENROUTER_URL, data=json.dumps(body).encode(), method="POST", headers={
         "Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}", "Content-Type": "application/json"})
+    # Rate limits (429) back off 15, 30, 45 and 60 s; other transient errors
+    # retry quickly. Requests that can never succeed (400, 401, 402, 404) stop at once.
     for attempt in range(5):
         try:
             with urlopen(request, timeout=120) as response:
@@ -156,6 +279,21 @@ def chat(model, system, user, schema, spend, temperature):
 
 
 def specs(rng):
+    """Build the list of DM specs to generate (category, topic, style, split).
+
+    Every category is oversampled by OVERSAMPLE so dedupe and filtering can
+    drop rows and still hit COUNTS. Topics and subtypes cycle so each one is
+    covered; styles and splits are drawn from rng.
+
+    Args:
+        rng (random.Random): Seeded, so the same seed gives the same mix.
+
+    Returns:
+        list[dict]: Specs like {"category", "style", "split", "topic"?,
+        "subtype"?}, grouped by category, then the 10 boundary specs.
+
+    Side effects: none.
+    """
     out = []
     for category, count in COUNTS.items():
         subtypes = SUBTYPES.get(category)
@@ -178,6 +316,18 @@ def specs(rng):
 
 
 def describe(n, spec):
+    """Turn one spec into a numbered instruction line for the generator.
+
+    Args:
+        n (int): The spec's number in the batch (the model echoes it back).
+        spec (dict): One spec from specs().
+
+    Returns:
+        str: For example "3. category expert_question (...), topic: light.
+        Style: lots of emojis. Split: no."
+
+    Side effects: none.
+    """
     if spec["category"] == "boundary":
         what = f"a DM that sits right on the boundary between {spec['subtype']}. Make it genuinely hard to label"
     else:
@@ -190,6 +340,19 @@ def describe(n, spec):
 
 
 def generate(batch, spend):
+    """Ask the generator for one DM per spec in a batch.
+
+    Args:
+        batch (list[dict]): Up to BATCH specs from the same category.
+        spend (Spend): The run's spend tracker.
+
+    Returns:
+        list[dict]: One {"spec", "text", "recent_messages"} per spec, in order.
+        A missing item (refusal or skipped spec) comes back with empty text,
+        so the stats show where the generator was weak.
+
+    Side effects: one generator call.
+    """
     user = "Write one DM for each spec below.\n\n" + "\n".join(describe(n, s) for n, s in enumerate(batch, 1))
     result = chat(GENERATOR, GENERATOR_SYSTEM, user, GENERATOR_SCHEMA, spend, GENERATOR_TEMPERATURE)
     items = {item.get("spec"): item for item in (result or {}).get("items", []) if isinstance(item, dict)}
@@ -203,18 +366,65 @@ def generate(batch, spend):
 
 
 def normalize(text):
+    """Lowercase, drop punctuation and collapse whitespace for fuzzy comparison.
+
+    Args:
+        text (str | None): Any text.
+
+    Returns:
+        str: The normalized text.
+
+    Side effects: none.
+    """
     return " ".join(re.sub(r"[^\w\s]", " ", (text or "").lower()).split())
 
 
 def full_text(row):
+    """Normalize a row's whole conversation (recent messages plus text).
+
+    Args:
+        row (dict): A row with "recent_messages" and "text".
+
+    Returns:
+        str: The normalized conversation.
+
+    Side effects: none.
+    """
     return normalize(" ".join([*row["recent_messages"], row["text"]]))
 
 
 def too_close(text, others, threshold):
+    """Check whether a text is similar to any other text.
+
+    Args:
+        text (str): Normalized text.
+        others (list[str]): Normalized texts to compare against.
+        threshold (float): The difflib ratio that counts as too close.
+
+    Returns:
+        bool: True if any ratio is at or above the threshold.
+
+    Side effects: none.
+    """
     return any(SequenceMatcher(None, text, other).ratio() >= threshold for other in others)
 
 
 def label(row, spend):
+    """Ask the labeler for a blind label for one candidate.
+
+    The labeler sees only the DM and the fresh category descriptions, never
+    the generator's intended category.
+
+    Args:
+        row (dict): A candidate with "text" and "recent_messages".
+        spend (Spend): The run's spend tracker.
+
+    Returns:
+        dict: {"labeler_label": str | None, "labeler_service_kind": str | None,
+        "labeler_reason": str}. labeler_label is None if the reply was invalid.
+
+    Side effects: one labeler call.
+    """
     lines = [f"{i}. {json.dumps(m, ensure_ascii=False)}" for i, m in enumerate(row["recent_messages"], 1)]
     user = (("Earlier messages, oldest first:\n" + "\n".join(lines) + "\n") if lines else "") + \
         "Latest message:\n" + json.dumps(row["text"], ensure_ascii=False)
@@ -226,6 +436,17 @@ def label(row, spend):
 
 
 def estimate():
+    """Print the spec mix, an example batch and an estimated cost, with no API calls.
+
+    Token counts are rough (characters / 4 for prompts, about 90 output tokens
+    per DM, about 300 per label including reasoning), priced at $2 per million
+    input and $10 per million output tokens for both models.
+
+    Returns:
+        None.
+
+    Side effects: prints to stdout.
+    """
     rng = random.Random(0)
     all_specs = specs(rng)
     calls = -(-len(all_specs) // BATCH)
@@ -241,6 +462,25 @@ def estimate():
 
 
 def run(seed, budget, workers):
+    """Generate, filter, sample, save and then label the candidates.
+
+    Steps: generate every spec batch in parallel; drop empty rows, rows that
+    mention media, near-duplicates and rows too close to the dev split; keep
+    COUNTS per category (8 platform, 9 business, 8 out_of_domain for
+    service_request) plus the boundary cases; save candidates and metadata;
+    then label them all (label_all).
+
+    Args:
+        seed (int): Seeds the spec mix and sampling.
+        budget (float): Hard spend limit in USD for generation plus labeling.
+        workers (int): Parallel generator calls.
+
+    Returns:
+        None.
+
+    Side effects: API calls, writes CANDIDATES and CANDIDATES_META, prints
+    a requested/filtered/kept table.
+    """
     rng = random.Random(seed)
     spend = Spend(budget)
     batches = []
@@ -250,6 +490,8 @@ def run(seed, budget, workers):
         batches += [group[i:i + BATCH] for i in range(0, len(group), BATCH)]
     with ThreadPoolExecutor(max_workers=workers) as pool:
         generated = [row for batch in pool.map(lambda b: generate(b, spend), batches) for row in batch]
+    # Read the dev split locally only, to drop near-dev candidates. It is never
+    # sent to a model.
     dev = [full_text(row) for row in map(json.loads, GOLDEN.read_text().splitlines()) if row["split"] == "dev"]
     stats = {category: {"requested": 0, "empty": 0, "media": 0, "duplicate": 0, "near_dev": 0, "kept": 0}
              for category in [*COUNTS, "boundary"]}
@@ -314,10 +556,34 @@ def run(seed, budget, workers):
 
 
 def write_rows(rows):
+    """Write the candidate rows to CANDIDATES, one JSON object per line.
+
+    Args:
+        rows (list[dict]): The candidates.
+
+    Returns:
+        None.
+
+    Side effects: overwrites CANDIDATES.
+    """
     CANDIDATES.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows))
 
 
 def label_all(budget):
+    """Label every candidate that has no label yet, slowly enough for the rate limit.
+
+    Resumable: rows that already have a labeler_reason are skipped, progress is
+    saved every 10 rows, and the metadata is updated even if the run stops.
+
+    Args:
+        budget (float): The total budget in USD; generation spend is subtracted.
+
+    Returns:
+        None.
+
+    Side effects: labeler calls (one every LABELER_INTERVAL seconds),
+    rewrites CANDIDATES and CANDIDATES_META.
+    """
     rows = [json.loads(line) for line in CANDIDATES.read_text().splitlines() if line.strip()]
     meta = json.loads(CANDIDATES_META.read_text())
     spend = Spend(budget - meta["cost_usd"])
@@ -346,6 +612,22 @@ def label_all(budget):
 
 
 def freeze():
+    """Append the reviewed candidates to the golden set as the frozen test split.
+
+    Args:
+        None. Reads CANDIDATES and CANDIDATES_META.
+
+    Returns:
+        None.
+
+    Raises:
+        SystemExit: If the golden set already has a test split (it is frozen
+            once), or a candidate has no label, or a service_request has no
+            service_kind.
+
+    Side effects: appends to triage_golden.jsonl and writes triage_test_meta.json
+    (with frozen_at, test_rows and the hand-labeled ids).
+    """
     rows = [json.loads(line) for line in CANDIDATES.read_text().splitlines() if line.strip()]
     golden = [json.loads(line) for line in GOLDEN.read_text().splitlines() if line.strip()]
     if any(row["split"] == "test" for row in golden):
@@ -372,6 +654,19 @@ def freeze():
 
 
 def main():
+    """Parse the command line and run one command.
+
+    Args (command line):
+        command      estimate | generate | label | freeze
+        --seed N     spec mix and sampling seed (default 20261023)
+        --budget X   hard spend limit in USD (default 3.0)
+        --workers N  parallel generator calls (default 4)
+
+    Returns:
+        None.
+
+    Side effects: depends on the command (see the module docstring).
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("command", choices=["estimate", "generate", "label", "freeze"])
     parser.add_argument("--seed", type=int, default=20261023)
