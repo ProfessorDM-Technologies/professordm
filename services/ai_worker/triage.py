@@ -8,6 +8,7 @@ from prompts import CLARIFY_VERSION, SWEETLIFE_FLORA, TRIAGE_VERSION, prompt_ver
 
 CONFIDENCE_CUTOFF = 0.6
 MILD_FLAG_THRESHOLD = 0.5
+SEVERE_FLAG_THRESHOLD = 0.5
 MAX_ROUNDS = 2
 SEVERE = {
     "self-harm/intent",
@@ -17,6 +18,7 @@ SEVERE = {
     "hate/threatening",
     "illicit/violent",
 }
+SCORED_SEVERE = {"illicit/violent", "harassment/threatening", "hate/threatening"}
 BLOCKED_TERMS = (
     "kill yourself",
     "kys",
@@ -59,9 +61,10 @@ def _blocked_term(text, profile):
 
 def _screen(text, profile):
     hits = llm.moderate(text)
-    severe = [category for category in hits if category in SEVERE]
+    severe = [category for category, score in hits.items() if category in SEVERE
+              and (category not in SCORED_SEVERE or score >= SEVERE_FLAG_THRESHOLD)]
     flags = [_flag("moderation", category) for category, score in hits.items()
-             if category in SEVERE or score >= MILD_FLAG_THRESHOLD]
+             if category in severe or score >= MILD_FLAG_THRESHOLD]
     if severe:
         crisis = any(category.startswith("self-harm") for category in severe)
         return _blocked(profile, flags, f"Moderation flagged {', '.join(severe)}", llm.MODERATION_MODEL,

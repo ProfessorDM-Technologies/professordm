@@ -179,7 +179,8 @@ class SafetyTests(unittest.TestCase):
     def test_severe_moderation_hit_blocks_without_classify(self):
         for category in sorted(triage.SEVERE):
             with self.subTest(category=category):
-                fake = FakeLLM(flagged={"harassment": 0.7, category: 0.3})
+                score = 0.6 if category in triage.SCORED_SEVERE else 0.05
+                fake = FakeLLM(flagged={"harassment": 0.7, category: score})
                 decision = run(fake, "a harmful message")
                 reply = "crisis_text" if category.startswith("self-harm") else "decline_text"
                 self.assertEqual(decision, {
@@ -191,6 +192,29 @@ class SafetyTests(unittest.TestCase):
                     "question": None, "clarification": None,
                     "outbound": {"type": "decline", "text": SWEETLIFE_FLORA[reply]}})
                 self.assertEqual(fake.names(), ["moderate"])
+
+    def test_scored_severe_hit_below_threshold_is_mild(self):
+        fake = FakeLLM(result(), flagged={"illicit/violent": 0.286, "violence": 0.85})
+        decision = run(fake, "these thrips need to DIE 😤 how do i murder them all")
+        self.assertEqual(decision["status"], "ready_for_question")
+        self.assertEqual(decision["safety_flags"], [{"layer": "moderation", "category": "violence", "detail": None}])
+        self.assertEqual(fake.names(), ["moderate", "classify"])
+        for category in sorted(triage.SCORED_SEVERE):
+            with self.subTest(category=category):
+                decision = run(FakeLLM(result(), flagged={category: 0.49}), "a borderline message")
+                self.assertEqual((decision["status"], decision["safety_flags"]), ("ready_for_question", []))
+        self.assertEqual(triage.SEVERE_FLAG_THRESHOLD, 0.5)
+
+    def test_high_scoring_threat_still_blocks(self):
+        fake = FakeLLM(flagged={"harassment": 0.739, "harassment/threatening": 0.524, "violence": 0.241})
+        decision = run(fake, "Answer me or I'll make you regret it")
+        self.assertEqual((decision["status"], decision["reason"]),
+                         ("blocked", "Moderation flagged harassment/threatening"))
+        self.assertEqual(decision["safety_flags"], [
+            {"layer": "moderation", "category": "harassment", "detail": None},
+            {"layer": "moderation", "category": "harassment/threatening", "detail": None}])
+        self.assertEqual(decision["outbound"]["text"], SWEETLIFE_FLORA["decline_text"])
+        self.assertEqual(fake.names(), ["moderate"])
 
     def test_self_harm_block_sends_crisis_text_not_decline(self):
         decision = run(FakeLLM(flagged={"self-harm": 0.78, "self-harm/intent": 0.82}), "a message in crisis")

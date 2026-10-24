@@ -15,7 +15,7 @@ sys.path.insert(0, str(HERE.parent / "services" / "ai_worker"))
 
 import llm
 from prompts import CATEGORIES, SWEETLIFE_FLORA, prompt_version
-from triage import triage
+from triage import MILD_FLAG_THRESHOLD, SEVERE_FLAG_THRESHOLD, triage
 
 SPLITS = ("dev", "test")
 NEAR_MATCH = 0.9
@@ -58,10 +58,23 @@ def _recording_openrouter(*args, **kwargs):
 
 
 llm._openrouter = _recording_openrouter
+_json_request = llm._json_request
+
+
+def _recording_json_request(service, url, headers, body, timeout=llm.TIMEOUT):
+    response = _json_request(service, url, headers, body, timeout)
+    if service == "openai" and isinstance(response, dict):
+        result = (response.get("results") or [{}])[0]
+        _calls.moderation = {k: round(v, 3) for k, v in (result.get("category_scores") or {}).items()}
+    return response
+
+
+llm._json_request = _recording_json_request
 
 
 def predict(row):
     _calls.meta = []
+    _calls.moderation = None
     started = time.monotonic()
     decision = triage(row["text"], row.get("recent_messages") or [], SWEETLIFE_FLORA)
     risks = [f["detail"] for f in decision["safety_flags"] if f["category"] == "risk_topic"]
@@ -76,6 +89,7 @@ def predict(row):
             "risk_flag": bool(risks), "risk_reason": risks[0] if risks else None,
             "safety_flags": decision["safety_flags"],
             "clarification": (decision["clarification"] or {}).get("prompt"),
+            "moderation_scores": _calls.moderation,
             "latency_ms": int((time.monotonic() - started) * 1000),
             "tokens": sum(m["prompt_tokens"] + m["completion_tokens"] for m in _calls.meta),
             "cost": sum(costs) if costs else None,
@@ -163,6 +177,14 @@ def report(split, results, summary):
     print(f"Other safety flags ({len(other)}): " + ", ".join(
         f"{r['id']} [{'/'.join(f['layer'] + ':' + f['category'] for f in r['safety_flags'] if f['category'] != 'risk_topic')}]"
         for r in other))
+    safety = [r for r in results if "safety_concern" in (r["label"], r["predicted"])]
+    print(f"\nModeration scores for safety_concern items (mild >= {MILD_FLAG_THRESHOLD}, "
+          f"scored severe >= {SEVERE_FLAG_THRESHOLD})")
+    for r in safety:
+        scores = r["moderation_scores"]
+        top = ", ".join(f"{k}={v:.3f}" for k, v in sorted(scores.items(), key=lambda kv: -kv[1])[:3]) \
+            if scores else "not moderated"
+        print(f"  {r['id']}: {r['label']} -> {r['predicted']} status={r['status']}  {top}")
     statuses = {}
     for r in results:
         statuses[r["status"]] = statuses.get(r["status"], 0) + 1
