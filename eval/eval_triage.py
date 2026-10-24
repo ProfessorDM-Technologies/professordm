@@ -76,7 +76,15 @@ def predict(row):
     _calls.meta = []
     _calls.moderation = None
     started = time.monotonic()
-    decision = triage(row["text"], row.get("recent_messages") or [], SWEETLIFE_FLORA)
+    for attempt in range(5):
+        try:
+            decision = triage(row["text"], row.get("recent_messages") or [], SWEETLIFE_FLORA)
+            break
+        except llm.LLMError as error:
+            if attempt == 4 or error.status not in (429, None, 500, 502, 503):
+                raise
+            _calls.meta = []
+            time.sleep(10 * (attempt + 1))
     risks = [f["detail"] for f in decision["safety_flags"] if f["category"] == "risk_topic"]
     confidence = decision["confidence"]
     if confidence is None:
