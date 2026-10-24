@@ -1,0 +1,156 @@
+{
+  "created_at": "2026-10-24T02:11:46+00:00",
+  "script_sha256": "a767b9f75fa992919939e7a12fe91302c8ffc27e4321066921a14788bb35d443",
+  "generator": {
+    "model": "anthropic/claude-sonnet-5.5",
+    "served": [
+      "anthropic/claude-sonnet-5.5"
+    ],
+    "temperature": null,
+    "cost_usd": 0.2613,
+    "tokens": 53881
+  },
+  "labeler": {
+    "model": "openai/gpt-6.1-sol",
+    "served": [
+      "openai/gpt-6.1-sol"
+    ],
+    "temperature": null,
+    "cost_usd": 0.1925,
+    "tokens": 71557
+  },
+  "seed": 20261023,
+  "oversample": 1.4,
+  "batch": 10,
+  "near_duplicate": 0.85,
+  "near_dev": 0.8,
+  "counts": {
+    "expert_question": 40,
+    "needs_clarification": 25,
+    "service_request": 25,
+    "social": 20,
+    "spam_irrelevant": 15,
+    "safety_concern": 15
+  },
+  "boundary_cases": 10,
+  "candidates": 150,
+  "stats": {
+    "expert_question": {
+      "requested": 56,
+      "empty": 0,
+      "media": 0,
+      "duplicate": 0,
+      "near_dev": 0,
+      "kept": 40
+    },
+    "needs_clarification": {
+      "requested": 35,
+      "empty": 0,
+      "media": 0,
+      "duplicate": 0,
+      "near_dev": 0,
+      "kept": 25
+    },
+    "service_request": {
+      "requested": 35,
+      "empty": 0,
+      "media": 0,
+      "duplicate": 0,
+      "near_dev": 0,
+      "kept": 25
+    },
+    "social": {
+      "requested": 28,
+      "empty": 0,
+      "media": 0,
+      "duplicate": 0,
+      "near_dev": 3,
+      "kept": 20
+    },
+    "spam_irrelevant": {
+      "requested": 21,
+      "empty": 0,
+      "media": 0,
+      "duplicate": 0,
+      "near_dev": 0,
+      "kept": 15
+    },
+    "safety_concern": {
+      "requested": 21,
+      "empty": 0,
+      "media": 0,
+      "duplicate": 1,
+      "near_dev": 0,
+      "kept": 15
+    },
+    "boundary": {
+      "requested": 10,
+      "empty": 0,
+      "media": 0,
+      "duplicate": 0,
+      "near_dev": 0,
+      "kept": 10
+    }
+  },
+  "cost_usd": 0.4538,
+  "note": "Both models reject an explicit temperature with strict JSON schema on OpenRouter, so they run at the provider default (temperature null). The seed fixes the spec mix and sampling; model outputs are not reproducible.",
+  "labeled": 150,
+  "review": {
+    "relabeled_or_confirmed": {
+      "test-049": "expert_question",
+      "test-057": "expert_question",
+      "test-063": "expert_question",
+      "test-087": "safety_concern",
+      "test-134": "safety_concern",
+      "test-141": "expert_question",
+      "test-142": "needs_clarification",
+      "test-143": "social",
+      "test-144": "expert_question",
+      "test-145": "service_request",
+      "test-146": "service_request",
+      "test-147": "social",
+      "test-148": "service_request",
+      "test-149": "safety_concern",
+      "test-150": "expert_question"
+    },
+    "removed": [
+      "test-041",
+      "test-045",
+      "test-065"
+    ],
+    "hand_written": [
+      "test-151",
+      "test-152",
+      "test-153",
+      "test-154",
+      "test-155",
+      "test-156"
+    ],
+    "labeling_rule": "If a person or pet may need urgent medical help, it is safety_concern even if not plant related."
+  },
+  "frozen_at": "2026-10-24T02:57:26+00:00",
+  "test_rows": 153,
+  "hand_labeled": [
+    "test-049",
+    "test-057",
+    "test-063",
+    "test-087",
+    "test-134",
+    "test-141",
+    "test-142",
+    "test-143",
+    "test-144",
+    "test-145",
+    "test-146",
+    "test-147",
+    "test-148",
+    "test-149",
+    "test-150",
+    "test-151",
+    "test-152",
+    "test-153",
+    "test-154",
+    "test-155",
+    "test-156"
+  ]
+}
