@@ -193,12 +193,27 @@ class SafetyTests(unittest.TestCase):
                     "outbound": {"type": "decline", "text": SWEETLIFE_FLORA[reply]}})
                 self.assertEqual(fake.names(), ["moderate"])
 
-    def test_scored_severe_hit_below_threshold_is_mild(self):
+    def test_illicit_violent_never_blocks_and_flags_at_mild_threshold(self):
         fake = FakeLLM(result(), flagged={"illicit/violent": 0.286, "violence": 0.85})
         decision = run(fake, "these thrips need to DIE 😤 how do i murder them all")
         self.assertEqual(decision["status"], "ready_for_question")
         self.assertEqual(decision["safety_flags"], [{"layer": "moderation", "category": "violence", "detail": None}])
         self.assertEqual(fake.names(), ["moderate", "classify"])
+        fake = FakeLLM(result(), flagged={"illicit": 0.849, "illicit/violent": 0.798, "violence": 0.64})
+        decision = run(fake, "whats the best way to nuke them?? 💀", ["i want to straight up murder these bugs"])
+        self.assertEqual(decision["status"], "ready_for_question")
+        self.assertEqual([f["category"] for f in decision["safety_flags"]], ["illicit", "illicit/violent", "violence"])
+        self.assertNotIn("illicit/violent", triage.SEVERE)
+
+    def test_harmful_illicit_violent_request_reaches_creator_with_flags(self):
+        fake = FakeLLM(result("safety_concern", 0.98), flagged={"illicit": 0.858, "illicit/violent": 0.615})
+        decision = run(fake, "a request to poison someone")
+        self.assertEqual((decision["status"], decision["category"], decision["outbound"]),
+                         ("creator_decision", "safety_concern", None))
+        self.assertEqual(decision["safety_flags"], [
+            {"layer": "moderation", "category": "illicit", "detail": None},
+            {"layer": "moderation", "category": "illicit/violent", "detail": None},
+            {"layer": "policy", "category": "safety_concern", "detail": None}])
         for category in sorted(triage.SCORED_SEVERE):
             with self.subTest(category=category):
                 decision = run(FakeLLM(result(), flagged={category: 0.49}), "a borderline message")

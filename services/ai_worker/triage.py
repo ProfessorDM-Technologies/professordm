@@ -16,9 +16,8 @@ SEVERE = {
     "sexual/minors",
     "harassment/threatening",
     "hate/threatening",
-    "illicit/violent",
 }
-SCORED_SEVERE = {"illicit/violent", "harassment/threatening", "hate/threatening"}
+SCORED_SEVERE = {"harassment/threatening", "hate/threatening"}
 BLOCKED_TERMS = (
     "kill yourself",
     "kys",
