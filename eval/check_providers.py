@@ -9,9 +9,9 @@ model id or a setting changes.
 
 Contents:
     CHECKS            the checks: model, settings, and variants to try on failure
-    pick_gemini_pro   chooses the Gemini Pro id for check 6 from /models
     run_chat          one OpenRouter call
     run_embedding     one OpenAI embeddings call
+    run_moderation    one OpenAI moderation call
     main              runs every check, prints one row each, sets the exit code
 
 Usage:
@@ -36,8 +36,8 @@ from urllib.request import Request, urlopen
 
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
 EMBEDDINGS_URL = "https://api.openai.com/v1/embeddings"
+MODERATION_URL = "https://api.openai.com/v1/moderations"
 
 # The fixed test prompt. It holds no private text, so OpenRouter's error
 # messages for it are safe to print in full.
@@ -51,34 +51,40 @@ SCHEMA = {"type": "object", "properties": {"ok": {"type": "boolean"}},
 EMBED_MODEL = "text-embedding-3-small"
 EMBED_DIMENSIONS = 1536
 
+# Triage's moderation model (llm.MODERATION_MODEL). Checked because triage
+# uses the same OpenAI key as embeddings.
+MODERATION_MODEL = "omni-moderation-latest"
+
+# The eval question generator and the judge of Terra drafts. Fixed by spec
+# 14.8: the newest stable Pro model when step 0 first ran. Newer previews are
+# deliberately not used.
+GEMINI_PRO = "google/gemini-2.5-pro"
+
 # Seconds per call. Generous because reasoning models (Terra, Gemini Pro) can
 # think for a while even on a one-line prompt; a timeout here is a FAIL, not
 # a retry.
 TIMEOUT = 90
 
-# Placeholder for check 6: the Gemini Pro id is chosen at run time by
-# pick_gemini_pro(), because the eval question generator and the Gemini judge
-# use whatever stable Pro model is newest when this runs.
-GEMINI_PRO = "<gemini-pro>"
-
 # One entry per check. "settings" is merged into the request body as is, so
 # it shows exactly what is sent besides model, messages, response_format and
 # provider. "variants" are tried only when the main check fails, to tell us
 # which change would make the model work; they never change the spec.
+# Sonnet (3) and the judge (5) send no temperature: under require_parameters
+# no provider accepts it for them (404 on the first run, spec 14.8). Check 5
+# therefore has no "without temperature" variant; it would be the same request.
 CHECKS = [
     {"id": "1", "name": "triage classify", "model": "google/gemini-3.1-flash-lite",
      "schema": True, "settings": {"temperature": 0}},
     {"id": "2", "name": "triage clarify", "model": "google/gemini-3.1-flash-lite",
      "schema": False, "settings": {"temperature": 0}},
     {"id": "3", "name": "draft primary", "model": "anthropic/claude-sonnet-5.5",
-     "schema": True, "settings": {"temperature": 0, "max_tokens": 2000}},
+     "schema": True, "settings": {"max_tokens": 2000}},
     {"id": "4", "name": "draft fallback", "model": "openai/gpt-5.6-terra",
      "schema": True, "settings": {"reasoning": {"effort": "low"}, "max_tokens": 4000},
      "variants": [("4 without reasoning", {"max_tokens": 4000}),
                   ("4 reasoning minimal", {"reasoning": {"effort": "minimal"}, "max_tokens": 4000})]},
     {"id": "5", "name": "judge", "model": "openai/gpt-6.1-sol",
-     "schema": True, "settings": {"temperature": 0},
-     "variants": [("5 without temperature", {})]},
+     "schema": True, "settings": {}},
     {"id": "6a", "name": "gemini pro, default temp", "model": GEMINI_PRO,
      "schema": True, "settings": {}},
     # Without temperature, 6b is the same request as 6a; run_chat reuses that
@@ -86,7 +92,8 @@ CHECKS = [
     {"id": "6b", "name": "gemini pro, temperature 0", "model": GEMINI_PRO,
      "schema": True, "settings": {"temperature": 0},
      "variants": [("6b without temperature", {})]},
-    {"id": "7", "name": "embeddings", "model": EMBED_MODEL, "embedding": True},
+    {"id": "7", "name": "embeddings", "model": EMBED_MODEL, "openai": "embedding"},
+    {"id": "8", "name": "triage moderation", "model": MODERATION_MODEL, "openai": "moderation"},
 ]
 
 
@@ -268,47 +275,29 @@ def run_embedding(key):
             "error": error, "latency_ms": latency_ms}
 
 
-def pick_gemini_pro():
-    """Choose the Gemini Pro model for check 6 and print the candidates.
+def run_moderation(key):
+    """Moderate one word and confirm the response has results[0].categories.
 
-    Candidates are ids that start with "google/gemini" and contain "pro".
-    Skipped: models whose output is not text only (for example the image
-    generation models, which cannot write questions or judge drafts) and
-    routing variants with a ":" suffix (":batch", ":free"). From the rest,
-    the newest stable model by OpenRouter's "created" date wins; a preview
-    only if no stable model exists.
+    That is the field llm.moderate reads; without it triage treats the call
+    as an outage.
+
+    Args:
+        key (str): OPENAI_API_KEY.
 
     Returns:
-        str | None: The picked id, or None if the list could not be loaded or
-        nothing qualified.
+        dict: Same shape as run_chat().
 
-    Side effects: one HTTPS request; prints the candidates and the pick.
+    Side effects: one HTTPS request.
     """
-    try:
-        with urlopen(Request(OPENROUTER_MODELS_URL), timeout=TIMEOUT) as response:
-            models = json.loads(response.read()).get("data") or []
-    except (OSError, ValueError) as error:
-        print(f"Could not load {OPENROUTER_MODELS_URL}: {type(error).__name__}")
-        return None
-    candidates = sorted((m for m in models if m.get("id", "").startswith("google/gemini") and "pro" in m["id"]),
-                        key=lambda m: m.get("created") or 0, reverse=True)
-    eligible = []
-    print("Gemini Pro candidates (newest first):")
-    for model in candidates:
-        modalities = (model.get("architecture") or {}).get("output_modalities") or []
-        if ":" in model["id"]:
-            note = "skipped, routing variant"
-        elif modalities != ["text"]:
-            note = f"skipped, output {'+'.join(modalities) or 'unknown'}"
-        else:
-            note = "preview" if "preview" in model["id"] else "stable"
-            eligible.append(model)
-        created = time.strftime("%Y-%m-%d", time.gmtime(model.get("created") or 0))
-        print(f"  {model['id']:<44} {created}  {note}")
-    stable = [m for m in eligible if "preview" not in m["id"]]
-    pick = (stable or eligible or [{}])[0].get("id")
-    print(f"Picked: {pick or 'none'}\n")
-    return pick
+    status, data, error, latency_ms = _post(MODERATION_URL, key, {"model": MODERATION_MODEL, "input": "ok"})
+    served = data.get("model") if isinstance(data, dict) else None
+    if not error:
+        results = data.get("results") if isinstance(data, dict) else None
+        first = results[0] if isinstance(results, list) and results and isinstance(results[0], dict) else {}
+        if not isinstance(first.get("categories"), dict):
+            error = "no results[0].categories in the response"
+    return {"served": served, "ok": status == 200 and not error, "status": status,
+            "error": error, "latency_ms": latency_ms}
 
 
 def _describe(check, settings):
@@ -323,8 +312,10 @@ def _describe(check, settings):
 
     Side effects: none.
     """
-    if check.get("embedding"):
+    if check.get("openai") == "embedding":
         return f"input [\"ok\"], {EMBED_DIMENSIONS} dims"
+    if check.get("openai") == "moderation":
+        return "input \"ok\", results[0].categories"
     parts = ["temperature " + str(settings["temperature"]) if "temperature" in settings else "no temperature"]
     if "reasoning" in settings:
         parts.append(f"reasoning {settings['reasoning']['effort']}")
@@ -366,33 +357,27 @@ def main():
     Side effects: up to about a dozen tiny model calls; prints to stdout.
     """
     openrouter_key, openai_key = _key("OPENROUTER_API_KEY"), _key("OPENAI_API_KEY")
-    gemini_pro = pick_gemini_pro()
     cache, failed = {}, []
     print(f"{'check':<30} {'requested':<32} {'served':<38} {'result':<5} {'http':<5} "
           f"{'ms':>7}  settings")
     for check in CHECKS:
-        model = gemini_pro if check["model"] == GEMINI_PRO else check["model"]
-        label = f"{check['id']} {check['name']}"
-        if check.get("embedding"):
+        if check.get("openai") == "embedding":
             result = run_embedding(openai_key)
-        elif model is None:
-            result = {"served": None, "ok": False, "status": None,
-                      "error": "no Gemini Pro model qualified", "latency_ms": 0}
+        elif check.get("openai") == "moderation":
+            result = run_moderation(openai_key)
         else:
-            result = run_chat(chat_body(model, check["schema"], check["settings"]), check["schema"],
+            result = run_chat(chat_body(check["model"], check["schema"], check["settings"]), check["schema"],
                               openrouter_key, cache)
-        _row(label, model or check["model"], _describe(check, check.get("settings", {})), result)
+        _row(f"{check['id']} {check['name']}", check["model"], _describe(check, check.get("settings", {})), result)
         if not result["ok"]:
-            failed.append((check, model))
-    for check, model in failed:
-        if model is None or not check.get("variants"):
-            continue
-        for name, settings in check["variants"]:
-            result = run_chat(chat_body(model, check["schema"], settings), check["schema"],
+            failed.append(check)
+    for check in failed:
+        for name, settings in check.get("variants", []):
+            result = run_chat(chat_body(check["model"], check["schema"], settings), check["schema"],
                               openrouter_key, cache)
-            _row(f"  variant: {name}", model, _describe(check, settings), result)
+            _row(f"  variant: {name}", check["model"], _describe(check, settings), result)
     print(f"\n{len(CHECKS) - len(failed)}/{len(CHECKS)} checks passed"
-          + (f"; failed: {', '.join(check['id'] for check, _ in failed)}" if failed else ""))
+          + (f"; failed: {', '.join(check['id'] for check in failed)}" if failed else ""))
     if failed:
         sys.exit(1)
 
