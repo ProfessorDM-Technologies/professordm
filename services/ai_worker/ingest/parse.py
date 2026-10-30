@@ -15,6 +15,7 @@ Contents:
     body_blocks      body elements -> heading, paragraph, list, table and
                      callout blocks with their heading path
     list_item        styled list paragraphs and typed bullets ("□ ", "• ")
+    strip_citations  removes "[3]", "[1, 4]", "[2–5]" markers from body text
     clean_heading    strips "o " bullets and dotted section numbers
     heading_level    Word heading style -> 1, 2, ... or None
 
@@ -87,6 +88,14 @@ TYPED_BULLET = re.compile(rf"^[{re.escape(BULLET_GLYPHS)}][ \t]*")
 # promote_headings only accepts it with the guards documented there.
 NUMBERED_LINE = re.compile(r"^(\d+)\.\s+\S")
 MAX_PROMOTED_WORDS = 12
+
+# Numeric citation markers in body text: one or more consecutive "[3]",
+# "[1, 4]", "[2–5]" or "[2-5]" groups plus the whitespace before them (spec
+# 14.10). They point into the references, which are never embedded, so in a
+# passage they are noise a drafted answer could copy. The optional tail eats
+# a space the removal would leave before punctuation ("word [1] ." ->
+# "word."). Bracketed words ("[note]") are kept.
+CITATION = re.compile(r"\s*(?:\[\d+(?:\s*[,–-]\s*\d+)*\])+(?:\s+(?=[.,;:!?]))?")
 
 # A box that opens with a quote is a myth box ("“X.” Not quite..."), never a
 # titled callout, even if a colon appears early.
@@ -213,6 +222,21 @@ def clean_heading(text):
     """
     text = BULLET_PREFIX.sub("", " ".join(text.split()))
     return SECTION_NUMBER.sub("", text)
+
+
+def strip_citations(text):
+    """Remove numeric citation markers from body text.
+
+    Args:
+        text (str): A paragraph, list item, box or table cell text.
+
+    Returns:
+        str: The text without CITATION matches, stripped. A space the
+        removal leaves before punctuation is dropped too.
+
+    Side effects: none.
+    """
+    return CITATION.sub("", text).strip()
 
 
 def _fold(text):
@@ -403,6 +427,9 @@ def body_blocks(body, guide_title):
         stripped from captions, and a caption line that continues the
         previous caption (same caption style, no "Figure" prefix) is joined
         to it. Consecutive list items (list_item) become one list block.
+        Citation markers (strip_citations) are removed from every
+        non-heading paragraph and every table cell before any of these
+        rules run; a paragraph left empty is dropped.
 
     Side effects: none.
     """
@@ -420,7 +447,7 @@ def body_blocks(body, guide_title):
         previous_caption, caption_style = caption_style, None
         if element["kind"] == "table":
             open_list, skip_list = None, False
-            rows = element["rows"]
+            rows = [[strip_citations(cell) for cell in row] for row in element["rows"]]
             if len(rows) == 1 and len(rows[0]) == 1:
                 blocks.append(_box(rows[0][0], path))
             elif rows:
@@ -446,6 +473,12 @@ def body_blocks(body, guide_title):
             path = [part for part in (h1, h2) if part]
             blocks.append({"type": "heading", "level": level, "text": heading})
             continue
+        # Citation markers go before any other rule reads the text, so list
+        # items, boxes and captions all come out without them.
+        text = strip_citations(text)
+        if not text:
+            continue
+        element = {**element, "text": text}
         if not seen_heading and _is_banner(text, guide_title):
             continue
         item = list_item(element)

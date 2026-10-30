@@ -434,6 +434,38 @@ class MetadataTests(unittest.TestCase):
 
 
 
+class CitationTests(unittest.TestCase):
+    def test_strip_citations_forms(self):
+        """Single, consecutive, comma and range markers go, with the space before them; words in brackets stay."""
+        self.assertEqual(parse.strip_citations("Water weekly [1]."), "Water weekly.")
+        self.assertEqual(parse.strip_citations("Mist daily [1][2] and wipe [3, 4] leaves [2–5] then [6-7] rest."),
+                         "Mist daily and wipe leaves then rest.")
+        self.assertEqual(parse.strip_citations("Water [1] ."), "Water.")
+        self.assertEqual(parse.strip_citations("[1] Starts here."), "Starts here.")
+        self.assertEqual(parse.strip_citations("Keep [note] and [sic] as written."), "Keep [note] and [sic] as written.")
+
+    def test_markers_stripped_from_every_body_block(self):
+        """Paragraphs, list items, box title and text, table cells and captions lose their markers."""
+        blocks = blocks_of(p("Intro text [1]."), h1("Light"), p("A tip [2]."), p("Moss [3]", "List Bullet", True),
+                           box("Key Tip [4]: Mist [5]."), table(("Sign [6]", "Fix"), ("Pale [7]", "Move [8, 9]")),
+                           p("Figure 1. A fern [10]", "Caption"), p("[11]"))
+        self.assertEqual(blocks, [
+            {"type": "paragraph", "text": "Intro text.", "path": ["Introduction"]},
+            {"type": "heading", "level": 1, "text": "Light"},
+            {"type": "paragraph", "text": "A tip.", "path": ["Light"]},
+            {"type": "list", "ordered": False, "items": ["Moss"], "path": ["Light"]},
+            {"type": "callout", "title": "Key Tip", "text": "Mist.", "path": ["Light"]},
+            {"type": "table", "header": ["Sign", "Fix"], "rows": [["Pale", "Move"]], "path": ["Light"]},
+            {"type": "paragraph", "text": "A fern", "path": ["Light"]}])
+
+    def test_references_keep_their_markers(self):
+        """Only the body is cleaned; references after the cut keep their markers."""
+        tail = four_column_tail(content_id="HPA-FUND-0099")
+        tail[1:1] = [p("[1] Source A.")]
+        doc = normalize.normalize_document([h1("First"), p("Body [1].")] + tail, "x.docx")
+        self.assertEqual(doc["blocks"][1]["text"], "Body.")
+        self.assertEqual(doc["references"], ["[1] Source A."])
+
 # ---- chunk.py: fixtures are doc.json blocks, the shape normalize.py writes ----
 
 GUIDE = "Moon Fern Care"
@@ -482,7 +514,7 @@ def guide(*blocks, variants=("q0?", "q1?", "q2?", "q3?", "q4?")):
 
 def chunks_of(*blocks, kind=None):
     """Chunk a made-up guide; optionally keep one kind only."""
-    chunks, _ = chunk.chunk_document(guide(*blocks))
+    chunks, _, _ = chunk.chunk_document(guide(*blocks))
     return [c for c in chunks if kind is None or c["kind"] == kind]
 
 
@@ -599,7 +631,7 @@ class SplitTests(unittest.TestCase):
     def test_oversized_single_sentence_kept_whole_with_warning(self):
         """A sentence that alone passes HARD_MAX is kept whole and reported by chunk index only."""
         sentence = " ".join(["moss"] * 900) + "."
-        chunks, warnings = chunk.chunk_document(guide(heading(1, "Moss"), para(["Moss"], sentence)))
+        chunks, warnings, _ = chunk.chunk_document(guide(heading(1, "Moss"), para(["Moss"], sentence)))
         self.assertEqual(chunks[0]["content"], sentence)
         self.assertGreater(chunks[0]["est_tokens"], chunk.HARD_MAX)
         self.assertEqual(warnings, ["oversized_sentence:0"])
@@ -706,6 +738,41 @@ class ChunkRecordTests(unittest.TestCase):
             self.assertEqual((c["hpa_id"], c["review_status"], c["care_topics"]),
                              ("HPA-TEST-0001", "pending", ["watering"]))
 
+
+
+class GuideIdTests(unittest.TestCase):
+    TITLES = {"HPA-TEST-0001": GUIDE, "HPA-FUND-0002": "Misting Basics"}
+
+    def chunk_with_ids(self, *blocks):
+        """Chunk a made-up guide with a two-guide batch."""
+        doc = guide(*blocks)
+        doc["related"] = ["HPA-FUND-0002"]
+        return doc, chunk.chunk_document(doc, self.TITLES)
+
+    def test_ids_in_the_batch_become_titles_in_every_kind(self):
+        """Prefixed and bare ids in paragraphs, lists, tables and callouts become the guide title."""
+        _, (chunks, _, replaced) = self.chunk_with_ids(
+            heading(1, "Light"), para(["Light"], "See HPA-FUND-0002 next."), bullets(["Light"], "Try FUND-0002"),
+            grid(["Light"], ["Sign", "Next guide"], ["Pale", "HPA-FUND-0002"]),
+            note(["Light"], "Tip", "Read FUND-0002."))
+        body = [c for c in chunks if c["kind"] != "card"]
+        self.assertEqual([c["content"] for c in body], [
+            "See Misting Basics next.\n\n- Try Misting Basics", "Sign: Pale -> Next guide: Misting Basics",
+            "Tip: Read Misting Basics."])
+        self.assertEqual(replaced, 4)
+        self.assertFalse(any(chunk.GUIDE_ID.search(c["content"]) for c in chunks))
+
+    def test_unknown_id_becomes_a_related_guide(self):
+        """An id outside the batch is replaced with a neutral phrase and still counted."""
+        _, (chunks, _, replaced) = self.chunk_with_ids(heading(1, "Pests"), para(["Pests"], "See HPA-PEST-0042."))
+        self.assertEqual(chunks[0]["content"], "See a related guide.")
+        self.assertEqual(replaced, 1)
+
+    def test_doc_json_and_related_ids_are_untouched(self):
+        """Replacement works on a copy: the doc's blocks and related ids keep the real ids."""
+        doc, _ = self.chunk_with_ids(heading(1, "Light"), para(["Light"], "See HPA-FUND-0002."))
+        self.assertEqual(doc["blocks"][1]["text"], "See HPA-FUND-0002.")
+        self.assertEqual(doc["related"], ["HPA-FUND-0002"])
 
 if __name__ == "__main__":
     unittest.main()

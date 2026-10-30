@@ -12,6 +12,7 @@ Contents:
     est_tokens, chunk_tokens  the token estimate (characters / 4, no tokenizer)
     sentences        sentence split that never breaks inside a quote
     render_list      list block -> "- item" or "1. item" lines
+    replace_ids      internal guide ids in body text -> guide titles
     build_sections   blocks -> sections (paragraph and list text per heading path)
     merge_sections   small sections merge forward inside one H1
     pack             the splitter shared by sections, callouts and tables
@@ -81,6 +82,14 @@ TINY_TOKENS = 20
 # A sentence ends at ".", "!" or "?" followed by whitespace. sentences()
 # skips any break that falls inside a double quote.
 SENTENCE_BREAK = re.compile(r"(?<=[.!?])\s+")
+
+# An internal guide id written in body text, with or without the "HPA-"
+# prefix ("HPA-FUND-0001", "FUND-0001"). Members never see these ids, so
+# replace_ids swaps each one for a readable name before chunk text is built
+# (spec 14.10). The same pattern as normalize.RELATED_ID.
+GUIDE_ID = re.compile(r"\b(?:HPA-)?([A-Z]{3,8}-\d{4})\b")
+# Stands in for an id whose guide is not in this batch.
+UNKNOWN_GUIDE = "a related guide"
 
 # Separator between the parts of a chunk title: "Guide > H1 > H2".
 TITLE_SEPARATOR = " > "
@@ -183,6 +192,49 @@ def render_list(block):
     if block.get("ordered"):
         return LINE_JOIN.join(f"{number}. {item}" for number, item in enumerate(items, 1))
     return LINE_JOIN.join(f"- {item}" for item in items)
+
+
+def replace_ids(blocks, titles):
+    """Replace internal guide ids in body text with guide titles.
+
+    Args:
+        blocks (list[dict]): doc["blocks"].
+        titles (dict[str, str]): "HPA-XXXX-NNNN" -> guide title, for every
+            guide in this batch.
+
+    Returns:
+        tuple[list[dict], int]: (new blocks, number of ids replaced). Each
+        GUIDE_ID match in paragraph text, list items, table header and
+        cells, and callout title and text becomes the title of that guide,
+        or UNKNOWN_GUIDE when it is not in the batch. Headings are left
+        alone. The input blocks are not changed, so doc["related"] and the
+        hpa: tags built from doc.json keep the real ids.
+
+    Side effects: none.
+    """
+    count = 0
+
+    def name(match):
+        nonlocal count
+        count += 1
+        return titles.get(f"HPA-{match.group(1)}") or UNKNOWN_GUIDE
+
+    def swap(text):
+        return GUIDE_ID.sub(name, text)
+
+    result = []
+    for block in blocks:
+        if block["type"] in ("paragraph", "callout"):
+            block = {**block, "text": swap(block["text"])}
+            if block["type"] == "callout":
+                block["title"] = swap(block["title"])
+        elif block["type"] == "list":
+            block = {**block, "items": [swap(item) for item in block["items"]]}
+        elif block["type"] == "table":
+            block = {**block, "header": [swap(cell) for cell in block.get("header") or []],
+                     "rows": [[swap(cell) for cell in row] for row in block["rows"]]}
+        result.append(block)
+    return result, count
 
 
 def build_sections(blocks):
@@ -602,25 +654,33 @@ OVERSIZE_WARNINGS = {"section": "oversized_sentence", "callout": "oversized_sent
                      "table": "oversized_row", "card": "oversized_card"}
 
 
-def chunk_document(doc):
+def chunk_document(doc, titles=None):
     """Cut one guide into chunks.
 
     Args:
         doc (dict): A doc.json dict from normalize.py (title, summary,
             keywords, question_variants, care_topics, review_status, blocks).
+        titles (dict[str, str] | None): hpa_id -> guide title for every
+            guide in the batch, used by replace_ids. None means this guide
+            alone.
 
     Returns:
-        tuple[list[dict], list[str]]: (chunks, warnings). chunks are _record
-        dicts: section, table and callout chunks in document order with
-        chunk_index 0, 1, 2, ..., then the card with chunk_index None.
-        A chunk sits at the position of its first block; the parts of one
-        split keep their order. warnings holds codes only, for example
-        "oversized_sentence:4" (the chunk index), never guide text.
+        tuple[list[dict], list[str], int]: (chunks, warnings, ids_replaced).
+        chunks are _record dicts: section, table and callout chunks in
+        document order with chunk_index 0, 1, 2, ..., then the card with
+        chunk_index None. A chunk sits at the position of its first block;
+        the parts of one split keep their order. warnings holds codes only,
+        for example "oversized_sentence:4" (the chunk index), never guide
+        text. ids_replaced counts the guide ids swapped by replace_ids.
 
     Side effects: none.
     """
     guide = doc.get("title") or doc["hpa_id"]
-    blocks = doc["blocks"]
+    if titles is None:
+        titles = {doc["hpa_id"]: guide}
+    # Ids are replaced before any size is measured, so merges and splits see
+    # the text that is actually embedded.
+    blocks, ids_replaced = replace_ids(doc["blocks"], titles)
     # (position, part number, kind, title, content); sorted into document order.
     parts = []
     for candidate in merge_sections(build_sections(blocks), guide):
@@ -646,7 +706,7 @@ def chunk_document(doc):
     chunks.append(_record(doc, None, "card", _title(guide, [OVERVIEW]), card_content(doc)))
     warnings = [f"{OVERSIZE_WARNINGS[c['kind']]}:{c['chunk_index'] if c['chunk_index'] is not None else 'card'}"
                 for c in chunks if c["est_tokens"] > HARD_MAX]
-    return chunks, warnings
+    return chunks, warnings, ids_replaced
 
 
 def _load_docs(folder):
@@ -663,23 +723,25 @@ def _load_docs(folder):
     return [json.loads(path.read_text()) for path in sorted(Path(folder).glob("*.json"))]
 
 
-def _stats_row(doc, chunks):
+def _stats_row(doc, chunks, ids_replaced):
     """Count one guide's chunks for the stats table.
 
     Args:
         doc (dict): The doc.json dict.
         chunks (list[dict]): Its chunks.
+        ids_replaced (int): From chunk_document.
 
     Returns:
-        list[str]: hpa_id, section count, chunks by kind, total, and min /
-        median / max est_tokens. Counts only, no guide text.
+        list[str]: hpa_id, section count, chunks by kind, total,
+        ids_replaced, and min / median / max est_tokens. Counts only, no
+        guide text.
 
     Side effects: none.
     """
     kinds = [sum(c["kind"] == kind for c in chunks) for kind in ("section", "table", "callout", "card")]
     tokens = [c["est_tokens"] for c in chunks]
     return [doc["hpa_id"], str(len(build_sections(doc["blocks"]))), *map(str, kinds), str(len(chunks)),
-            str(min(tokens)), f"{statistics.median(tokens):g}", str(max(tokens))]
+            str(ids_replaced), str(min(tokens)), f"{statistics.median(tokens):g}", str(max(tokens))]
 
 
 def _print_table(rows):
@@ -746,26 +808,30 @@ def main():
     docs = _load_docs(args.docs)
     if not docs:
         sys.exit(f"No .json files in {args.docs}")
+    # Every guide in the batch, so an id pointing at another guide becomes
+    # that guide's title.
+    titles = {doc["hpa_id"]: doc.get("title") or doc["hpa_id"] for doc in docs}
     if args.show:
         doc = next((doc for doc in docs if doc["hpa_id"] == args.show), None)
         if doc is None:
             sys.exit(f"No guide {args.show} in {args.docs}")
-        _show(chunk_document(doc)[0])
+        _show(chunk_document(doc, titles)[0])
         return
     rows, warnings, every_chunk = [], [], []
     for doc in docs:
-        chunks, codes = chunk_document(doc)
+        chunks, codes, ids_replaced = chunk_document(doc, titles)
         every_chunk += chunks
-        rows.append(_stats_row(doc, chunks))
+        rows.append(_stats_row(doc, chunks, ids_replaced))
         warnings += [f"{doc['hpa_id']}: {code}" for code in codes]
         warnings += [f"{doc['hpa_id']}: tiny_{c['kind']}:{c['chunk_index']} ({c['est_tokens']} tokens)"
                      for c in chunks if c["kind"] in ("section", "table") and c["est_tokens"] < TINY_TOKENS]
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("".join(json.dumps(chunk, ensure_ascii=False) + "\n" for chunk in every_chunk))
-    header = ["hpa_id", "sections", "section", "table", "callout", "card", "chunks", "min", "median", "max"]
+    header = ["hpa_id", "sections", "section", "table", "callout", "card", "chunks", "ids_replaced",
+              "min", "median", "max"]
     tokens = [c["est_tokens"] for c in every_chunk]
-    totals = ["TOTAL", *(str(sum(int(row[i]) for row in rows)) for i in range(1, 7)),
+    totals = ["TOTAL", *(str(sum(int(row[i]) for row in rows)) for i in range(1, 8)),
               str(min(tokens)), f"{statistics.median(tokens):g}", str(max(tokens))]
     _print_table([header, *rows, totals])
     print(f"\n{len(docs)} guides, {len(every_chunk)} chunks. Wrote {out}")

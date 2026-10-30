@@ -539,3 +539,13 @@ Placeholders to null (including `NOT ASSIGNED`, `NOT SET`); stdlib-only tests wh
   - A caption that wraps onto the next paragraph is joined to it only when both use a caption style (style name contains "caption"); a caption typed in Normal never absorbs the body text after it.
   - With no cut heading, metadata is read from the whole document, so the guide keeps its id and gets the `no_cut_heading` warning instead of failing.
   - `references` holds the non-heading paragraphs after the cut up to the first table, which in older guides includes the internal-metadata banner line. References are provenance only and never embedded.
+
+### 14.10 Chunk review (overrides earlier sections)
+- **Citation markers.** `parse.body_blocks` strips numeric citation markers from all body text (paragraphs, list items, callout title and text, table cells, figure captions): one or more consecutive `[n]`, `[n, m]`, `[n–m]` or `[n-m]` groups plus the whitespace before them (`parse.CITATION`). A space the removal would leave before punctuation is dropped (`word [1] .` -> `word.`), and a paragraph left empty is dropped. Headings and `references` are never touched. Bracketed words such as `[note]` are kept.
+- **Internal guide ids.** Before chunk text is built, `chunk.replace_ids` replaces every guide id matching `\b(?:HPA-)?([A-Z]{3,8}-\d{4})\b` in section, table and callout text: with that guide's title when it is in the batch, otherwise with "a related guide". The card, the `hpa:` tags and doc.json `related` keep the real ids. The stats table counts replacements per guide as `ids_replaced` (27 on the 19 guides: 22 to titles, 5 to "a related guide").
+- **B2 answer validator.** Also bans citation markers (`[` followed by a digit, error code `citation_marker`) and internal guide ids (the same id pattern, error code `internal_id`), each with a fixed retry reason like the other codes (14.7 Q3).
+- **Lint findings accepted as fine:**
+  - HPA-PLANT-0001's Introduction opens with the plant's identity line (common name, botanical name, family). It is content, not a banner, and helps retrieval.
+  - The short HPA-FUND-0003 lead-in lines (4 and 5 words, no end punctuation) are written that way in the guide.
+  - HPA-TROUBLE-0001's first intro paragraph is repeated in its card by design: it is that guide's summary (14.1 Q8).
+  - The HPA-PLANT-0001 card is 77 tokens, under `MIN_TOKENS`, with every field present (summary, 7 keywords, 2 card variants). Cards are never merged.
