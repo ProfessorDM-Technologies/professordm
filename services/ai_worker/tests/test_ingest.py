@@ -1,8 +1,8 @@
-"""Unit tests for ingest/parse.py and ingest/normalize.py.
+"""Unit tests for ingest/parse.py, ingest/normalize.py and ingest/chunk.py.
 
 Every fixture is a hand-built list of raw elements (the shape read_docx
-returns) with made-up text, so no .docx file, no python-docx and no network
-are needed. Run with:
+returns) or of doc.json blocks, with made-up text, so no .docx file, no
+python-docx and no network are needed. Run with:
     uv run --python 3.11 python -m unittest discover services/ai_worker/tests
 """
 
@@ -12,6 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ingest"))
 
+import chunk
 import normalize
 import parse
 
@@ -430,6 +431,280 @@ class MetadataTests(unittest.TestCase):
         self.assertIn("guide_v2.docx", str(caught.exception))
         self.assertIn("guide_v4.docx", str(caught.exception))
         normalize.check_unique(docs[:2])
+
+
+
+# ---- chunk.py: fixtures are doc.json blocks, the shape normalize.py writes ----
+
+GUIDE = "Moon Fern Care"
+
+
+def prose(tokens, topic="moss"):
+    """Made-up sentences about `topic`, at least `tokens` estimated tokens long."""
+    sentences, number = [], 0
+    while chunk.est_tokens(" ".join(sentences)) < tokens:
+        number += 1
+        sentences.append(f"Note {number} on {topic} says keep it damp.")
+    return " ".join(sentences)
+
+
+def heading(level, text):
+    """Build a heading block."""
+    return {"type": "heading", "level": level, "text": text}
+
+
+def para(path, text):
+    """Build a paragraph block under a heading path."""
+    return {"type": "paragraph", "text": text, "path": list(path)}
+
+
+def bullets(path, *items, ordered=False):
+    """Build a list block."""
+    return {"type": "list", "ordered": ordered, "items": list(items), "path": list(path)}
+
+
+def grid(path, header, *rows):
+    """Build a table block."""
+    return {"type": "table", "header": list(header), "rows": [list(row) for row in rows], "path": list(path)}
+
+
+def note(path, title, text):
+    """Build a callout block."""
+    return {"type": "callout", "title": title, "text": text, "path": list(path)}
+
+
+def guide(*blocks, variants=("q0?", "q1?", "q2?", "q3?", "q4?")):
+    """Build a doc.json dict around the given blocks."""
+    return {"hpa_id": "HPA-TEST-0001", "title": GUIDE, "summary": "A made-up summary.",
+            "keywords": ["moss", "mist"], "question_variants": list(variants), "care_topics": ["watering"],
+            "review_status": "pending", "blocks": list(blocks)}
+
+
+def chunks_of(*blocks, kind=None):
+    """Chunk a made-up guide; optionally keep one kind only."""
+    chunks, _ = chunk.chunk_document(guide(*blocks))
+    return [c for c in chunks if kind is None or c["kind"] == kind]
+
+
+class SectionBuildTests(unittest.TestCase):
+    def test_h1_text_h2_sections_and_introduction(self):
+        """Intro text, an H1's own text and each H2 are separate sections; the H1 and its H2 share a group."""
+        sections = chunk.build_sections([
+            para(["Introduction"], "Intro."), heading(1, "Light"), para(["Light"], "Own."),
+            heading(2, "Signs"), para(["Light", "Signs"], "Pale."), para(["Light", "Signs"], "Leggy.")])
+        self.assertEqual([s["path"] for s in sections], [["Introduction"], ["Light"], ["Light", "Signs"]])
+        self.assertEqual(sections[2]["paragraphs"], ["Pale.", "Leggy."])
+        self.assertEqual(sections[1]["group"], sections[2]["group"])
+        self.assertNotEqual(sections[0]["group"], sections[1]["group"])
+
+    def test_paragraphs_and_lists_render_as_section_text(self):
+        """Paragraphs are separated by blank lines; lists render as '- item' and '1. item' lines."""
+        [section] = chunks_of(heading(1, "Potting"), para(["Potting"], "Pick a pot."),
+                              bullets(["Potting"], "moss", "bark"),
+                              bullets(["Potting"], "Soak", "Drain", ordered=True), kind="section")
+        self.assertEqual(section["title"], f"{GUIDE} > Potting")
+        self.assertEqual(section["content"], "Pick a pot.\n\n- moss\n- bark\n\n1. Soak\n2. Drain")
+
+    def test_tables_and_callouts_leave_section_text_and_empty_section_is_skipped(self):
+        """Tables and callouts never enter section text, and a heading with only a table makes no section chunk."""
+        chunks = chunks_of(
+            heading(1, "Light"), para(["Light"], "Before."), grid(["Light"], ["Sign", "Fix"], ["Pale", "Move"]),
+            note(["Light"], "Tip", "Turn weekly."), para(["Light"], "After."),
+            heading(1, "Water"), grid(["Water"], ["Sign", "Fix"], ["Limp", "Soak"]))
+        self.assertEqual([c["kind"] for c in chunks], ["section", "table", "callout", "table", "card"])
+        self.assertEqual(chunks[0]["content"], "Before.\n\nAfter.")
+        self.assertNotIn(f"{GUIDE} > Water", [c["title"] for c in chunks if c["kind"] == "section"])
+
+
+class MergeTests(unittest.TestCase):
+    def test_small_h1_text_merges_forward_with_heading_line(self):
+        """A small H1 text merges into its next H2; the title drops to Guide > H1 and the H2 becomes a line."""
+        own, signs = prose(30, "sun"), prose(100, "pale")
+        [merged] = chunks_of(heading(1, "Light"), para(["Light"], own), heading(2, "Signs"),
+                             para(["Light", "Signs"], signs), kind="section")
+        self.assertEqual(merged["title"], f"{GUIDE} > Light")
+        self.assertEqual(merged["content"], f"{own}\n\nSigns\n{signs}")
+
+    def test_merge_stops_at_merge_max(self):
+        """A small section does not merge when the result would pass MERGE_MAX."""
+        own, signs = prose(30, "sun"), prose(380, "pale")
+        self.assertGreater(chunk.chunk_tokens(f"{GUIDE} > Light", f"{own}\n\nSigns\n{signs}"), chunk.MERGE_MAX)
+        sections = chunks_of(heading(1, "Light"), para(["Light"], own), heading(2, "Signs"),
+                             para(["Light", "Signs"], signs), kind="section")
+        self.assertEqual([s["title"] for s in sections], [f"{GUIDE} > Light", f"{GUIDE} > Light > Signs"])
+        self.assertEqual(sections[1]["content"], signs)
+
+    def test_merges_chain_while_still_small(self):
+        """Two tiny H2s chain into the next one while the merged text is under MIN_TOKENS."""
+        a, b, c = prose(15, "ash"), prose(15, "birch"), prose(100, "cedar")
+        [merged] = chunks_of(heading(1, "Trees"), heading(2, "A"), para(["Trees", "A"], a),
+                             heading(2, "B"), para(["Trees", "B"], b), heading(2, "C"), para(["Trees", "C"], c),
+                             kind="section")
+        self.assertEqual(merged["title"], f"{GUIDE} > Trees")
+        self.assertEqual(merged["content"], f"A\n{a}\n\nB\n{b}\n\nC\n{c}")
+
+    def test_merge_never_crosses_h1_and_small_last_unit_stays_alone(self):
+        """A small H1 with no H2s and a small last H2 each stay alone; nothing merges across H1s."""
+        sections = chunks_of(heading(1, "One"), para(["One"], prose(20, "ash")),
+                             heading(1, "Two"), heading(2, "Big"), para(["Two", "Big"], prose(200, "birch")),
+                             heading(2, "Tail"), para(["Two", "Tail"], prose(20, "cedar")), kind="section")
+        self.assertEqual([s["title"] for s in sections],
+                         [f"{GUIDE} > One", f"{GUIDE} > Two > Big", f"{GUIDE} > Two > Tail"])
+        self.assertTrue(all(s["est_tokens"] < chunk.MIN_TOKENS for s in (sections[0], sections[2])))
+
+    def test_introduction_never_merges_into_the_first_h1(self):
+        """Introduction is its own H1-level unit, so a short intro stays alone."""
+        sections = chunks_of(para(["Introduction"], "Short intro."), heading(1, "Light"),
+                             para(["Light"], prose(100, "sun")), kind="section")
+        self.assertEqual([s["title"] for s in sections], [f"{GUIDE} > Introduction", f"{GUIDE} > Light"])
+
+
+class SplitTests(unittest.TestCase):
+    def big_section(self, paragraphs=12, topic="leaf"):
+        """Blocks for one H1 with many ~100-token paragraphs, each about its own topic."""
+        return [heading(1, "Leaves"), *(para(["Leaves"], prose(100, f"{topic}{i}")) for i in range(paragraphs))]
+
+    def test_big_section_splits_into_target_range(self):
+        """A section over TARGET_MAX splits at paragraphs into parts within TARGET_MIN..TARGET_MAX, same title."""
+        parts = chunks_of(*self.big_section(), kind="section")
+        self.assertGreater(len(parts), 1)
+        for part in parts:
+            self.assertEqual(part["title"], f"{GUIDE} > Leaves")
+            self.assertGreaterEqual(part["est_tokens"], chunk.TARGET_MIN)
+            self.assertLessEqual(part["est_tokens"], chunk.TARGET_MAX)
+
+    def test_section_at_target_max_stays_whole(self):
+        """A section that fits in TARGET_MAX is not split."""
+        parts = chunks_of(*self.big_section(paragraphs=3), kind="section")
+        self.assertEqual(len(parts), 1)
+
+    def test_long_paragraph_cut_at_sentences_never_over_hard_max(self):
+        """One paragraph over HARD_MAX is cut at sentence boundaries only, and no part passes HARD_MAX."""
+        text = prose(2000, "frond")
+        parts = chunks_of(heading(1, "Fronds"), para(["Fronds"], text), kind="section")
+        self.assertGreater(len(parts), 2)
+        whole = set(chunk.sentences(text))
+        for part in parts:
+            self.assertLessEqual(part["est_tokens"], chunk.HARD_MAX)
+            self.assertTrue(set(chunk.sentences(part["content"])) <= whole)
+        self.assertEqual(set().union(*(chunk.sentences(p["content"]) for p in parts)), whole)
+
+    def test_sentence_split_skips_breaks_inside_quotes(self):
+        """A full stop inside curly or straight quotes is not a sentence break."""
+        self.assertEqual(chunk.sentences("Water less. The tag says “Dry out. Then soak.” Repeat weekly."),
+                         ["Water less.", "The tag says “Dry out. Then soak.” Repeat weekly."])
+        self.assertEqual(chunk.sentences('Mist. Then "wait. Then mist." Done! Ok?'),
+                         ["Mist.", 'Then "wait. Then mist." Done!', "Ok?"])
+
+    def test_oversized_single_sentence_kept_whole_with_warning(self):
+        """A sentence that alone passes HARD_MAX is kept whole and reported by chunk index only."""
+        sentence = " ".join(["moss"] * 900) + "."
+        chunks, warnings = chunk.chunk_document(guide(heading(1, "Moss"), para(["Moss"], sentence)))
+        self.assertEqual(chunks[0]["content"], sentence)
+        self.assertGreater(chunks[0]["est_tokens"], chunk.HARD_MAX)
+        self.assertEqual(warnings, ["oversized_sentence:0"])
+
+    def test_overlap_only_inside_one_split_section(self):
+        """Each later part starts with the last two sentences of the one before; the next section gets none."""
+        after = prose(150, "root")
+        sections = chunks_of(*self.big_section(), heading(1, "Roots"), para(["Roots"], after), kind="section")
+        parts, roots = sections[:-1], sections[-1]
+        for previous, current in zip(parts, parts[1:]):
+            carried = " ".join(chunk.sentences(previous["content"])[-2:])
+            self.assertLessEqual(chunk.est_tokens(carried), chunk.OVERLAP_TOKENS)
+            self.assertTrue(current["content"].startswith(carried + "\n\n"))
+        self.assertEqual(roots["content"], after)
+
+
+class TableChunkTests(unittest.TestCase):
+    def test_two_and_three_column_lines(self):
+        """Each row becomes one line naming the table's own headers."""
+        self.assertEqual(chunk.table_lines(grid([], ["What you notice", "What to check"], ["Pale fronds", "Light"])),
+                         ["What you notice: Pale fronds -> What to check: Light"])
+        self.assertEqual(chunk.table_lines(grid([], ["Sign", "Cause", "Fix"], ["Limp", "Dry", "Soak"])),
+                         ["Sign: Limp -> Cause: Dry -> Fix: Soak"])
+
+    def test_empty_cells_skipped_and_empty_header_named_column_n(self):
+        """Empty cells are left out and an empty header cell is called Column N."""
+        block = grid([], ["Sign", "", "Fix"], ["Pale", "Light", ""], ["", "", ""])
+        self.assertEqual(chunk.table_lines(block), ["Sign: Pale -> Column 2: Light"])
+
+    def test_table_title_is_its_section_path(self):
+        """A table chunk is titled with the path it sits under."""
+        [table_chunk] = chunks_of(heading(1, "Light"), heading(2, "Signs"),
+                                  grid(["Light", "Signs"], ["Sign", "Fix"], ["Pale", "Move"]), kind="table")
+        self.assertEqual(table_chunk["title"], f"{GUIDE} > Light > Signs")
+        self.assertEqual(table_chunk["content"], "Sign: Pale -> Fix: Move")
+
+    def test_big_table_splits_by_rows_without_repeated_header(self):
+        """A table over HARD_MAX splits into whole-row parts of at most TARGET_MAX, rows only."""
+        rows = [(f"Sign {i} with spots", f"Check the moss tray number {i} and the light") for i in range(60)]
+        block = grid(["Light"], ["Sign", "Fix"], *rows)
+        lines = chunk.table_lines(block)
+        parts = chunks_of(heading(1, "Light"), block, kind="table")
+        self.assertGreater(len(parts), 1)
+        self.assertTrue(all(p["est_tokens"] <= chunk.TARGET_MAX for p in parts))
+        self.assertEqual([line for p in parts for line in p["content"].split("\n")], lines)
+
+
+class CalloutChunkTests(unittest.TestCase):
+    def test_callout_is_its_own_chunk_even_when_short(self):
+        """A callout is titled path > box title and its content starts with the box title."""
+        [callout] = chunks_of(para(["Introduction"], "Intro."), note(["Introduction"], "Key Tip", "Mist at dawn."),
+                              kind="callout")
+        self.assertEqual(callout["title"], f"{GUIDE} > Introduction > Key Tip")
+        self.assertEqual(callout["content"], "Key Tip: Mist at dawn.")
+
+    def test_callout_keeps_its_line_breaks(self):
+        """A multi-line box is not reflowed when it fits."""
+        [callout] = chunks_of(note(["Light"], "Safety", "Keep away from cats.\nWash hands."), kind="callout")
+        self.assertEqual(callout["content"], "Safety: Keep away from cats.\nWash hands.")
+
+
+class CardTests(unittest.TestCase):
+    def test_card_content_title_and_null_index(self):
+        """The card lists summary, keywords and the even-indexed variants, has no index and comes last."""
+        chunks = chunks_of(heading(1, "Light"), para(["Light"], "Text."))
+        card = chunks[-1]
+        self.assertEqual(card["kind"], "card")
+        self.assertIsNone(card["chunk_index"])
+        self.assertEqual(card["title"], f"{GUIDE} > Overview")
+        self.assertEqual(card["content"],
+                         "Summary: A made-up summary.\nKeywords: moss, mist\nQuestions:\nq0?\nq2?\nq4?")
+
+    def test_split_variants_even_odd_and_stable(self):
+        """Even indices go to the card and odd ones are held out, in order, the same on every call."""
+        variants = ["a", "b", "c", "d", "e"]
+        self.assertEqual(chunk.split_variants(variants), (["a", "c", "e"], ["b", "d"]))
+        self.assertEqual(chunk.split_variants(variants), chunk.split_variants(list(variants)))
+        self.assertEqual(variants, ["a", "b", "c", "d", "e"])
+        self.assertEqual(chunk.split_variants([]), ([], []))
+
+
+class ChunkRecordTests(unittest.TestCase):
+    def test_chunk_index_follows_document_order_across_kinds(self):
+        """Sections, callouts and tables are numbered 0, 1, 2 ... in document order; the card is not counted."""
+        chunks = chunks_of(para(["Introduction"], "Intro."), note(["Introduction"], "Tip", "Mist."),
+                           heading(1, "A"), para(["A"], "Text A."), grid(["A"], ["Sign", "Fix"], ["Pale", "Move"]),
+                           heading(1, "B"), para(["B"], "Text B."))
+        self.assertEqual([(c["kind"], c["chunk_index"]) for c in chunks],
+                         [("section", 0), ("callout", 1), ("section", 2), ("table", 3), ("section", 4),
+                          ("card", None)])
+
+    def test_est_tokens_counts_title_newline_content(self):
+        """est_tokens is ceil(characters / 4) of the embedding input title + newline + content."""
+        self.assertEqual(chunk.est_tokens(""), 0)
+        self.assertEqual(chunk.est_tokens("abcde"), 2)
+        for c in chunks_of(heading(1, "A"), para(["A"], "Text A."), note(["A"], "Tip", "Mist.")):
+            self.assertEqual(c["est_tokens"], -(-len(c["title"] + "\n" + c["content"]) // 4))
+
+    def test_record_fields_copied_from_the_guide(self):
+        """Every record has the output keys and carries the guide's id, review status and care topics."""
+        for c in chunks_of(heading(1, "A"), para(["A"], "Text A.")):
+            self.assertEqual(set(c), {"hpa_id", "chunk_index", "kind", "title", "content", "review_status",
+                                      "care_topics", "est_tokens"})
+            self.assertEqual((c["hpa_id"], c["review_status"], c["care_topics"]),
+                             ("HPA-TEST-0001", "pending", ["watering"]))
 
 
 if __name__ == "__main__":
