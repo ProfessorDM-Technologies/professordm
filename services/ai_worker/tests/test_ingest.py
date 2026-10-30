@@ -1,19 +1,30 @@
-"""Unit tests for ingest/parse.py, ingest/normalize.py and ingest/chunk.py.
+"""Unit tests for the ingest scripts: parse, normalize, chunk, build_rows and load_kb.
 
 Every fixture is a hand-built list of raw elements (the shape read_docx
-returns) or of doc.json blocks, with made-up text, so no .docx file, no
-python-docx and no network are needed. Run with:
+returns), of doc.json blocks, or of chunk and row records, with made-up text,
+so no .docx file, no python-docx and no network are needed. build_rows tests
+replace llm.embed with a fake; load_kb tests pass a fake HTTP transport. Run
+with:
     uv run --python 3.11 python -m unittest discover services/ai_worker/tests
 """
 
+import contextlib
 import difflib
+import io
+import json
+import os
 import sys
+import tempfile
 import unittest
+import uuid
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ingest"))
 
+import build_rows
 import chunk
+import load_kb
 import normalize
 import parse
 
@@ -812,6 +823,336 @@ class GuideIdTests(unittest.TestCase):
         chunks, _, _ = chunk.chunk_document(guide(heading(1, "Light"), para(
             ["Light"], "Read HPA-FUND-0002. Then FUND-0003. Done.")), titles)
         self.assertEqual(chunks[0]["content"], "Read Why is it wilting? Then Misting Basics. Done.")
+
+
+# ---------------------------------------------------------------------------
+# build_rows.py
+# ---------------------------------------------------------------------------
+
+CREATOR = "11111111-2222-4333-8444-555555555555"
+
+
+def chunk_record(hpa_id="HPA-TEST-0001", index=0, kind="section", topics=("moss", "light")):
+    """Build a chunks.jsonl record with made-up text."""
+    return {"hpa_id": hpa_id, "chunk_index": None if kind == "card" else index, "kind": kind,
+            "title": f"Moss Guide > Part {index}", "content": f"Moss text {index}.",
+            "review_status": "pending", "care_topics": list(topics), "est_tokens": 9}
+
+
+def doc_record(hpa_id="HPA-TEST-0001", title="Moss Guide"):
+    """Build the doc.json fields build_rows reads."""
+    return {"hpa_id": hpa_id, "title": title}
+
+
+def demo_sql(count=8):
+    """Build a made-up seed insert with count demo entries, each title holding an escaped quote."""
+    rows = [f"""  (
+    '89000000-0000-4000-8000-{n:012d}', v_creator_id, 'question',
+    'Why won''t moss {n} grow?',
+    $t$Moss {n} line one.
+
+It's line two.$t$,
+    array['moss'], true
+  )""" for n in range(1, count + 1)]
+    return ("insert into public.knowledge_entries (id, creator_id, source, title, content, tags, published)\n"
+            "values\n" + ",\n".join(rows) + "\non conflict (id) do nothing;\n")
+
+
+class FakeEmbed:
+    """Stand-in for llm.embed: one distinct short vector per input, and a record of every call."""
+
+    def __init__(self):
+        """Start with no calls."""
+        self.calls = []
+
+    def __call__(self, texts, *, retry=False, timeout=None):
+        """Record the call and return [[i]] per input with fixed meta."""
+        self.calls.append({"texts": list(texts), "retry": retry, "timeout": timeout})
+        return [[float(i)] for i in range(len(texts))], {"model": "fake-embed", "tokens": 42, "latency_ms": 1}
+
+
+class BuildRowsTests(unittest.TestCase):
+    def build(self, chunks, docs=(doc_record(),), demo=()):
+        """Run build_rows with a fake embed; return (records, the fake)."""
+        fake = FakeEmbed()
+        with patch.object(build_rows.llm, "embed", fake):
+            records, _ = build_rows.build_rows(list(chunks), list(docs), list(demo), CREATOR)
+        return records, fake
+
+    def test_ids_are_stable_across_runs_and_differ_across_guides(self):
+        """Two runs give the same ids; a second guide gets different doc and entry ids."""
+        chunks = [chunk_record("HPA-TEST-0001", 0), chunk_record("HPA-TEST-0002", 0)]
+        docs = [doc_record("HPA-TEST-0001"), doc_record("HPA-TEST-0002", "Fern Guide")]
+        first, _ = self.build(chunks, docs)
+        second, _ = self.build(chunks, docs)
+        ids = [r["id"] for r in first]
+        self.assertEqual(ids, [r["id"] for r in second])
+        self.assertEqual(len(set(ids)), 4)
+        self.assertEqual(first[0]["id"], str(uuid.uuid5(build_rows.NAMESPACE, "doc:HPA-TEST-0001")))
+        self.assertEqual(first[2]["id"], str(uuid.uuid5(build_rows.NAMESPACE, "HPA-TEST-0001:0")))
+
+    def test_card_id_uses_card_suffix(self):
+        """The doc card has no chunk index, so its id is uuid5 of '<hpa_id>:card'."""
+        card = chunk_record(kind="card")
+        self.assertEqual(build_rows.entry_id(card), str(uuid.uuid5(build_rows.NAMESPACE, "HPA-TEST-0001:card")))
+
+    def test_tags_are_ordered_and_deduplicated(self):
+        """hpa, kind, review, then each topic once, in first-seen order."""
+        tags = build_rows.entry_tags(chunk_record(kind="table", topics=("moss", "light", "moss")))
+        self.assertEqual(tags, ["hpa:HPA-TEST-0001", "kind:table", "review:pending", "topic:moss", "topic:light"])
+
+    def test_record_shapes_and_embedding_inputs(self):
+        """Doc rows, then entry rows, then demo set_embedding rows, with the embed inputs to match."""
+        demo = [{"id": build_rows.DEMO_IDS[0], "title": "Demo title", "content": "Demo text."}]
+        records, fake = self.build([chunk_record(index=0), chunk_record(kind="card")], demo=demo)
+        self.assertEqual(records[0], {"table": "knowledge_docs", "op": "upsert",
+                                      "id": build_rows.doc_id("HPA-TEST-0001"), "creator_id": CREATOR,
+                                      "title": "Moss Guide", "storage_path": f"{CREATOR}/HPA-TEST-0001.docx"})
+        self.assertEqual(records[1], {"table": "knowledge_entries", "op": "upsert",
+                                      "id": build_rows.entry_id(chunk_record(index=0)), "creator_id": CREATOR,
+                                      "doc_id": records[0]["id"], "question_id": None, "source": "doc",
+                                      "title": "Moss Guide > Part 0", "content": "Moss text 0.",
+                                      "tags": ["hpa:HPA-TEST-0001", "kind:section", "review:pending",
+                                               "topic:moss", "topic:light"],
+                                      "published": False, "embedding": [0.0]})
+        self.assertEqual(records[2]["tags"][1], "kind:card")
+        self.assertEqual(records[3], {"table": "knowledge_entries", "op": "set_embedding",
+                                      "id": build_rows.DEMO_IDS[0], "embedding": [2.0]})
+        self.assertEqual(fake.calls, [{"texts": ["Moss Guide > Part 0\nMoss text 0.", "Moss Guide > Part 0\nMoss text 0.",
+                                                 "Demo title\nDemo text."], "retry": True, "timeout": 60}])
+
+    def test_chunks_without_a_doc_are_rejected(self):
+        """A chunk whose guide has no doc.json stops the build before any embedding."""
+        fake = FakeEmbed()
+        with patch.object(build_rows.llm, "embed", fake), self.assertRaisesRegex(ValueError, "HPA-TEST-0002"):
+            build_rows.build_rows([chunk_record("HPA-TEST-0002")], [doc_record()], [], CREATOR)
+        self.assertEqual(fake.calls, [])
+
+    def test_seed_parser_reads_quoted_title_and_dollar_block(self):
+        """'' in a title becomes ', and the $t$ block is kept exactly, blank line and quote included."""
+        entries = build_rows.parse_demo_entries(demo_sql())
+        self.assertEqual([e["id"] for e in entries], list(build_rows.DEMO_IDS))
+        self.assertEqual(entries[2]["title"], "Why won't moss 3 grow?")
+        self.assertEqual(entries[2]["content"], "Moss 3 line one.\n\nIt's line two.")
+
+    def test_seed_parser_requires_exactly_eight(self):
+        """Seven demo entries is an error, not a partial result."""
+        with self.assertRaisesRegex(ValueError, "found 7"):
+            build_rows.parse_demo_entries(demo_sql(7))
+
+    def run_main(self, folder, *extra, seed_count=8):
+        """Write made-up inputs to folder and run build_rows.main; return (stdout, the fake embed)."""
+        folder = Path(folder)
+        (folder / "docs").mkdir()
+        (folder / "docs" / "HPA-TEST-0001.json").write_text(json.dumps(doc_record()))
+        (folder / "chunks.jsonl").write_text(json.dumps(chunk_record()) + "\n")
+        (folder / "seed.sql").write_text(demo_sql(seed_count))
+        fake, out = FakeEmbed(), io.StringIO()
+        argv = ["--chunks", str(folder / "chunks.jsonl"), "--docs", str(folder / "docs"),
+                "--seed", str(folder / "seed.sql"), "--out", str(folder / "rows.jsonl"), *extra]
+        with patch.object(build_rows.llm, "embed", fake), contextlib.redirect_stdout(out):
+            build_rows.main(argv)
+        return out.getvalue(), fake
+
+    def test_main_writes_rows_and_prints_counts(self):
+        """One guide, one chunk and 8 demo entries give 10 records and a counts line."""
+        with tempfile.TemporaryDirectory() as folder:
+            printed, _ = self.run_main(folder, "--creator-id", CREATOR.upper())
+            records = [json.loads(line) for line in (Path(folder) / "rows.jsonl").read_text().splitlines()]
+        self.assertEqual(len(records), 10)
+        self.assertEqual(records[0]["creator_id"], CREATOR)
+        self.assertIn("guides=1 chunks=1 demo_entries=8", printed)
+        self.assertIn("tokens=42", printed)
+        self.assertNotIn(CREATOR, printed)
+
+    def test_wrong_demo_count_exits_before_embedding(self):
+        """A seed with 7 demo entries exits non-zero and never calls embed."""
+        with tempfile.TemporaryDirectory() as folder, self.assertRaises(SystemExit) as caught:
+            self.run_main(folder, "--creator-id", CREATOR, seed_count=7)
+        self.assertNotIn(caught.exception.code, (0, None))
+        self.assertFalse((Path(folder) / "rows.jsonl").exists())
+
+    def test_invalid_creator_id_is_rejected_without_echo(self):
+        """A creator id that is not a UUID exits with code 2, and the message does not repeat it."""
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), self.assertRaises(SystemExit) as caught:
+            build_rows.main(["--creator-id", "creator-typo-123"])
+        self.assertEqual(caught.exception.code, 2)
+        self.assertIn("must be a UUID", err.getvalue())
+        self.assertNotIn("creator-typo-123", err.getvalue())
+
+
+# ---------------------------------------------------------------------------
+# load_kb.py
+# ---------------------------------------------------------------------------
+
+BASE_URL = "https://example.supabase.co"
+KEY = "test-service-key"
+ENV = {"SUPABASE_URL": BASE_URL, "SUPABASE_SERVICE_ROLE_KEY": KEY}
+
+
+def doc_id_n(n):
+    """A made-up doc uuid."""
+    return f"d0000000-0000-4000-8000-{n:012d}"
+
+
+def entry_id_n(doc, n):
+    """A made-up entry uuid for doc number doc."""
+    return f"e{doc:07d}-0000-4000-8000-{n:012d}"
+
+
+def rows_file(folder, entries_per_doc=(2, 1), demo=2):
+    """Write a made-up rows.jsonl (docs, entries, demo vectors) and return its path."""
+    records = [{"table": "knowledge_docs", "op": "upsert", "id": doc_id_n(d), "creator_id": CREATOR,
+                "title": f"Guide {d}", "storage_path": f"{CREATOR}/HPA-TEST-{d:04d}.docx"}
+               for d in range(1, len(entries_per_doc) + 1)]
+    for d, count in enumerate(entries_per_doc, 1):
+        records += [{"table": "knowledge_entries", "op": "upsert", "id": entry_id_n(d, n), "creator_id": CREATOR,
+                     "doc_id": doc_id_n(d), "question_id": None, "source": "doc", "title": "t", "content": "c",
+                     "tags": ["kind:section"], "published": False, "embedding": [0.5, 0.25]}
+                    for n in range(count)]
+    records += [{"table": "knowledge_entries", "op": "set_embedding", "id": build_rows.DEMO_IDS[i],
+                 "embedding": [0.125]} for i in range(demo)]
+    path = Path(folder) / "rows.jsonl"
+    path.write_text("".join(json.dumps(r) + "\n" for r in records))
+    return path
+
+
+class FakeTransport:
+    """Stand-in for load_kb.urllib_transport: records requests and answers from a function, no network."""
+
+    def __init__(self, answer=None):
+        """answer(method, url) -> (status, data) overrides the defaults (201/204/200 with [{"id"}] for PATCH)."""
+        self.answer = answer
+        self.calls = []
+
+    def __call__(self, method, url, headers, body=None):
+        """Record the request and return the answer."""
+        self.calls.append({"method": method, "url": url, "headers": headers, "body": body})
+        if self.answer:
+            reply = self.answer(method, url)
+            if reply is not None:
+                return reply
+        return {"POST": (201, None), "DELETE": (204, None), "PATCH": (200, [{"id": "x"}]), "GET": (200, [])}[method]
+
+
+@patch.dict(os.environ, ENV)
+class LoadKbTests(unittest.TestCase):
+    def run_load(self, *extra, entries_per_doc=(2, 1), demo=2, answer=None):
+        """Run load_kb.main on a made-up rows file; return (transport, stdout)."""
+        transport, out = FakeTransport(answer), io.StringIO()
+        with tempfile.TemporaryDirectory() as folder:
+            path = rows_file(folder, entries_per_doc, demo)
+            with contextlib.redirect_stdout(out):
+                load_kb.main(["--rows", str(path), *extra], transport=transport)
+        return transport, out.getvalue()
+
+    def test_request_order(self):
+        """Docs upsert, entries upsert, one stale delete per guide, then one PATCH per demo entry."""
+        transport, printed = self.run_load()
+        steps = [(c["method"], c["url"].split("?")[0].rsplit("/", 1)[1]) for c in transport.calls]
+        self.assertEqual(steps, [("POST", "knowledge_docs"), ("POST", "knowledge_entries"),
+                                 ("DELETE", "knowledge_entries"), ("DELETE", "knowledge_entries"),
+                                 ("PATCH", "knowledge_entries"), ("PATCH", "knowledge_entries")])
+        self.assertIn("docs=2  entries=3", printed)
+
+    def test_upsert_url_headers_and_body(self):
+        """POST ?on_conflict=id with merge-duplicates, service-role headers, and rows without table or op."""
+        transport, _ = self.run_load()
+        docs, entries = transport.calls[0], transport.calls[1]
+        self.assertEqual(docs["url"], f"{BASE_URL}/rest/v1/knowledge_docs?on_conflict=id")
+        self.assertEqual(docs["headers"], {"apikey": KEY, "Authorization": f"Bearer {KEY}",
+                                           "Content-Type": "application/json",
+                                           "Prefer": "resolution=merge-duplicates,return=minimal"})
+        self.assertEqual(docs["body"][0], {"id": doc_id_n(1), "creator_id": CREATOR, "title": "Guide 1",
+                                           "storage_path": f"{CREATOR}/HPA-TEST-0001.docx"})
+        self.assertEqual(entries["url"], f"{BASE_URL}/rest/v1/knowledge_entries?on_conflict=id")
+        self.assertTrue(all("table" not in row and "op" not in row for row in entries["body"]))
+        self.assertEqual(entries["body"][0]["embedding"], [0.5, 0.25])
+
+    def test_entries_upsert_in_batches_of_50(self):
+        """120 entries go in requests of 50, 50 and 20."""
+        transport, _ = self.run_load(entries_per_doc=(70, 50))
+        sizes = [len(c["body"]) for c in transport.calls if c["url"].endswith("knowledge_entries?on_conflict=id")]
+        self.assertEqual(sizes, [50, 50, 20])
+
+    def test_stale_delete_uses_not_in_with_that_guides_ids(self):
+        """Each guide's DELETE keeps exactly the ids just loaded for that guide."""
+        transport, _ = self.run_load()
+        deletes = [c for c in transport.calls if c["method"] == "DELETE"]
+        self.assertEqual(deletes[0]["url"], f"{BASE_URL}/rest/v1/knowledge_entries?doc_id=eq.{doc_id_n(1)}"
+                                            f"&id=not.in.({entry_id_n(1, 0)},{entry_id_n(1, 1)})")
+        self.assertEqual(deletes[1]["url"], f"{BASE_URL}/rest/v1/knowledge_entries?doc_id=eq.{doc_id_n(2)}"
+                                            f"&id=not.in.({entry_id_n(2, 0)})")
+        self.assertIsNone(deletes[0]["body"])
+
+    def test_demo_patch_filter_body_and_counts(self):
+        """PATCH only where embedding is null, body is only the embedding, empty reply counts as already set."""
+        demo_one = build_rows.DEMO_IDS[1]
+        transport, printed = self.run_load(
+            answer=lambda method, url: (200, []) if method == "PATCH" and demo_one in url else None)
+        patches = [c for c in transport.calls if c["method"] == "PATCH"]
+        self.assertEqual(patches[0]["url"], f"{BASE_URL}/rest/v1/knowledge_entries"
+                                            f"?id=eq.{build_rows.DEMO_IDS[0]}&embedding=is.null&select=id")
+        self.assertEqual(patches[0]["body"], {"embedding": [0.125]})
+        self.assertEqual(patches[0]["headers"]["Prefer"], "return=representation")
+        self.assertIn("demo_updated=1  demo_already_set=1", printed)
+
+    def test_dry_run_only_reads(self):
+        """--dry-run makes GET requests only and reports stale ids, demo updates and extra docs."""
+        stale_id = entry_id_n(1, 9)
+        extra_doc = doc_id_n(9)
+
+        def answer(method, url):
+            """Serve one stale chunk for guide 1, one demo still null, and one extra doc."""
+            if f"doc_id=eq.{doc_id_n(1)}" in url:
+                return 200, [{"id": stale_id}]
+            if "embedding=is.null" in url:
+                return 200, [{"id": build_rows.DEMO_IDS[0]}]
+            if url.startswith(f"{BASE_URL}/rest/v1/knowledge_docs?"):
+                return 200, [{"id": doc_id_n(1)}, {"id": extra_doc}]
+            return None
+
+        transport, printed = self.run_load("--dry-run", answer=answer)
+        self.assertEqual({c["method"] for c in transport.calls}, {"GET"})
+        self.assertEqual(transport.calls[0]["url"], f"{BASE_URL}/rest/v1/knowledge_entries?doc_id=eq.{doc_id_n(1)}"
+                                                    f"&id=not.in.({entry_id_n(1, 0)},{entry_id_n(1, 1)})&select=id")
+        self.assertEqual(transport.calls[3]["url"], f"{BASE_URL}/rest/v1/knowledge_docs"
+                                                    f"?creator_id=eq.{CREATOR}&select=id")
+        self.assertIn(f"HPA-TEST-0001  upsert=2  stale=1  stale_ids={stale_id}", printed)
+        self.assertIn("demo_would_update=1  demo_already_set=1", printed)
+        self.assertIn(f"not in the rows file (not deleted): {extra_doc}", printed)
+        self.assertNotIn(CREATOR, printed)
+        self.assertNotIn(KEY, printed)
+
+    def test_http_error_exits_naming_step_and_status(self):
+        """A failed entries upsert exits non-zero with the step and status, and no later step runs."""
+        def answer(method, url):
+            """Fail the entries upsert."""
+            return (500, None) if method == "POST" and "knowledge_entries" in url else None
+
+        transport = FakeTransport(answer)
+        with tempfile.TemporaryDirectory() as folder, self.assertRaises(SystemExit) as caught:
+            load_kb.main(["--rows", str(rows_file(folder))], transport=transport)
+        self.assertIn("upsert knowledge_entries failed (HTTP 500)", str(caught.exception.code))
+        self.assertEqual([c["method"] for c in transport.calls], ["POST", "POST"])
+
+    def test_network_error_also_exits(self):
+        """A transport that got no status (network error) is an error, not a success."""
+        with self.assertRaises(SystemExit) as caught:
+            self.run_load(answer=lambda method, url: (None, None))
+        self.assertIn("upsert knowledge_docs failed (HTTP network error)", str(caught.exception.code))
+
+    def test_missing_env_names_the_variable_without_values(self):
+        """A missing key stops before any request, naming the variable and echoing no value."""
+        transport = FakeTransport()
+        with patch.dict(os.environ, {"SUPABASE_SERVICE_ROLE_KEY": ""}), self.assertRaises(SystemExit) as caught:
+            load_kb.main(["--rows", "unused.jsonl"], transport=transport)
+        message = str(caught.exception.code)
+        self.assertIn("SUPABASE_SERVICE_ROLE_KEY", message)
+        self.assertNotIn(BASE_URL, message)
+        self.assertEqual(transport.calls, [])
+
 
 if __name__ == "__main__":
     unittest.main()
