@@ -174,10 +174,97 @@ class BodyBlockTests(unittest.TestCase):
             ("paragraph", None, None),
             ("list", False, ["Another bullet"])])
 
+    def test_typed_bullets_are_list_items(self):
+        blocks = blocks_of(p("□ Check the soil"), p("•\tLift the pot"), p("▪Look under leaves"),
+                           p("◦  One"), p("● Two"), p("‣ Three"), p("Not a bullet."), p("• After"))
+        self.assertEqual([(b["type"], b.get("ordered"), b.get("items")) for b in blocks], [
+            ("list", False, ["Check the soil", "Lift the pot", "Look under leaves", "One", "Two", "Three"]),
+            ("paragraph", None, None), ("list", False, ["After"])])
+
+    def test_typed_and_styled_bullets_group_together(self):
+        [block] = blocks_of(p("Styled", "List Bullet", True), p("□ Typed"), p("• Styled with glyph", "List Bullet", True))
+        self.assertEqual(block["items"], ["Styled", "Typed", "Styled with glyph"])
+
+    def test_glyph_in_heading_or_caption_style_is_not_a_bullet(self):
+        blocks = blocks_of(h1("• Odd heading"), p("• A caption line", "Caption Custom"))
+        self.assertEqual([b["type"] for b in blocks], ["heading", "paragraph"])
+        self.assertEqual(blocks[1]["text"], "• A caption line")
+
+    def test_unstyled_contents_line_drops_the_list_after_it(self):
+        blocks = blocks_of(*BANNER, box("Key Point: Made up."), p("In this guide", "Section Green"),
+                           p("Topic one", "List Bullet", True), p("□ Topic two"),
+                           p("Figure 1. A made-up caption", "Figure Caption"), p("continued.", "Figure Caption"),
+                           h1("1. First"), p("Body."))
+        self.assertEqual([(b["type"], b.get("text"), b.get("path")) for b in blocks], [
+            ("callout", "Made up.", ["Introduction"]),
+            ("paragraph", "A made-up caption continued.", ["Introduction"]),
+            ("heading", "First", None), ("paragraph", "Body.", ["First"])])
+
+    def test_unstyled_contents_line_keeps_a_list_that_is_not_directly_after(self):
+        blocks = blocks_of(h1("First"), p("  CONTENTS "), p("A sentence."), p("□ Kept"))
+        self.assertEqual([b["type"] for b in blocks], ["heading", "paragraph", "list"])
+
+    def test_captions_in_contents_section_are_kept_with_the_previous_path(self):
+        blocks = blocks_of(h1("First"), p("Body."), h2("In this guide"), p("Covers:"), p("□ Topic"),
+                           p("Figure 2. A made-up caption", "Caption Custom"), p("that wraps.", "Caption Custom"),
+                           p("A plain line."), h1("Second"))
+        self.assertEqual([(b["type"], b.get("text"), b.get("path")) for b in blocks], [
+            ("heading", "First", None), ("paragraph", "Body.", ["First"]),
+            ("paragraph", "A made-up caption that wraps.", ["First"]), ("heading", "Second", None)])
+
     def test_list_ends_at_table_or_heading(self):
         blocks = blocks_of(p("One", "List Bullet", True), table(("a", "b"), ("c", "d")), p("Two", "List Bullet", True),
                            h1("Next"), p("Three", "List Bullet", True))
         self.assertEqual([b.get("items") for b in blocks if b["type"] == "list"], [["One"], ["Two"], ["Three"]])
+
+
+class PromoteHeadingTests(unittest.TestCase):
+    def promote(self, *elements):
+        """Run promote_headings and return (styles of paragraphs, promoted numbers)."""
+        body, numbers = parse.promote_headings(list(elements))
+        return [e.get("style") for e in body], numbers
+
+    def test_missing_numbered_h1_typed_as_normal_is_promoted(self):
+        elements = [h1("1. One"), p("Body."), p("2. A missing section heading"), p("Body."), h1("3. Three")]
+        styles, numbers = self.promote(*elements)
+        self.assertEqual(numbers, [2])
+        self.assertEqual(styles[2], "Heading 1")
+        blocks = parse.body_blocks(parse.promote_headings(elements)[0], None)
+        self.assertEqual(blocks[2], {"type": "heading", "level": 1, "text": "A missing section heading"})
+        self.assertEqual(blocks[3]["path"], ["A missing section heading"])
+
+    def test_last_number_is_promoted_before_the_cut(self):
+        self.assertEqual(self.promote(h1("1. One"), h1("2. Two"), p("Body."), p("3. Last section"), p("Body."))[1], [3])
+
+    def test_first_number_needs_to_come_before_every_numbered_h1(self):
+        self.assertEqual(self.promote(p("1. Opening"), h1("2. Two"))[1], [1])
+        self.assertEqual(self.promote(h1("3. Three"), p("1. Opening"), h1("2. Two"))[1], [])
+
+    def test_guards_reject_everything_else(self):
+        cases = [
+            [h1("1. One"), p("2. A full sentence that ends with a period."), h1("3. Three")],
+            [h1("1. One"), p("2. " + " ".join(["word"] * 12)), h1("3. Three")],
+            [h1("1. One"), h1("2. Two"), p("2. Already present"), h1("3. Three")],
+            [h1("1. One"), h1("3. Three"), p("2. After its successor")],
+            [h1("1. One"), p("2. Wrong order"), h1("3. Three")][::-1],
+            [h1("1. One"), p("2. A list step", "List Paragraph", True), h1("3. Three")],
+            [p("2. No numbered headings at all")],
+            [h1("1. One"), p("5. Far from any neighbour"), h1("2. Two")],
+            [h1("1. One"), p("2.Missing space"), h1("3. Three")],
+            [h1("1. One"), h2("2. A real H2"), h1("3. Three")],
+        ]
+        for elements in cases:
+            self.assertEqual(self.promote(*elements)[1], [], elements)
+
+    def test_twelve_words_is_allowed_and_only_one_paragraph_per_number(self):
+        twelve = "2. " + " ".join(["word"] * 11)
+        self.assertEqual(self.promote(h1("1. One"), p(twelve), p("2. Second candidate"), h1("3. Three"))[1], [2])
+
+    def test_promotion_is_reported_as_a_warning_with_the_number_only(self):
+        body = [*BANNER, h1("1. One"), p("Body."), p("2. Secret heading words"), p("Body."), h1("3. Three")]
+        doc = normalize.normalize_document(body + four_column_tail(content_id="HPA-FUND-0099",
+                                                                   content_title=TITLE), "x.docx")
+        self.assertEqual(doc["warnings"], ["promoted_heading:2"])
 
 
 class MetadataTests(unittest.TestCase):
@@ -186,8 +273,12 @@ class MetadataTests(unittest.TestCase):
               "care_topic": "Watering; Light & Shade", "urgency_level": "low", "version": "1.2",
               "expert_review_status": "Approved", "related_content_ids": "HPA-FUND-0001; FUND-0002"}
 
-    def label_tail(self):
-        """The same values in the label template (2-column tables, bold labels, comma lists)."""
+    def label_tail(self, expert="Approved"):
+        """The same values in the label template (2-column tables, bold labels, comma lists).
+
+        The expert review status sits in its own governance table, as in the
+        real label-template guide.
+        """
         return [h1("11. Related Academy Entries"), p("HPA-FUND-0001 - Watering", "List Bullet", True),
                 h1("12. References"), p("Source A."),
                 table(("Content ID", "HPA-FUND-0099"), ("Title", "Ferns"), ("Full Title", TITLE),
@@ -195,8 +286,9 @@ class MetadataTests(unittest.TestCase):
                 table(("Primary Topic", "Watering"), ("Secondary Topics", "Light & Shade, watering"),
                       ("Search Keywords", "moon fern, fronds"),
                       ("Natural Language Queries", "How do I water a moon fern? | Why are fronds pale?"),
-                      ("Urgency Level", "low"), ("Related Content IDs", "HPA-FUND-0001, FUND-0002"),
-                      ("Expert Review Status", "pending"))]
+                      ("Urgency Level", "low"), ("Related Content IDs", "HPA-FUND-0001, FUND-0002")),
+                table(("Authoring Method", "made up"), ("Expert Review Status", expert),
+                      ("Expert Reviewer", "A. Person"), ("Next Review Due", "later"))]
 
     def normalized(self, tail):
         """Normalize a small body plus the given tail and drop fields that differ by template."""
@@ -226,7 +318,7 @@ class MetadataTests(unittest.TestCase):
                 table(("Full Title", "Label title"), ("Status", "approved"))]
         meta, _ = normalize.extract_metadata(tail)
         self.assertEqual(meta["content_title"], "Machine title")
-        self.assertEqual(meta["expert_review_status"], "approved")
+        self.assertEqual(meta[normalize.STATUS_LABEL_KEY], "approved")
 
     def test_one_matching_label_is_not_a_label_table(self):
         meta, _ = normalize.extract_metadata([table(("Status", "approved"), ("Colour", "green"))])
@@ -276,7 +368,25 @@ class MetadataTests(unittest.TestCase):
         for value, status in (("approved", "approved"), ("APPROVED", "approved"), (" Approved ", "approved"),
                               ("approved with edits", "pending"), ("pending", "pending"), (None, "pending"),
                               ("NOT SET", "pending")):
-            self.assertEqual(normalize.review_status(value), status, value)
+            self.assertEqual(normalize.review_status({"expert_review_status": value}), status, value)
+
+    def test_expert_review_status_decides_over_status_label(self):
+        status = normalize.STATUS_LABEL_KEY
+        cases = [({"expert_review_status": "pending", status: "APPROVED"}, "pending", True),
+                 ({"expert_review_status": "approved", status: "draft"}, "approved", False),
+                 ({status: "Approved"}, "approved", False),
+                 ({"expert_review_status": "NOT SET", status: "approved"}, "approved", False),
+                 ({status: "draft"}, "pending", False), ({}, "pending", False)]
+        for meta, expected, conflict in cases:
+            self.assertEqual(normalize.review_status(meta), expected, meta)
+            self.assertEqual(normalize.review_conflict(meta), conflict, meta)
+
+    def test_label_template_conflict_is_pending_with_a_warning(self):
+        body = [*BANNER, p("Summary."), h1("1. First"), p("Body.")]
+        doc = normalize.normalize_document(body + self.label_tail(expert="pending"), "moon.docx")
+        self.assertEqual(doc["review_status"], "pending")
+        self.assertEqual(doc["warnings"], ["review_status_conflict"])
+        self.assertEqual(normalize.normalize_document(body + self.label_tail(), "moon.docx")["warnings"], [])
 
     def test_related_ids_from_every_source(self):
         tail = [h1("5. Related entries, references & evidence"), h2("Related Academy entries"),

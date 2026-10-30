@@ -17,6 +17,7 @@ Contents:
     split_list          the one list-splitting rule (";", "|", "?", ",")
     question_variants   metadata and routing variants, merged and deduplicated
     snake_case          the shared care-topic normalizer
+    review_status       expert review status first, the "Status" label as fallback
     related_ids         related guide ids from metadata, routing and the tail
     normalize_document  raw elements -> the doc.json dict
     check_unique        refuses two input files with the same hpa_id
@@ -54,14 +55,17 @@ ALIASES = {
     "version": "content_version",
 }
 
+# The general "Status" label. It is only a fallback for the review status
+# (see review_status), so it gets its own key instead of expert_review_status.
+STATUS_LABEL_KEY = "status_label"
+
 # Bold column-1 labels of the label template (TROUBLE-0001) mapped to the
-# machine keys of the other templates. Labels not listed are ignored. "Status"
-# is the publication status the guide marks approved; the separate "Expert
-# Review Status" row is deliberately not mapped.
+# machine keys of the other templates. Labels not listed are ignored.
 LABEL_KEYS = {
     "content id": "content_id",
     "full title": "content_title",
-    "status": "expert_review_status",
+    "expert review status": "expert_review_status",
+    "status": STATUS_LABEL_KEY,
     "version": "content_version",
     "search keywords": "search_keywords",
     "natural language queries": "search_question_variants",
@@ -69,6 +73,10 @@ LABEL_KEYS = {
     "secondary topics": "secondary_topics",
     "urgency level": "urgency",
     "related content ids": "related_content_ids",
+    # Not used downstream. Listed so the governance table that holds "Expert
+    # Review Status" reaches MIN_LABEL_MATCHES and is read at all.
+    "expert reviewer": "expert_reviewer",
+    "last reviewed date": "last_reviewed_date",
 }
 
 # A table is a label table when at least this many column-1 cells are known
@@ -378,19 +386,55 @@ def care_topics(meta, label_template):
     return topics
 
 
-def review_status(value):
-    """Map the guide's review status to "approved" or "pending".
+def _approved(value):
+    """Tell whether a status value is exactly "approved" (any case).
 
     Args:
-        value (str | None): The expert_review_status value.
+        value (str | None): A status value.
 
     Returns:
-        str: "approved" only when the value is exactly "approved" (any case);
-        anything else, including a missing value, is "pending".
+        bool: True only for "approved"; anything else, a placeholder or None
+        is False.
 
     Side effects: none.
     """
-    return "approved" if (_clean(value) or "").casefold() == "approved" else "pending"
+    return (_clean(value) or "").casefold() == "approved"
+
+
+def review_status(meta):
+    """Map the guide's review status to "approved" or "pending".
+
+    An explicit expert review status (machine key expert_review_status or the
+    label "Expert Review Status") decides. The general "Status" label is used
+    only when no expert review status exists (a placeholder counts as none).
+
+    Args:
+        meta (dict): From extract_metadata.
+
+    Returns:
+        str: "approved" when the deciding value is exactly "approved" (any
+        case), otherwise "pending".
+
+    Side effects: none.
+    """
+    expert = _clean(meta.get("expert_review_status"))
+    return "approved" if _approved(expert if expert is not None else meta.get(STATUS_LABEL_KEY)) else "pending"
+
+
+def review_conflict(meta):
+    """Tell whether "Status" says approved while the expert review does not.
+
+    Args:
+        meta (dict): From extract_metadata.
+
+    Returns:
+        bool: True when both exist, "Status" is approved and the expert review
+        status is not. Reported as the review_status_conflict warning.
+
+    Side effects: none.
+    """
+    expert = _clean(meta.get("expert_review_status"))
+    return expert is not None and _approved(meta.get(STATUS_LABEL_KEY)) and not _approved(expert)
 
 
 def _related_section_text(tail):
@@ -497,7 +541,7 @@ def normalize_document(elements, source_file):
         "care_topics", "urgency", "review_status", "content_version",
         "related", "blocks", "references", "source_file", "warnings"}.
         warnings holds short codes only: "no_cut_heading", "no_title",
-        "no_summary".
+        "no_summary", "promoted_heading:<N>", "review_status_conflict".
 
     Raises:
         ValueError: If the guide has no content_id.
@@ -514,10 +558,15 @@ def normalize_document(elements, source_file):
         raise ValueError(f"{source_file}: no content_id in the metadata")
     label_template = metadata_template(metadata_source) == "label"
     title = _clean(meta.get("content_title"))
-    blocks = parse.body_blocks(parts["body"], title)
+    body, promoted = parse.promote_headings(parts["body"])
+    blocks = parse.body_blocks(body, title)
     summary = _summary(meta, routing, blocks)
     warnings = [code for code, missing in (("no_cut_heading", not parts["cut_found"]),
                                            ("no_title", not title), ("no_summary", not summary)) if missing]
+    # The number only, never the heading text.
+    warnings += [f"promoted_heading:{number}" for number in promoted]
+    if review_conflict(meta):
+        warnings.append("review_status_conflict")
     return {
         "hpa_id": hpa_id,
         "title": title,
@@ -526,7 +575,7 @@ def normalize_document(elements, source_file):
         "question_variants": question_variants(meta, routing),
         "care_topics": care_topics(meta, label_template),
         "urgency": _clean(meta.get("urgency")),
-        "review_status": review_status(meta.get("expert_review_status")),
+        "review_status": review_status(meta),
         "content_version": _clean(meta.get("content_version")),
         "related": related_ids(hpa_id, meta, routing, parts["tail"]),
         "blocks": blocks,

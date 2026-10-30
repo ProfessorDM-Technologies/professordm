@@ -11,8 +11,10 @@ Contents:
     read_docx        .docx -> raw elements (the only python-docx code)
     split_document   raw elements -> body (member-facing) and tail (references,
                      related entries, internal metadata)
+    promote_headings turns a missing numbered H1 typed as Normal into a heading
     body_blocks      body elements -> heading, paragraph, list, table and
                      callout blocks with their heading path
+    list_item        styled list paragraphs and typed bullets ("□ ", "• ")
     clean_heading    strips "o " bullets and dotted section numbers
     heading_level    Word heading style -> 1, 2, ... or None
 
@@ -75,6 +77,16 @@ FIGURE_PREFIX = re.compile(r"^\**\s*figure\s+\d+\s*[.:]\s*\**\s*", re.IGNORECASE
 # Q3). Longer text before a colon is an ordinary sentence.
 MAX_CALLOUT_TITLE_WORDS = 8
 MAX_CALLOUT_TITLE_CHARS = 60
+
+# Characters some guides type in front of a Normal paragraph instead of using
+# a list style. One constant, so a new glyph is a one-character addition.
+BULLET_GLYPHS = "□•▪◦●‣"
+TYPED_BULLET = re.compile(rf"^[{re.escape(BULLET_GLYPHS)}][ \t]*")
+
+# A section heading typed as a Normal paragraph: "5. How light changes".
+# promote_headings only accepts it with the guards documented there.
+NUMBERED_LINE = re.compile(r"^(\d+)\.\s+\S")
+MAX_PROMOTED_WORDS = 12
 
 # A box that opens with a quote is a myth box ("“X.” Not quite..."), never a
 # titled callout, even if a colon appears early.
@@ -275,11 +287,100 @@ def _table(rows, path):
             "rows": [row for row in rows[1:] if any(cell.strip() for cell in row)], "path": path}
 
 
+def _is_caption_style(style):
+    """Tell whether a paragraph style is a caption style ("Caption Custom", "Figure Caption").
+
+    Args:
+        style (str | None): The style name.
+
+    Returns:
+        bool: True when the name contains "caption".
+
+    Side effects: none.
+    """
+    return "caption" in (style or "").casefold()
+
+
+def list_item(element):
+    """Read a paragraph as a list item, if it is one.
+
+    Args:
+        element (dict): A raw paragraph element.
+
+    Returns:
+        tuple[bool, str] | None: (ordered, item text) for a styled list
+        paragraph (ordered only for ORDERED_STYLE) or a typed bullet (a
+        non-heading, non-caption paragraph starting with one of
+        BULLET_GLYPHS, always unordered). The glyph and the whitespace after
+        it are stripped. None for any other paragraph.
+
+    Side effects: none.
+    """
+    style, text = element.get("style") or "", element["text"]
+    if element.get("list"):
+        return style == ORDERED_STYLE, TYPED_BULLET.sub("", text).strip()
+    if heading_level(style) is None and not _is_caption_style(style) and TYPED_BULLET.match(text):
+        return False, TYPED_BULLET.sub("", text).strip()
+    return None
+
+
+def promote_headings(body):
+    """Turn a numbered H1 that was typed as a Normal paragraph into a Heading 1.
+
+    Some guides number their H1s ("1.", "2.", ...) and one of them was typed
+    in body style, so its section would fall under the previous heading. A
+    paragraph is promoted only when every guard holds:
+        - it is not a heading or a list paragraph and matches NUMBERED_LINE;
+        - it has at most MAX_PROMOTED_WORDS words and does not end with ".";
+        - its number N is missing from the guide's numbered H1s;
+        - it sits after numbered H1 N-1 (or before every numbered H1 when N
+          is 1) and before numbered H1 N+1 (or, when no H1 is numbered above
+          N, anywhere before the cut, which is the end of the body);
+        - at least one of H1 N-1 and N+1 exists.
+    Nothing else is ever promoted.
+
+    Args:
+        body (list[dict]): split_document(...)["body"].
+
+    Returns:
+        tuple[list[dict], list[int]]: (body with promoted paragraphs restyled
+        as "Heading 1", the promoted numbers in order). The input is not
+        changed.
+
+    Side effects: none.
+    """
+    numbered = {}
+    for index, element in enumerate(body):
+        if element["kind"] == "paragraph" and heading_level(element.get("style")) == 1:
+            match = NUMBERED_LINE.match(element["text"])
+            if match:
+                numbered.setdefault(int(match.group(1)), index)
+    result, promoted = list(body), []
+    for index, element in enumerate(body):
+        if element["kind"] != "paragraph" or element.get("list") or heading_level(element.get("style")) is not None:
+            continue
+        text = element["text"].strip()
+        match = NUMBERED_LINE.match(text)
+        if not match or len(text.split()) > MAX_PROMOTED_WORDS or text.endswith("."):
+            continue
+        number = int(match.group(1))
+        if number in numbered or number in promoted or not ({number - 1, number + 1} & numbered.keys()):
+            continue
+        after_previous = (index > numbered[number - 1] if number - 1 in numbered
+                          else number == 1 and all(position > index for position in numbered.values()))
+        before_next = (index < numbered[number + 1] if number + 1 in numbered
+                       else all(n < number for n in numbered))
+        if after_previous and before_next:
+            result[index] = {**element, "style": "Heading 1", "list": False}
+            promoted.append(number)
+    return result, promoted
+
+
 def body_blocks(body, guide_title):
     """Turn the body elements of one guide into ordered blocks.
 
     Args:
-        body (list[dict]): split_document(...)["body"].
+        body (list[dict]): split_document(...)["body"], after promote_headings.
         guide_title (str | None): The guide title, used to drop the title
             banner line.
 
@@ -293,13 +394,15 @@ def body_blocks(body, guide_title):
         path is the cleaned heading path: ["Introduction"] before the first
         heading, then [H1] or [H1, H2].
 
-        Rules: banner lines before the first heading are dropped by pattern;
-        an "In this guide" / "Contents" section loses its heading, paragraphs
-        and lists but keeps its boxes and tables (under the path before it);
-        1x1 tables are boxes (_box); a "Figure N." prefix is stripped from
-        captions, and a caption line that continues the previous caption (same
-        caption style, no "Figure" prefix) is joined to it; consecutive list
-        paragraphs become one list block, ordered only for ORDERED_STYLE.
+        Rules: banner lines before the first heading are dropped by pattern.
+        An "In this guide" / "Contents" heading starts a section whose
+        heading, plain paragraphs and lists are dropped; its boxes, tables and
+        figure captions are kept under the path before it. The same words as
+        a plain paragraph (any style) drop that line and the list directly
+        after it. 1x1 tables are boxes (_box). A "Figure N." prefix is
+        stripped from captions, and a caption line that continues the
+        previous caption (same caption style, no "Figure" prefix) is joined
+        to it. Consecutive list items (list_item) become one list block.
 
     Side effects: none.
     """
@@ -307,14 +410,16 @@ def body_blocks(body, guide_title):
     h1 = h2 = None
     seen_heading = in_contents = False
     path = [INTRO]
-    # The list block that the next list paragraph extends, and the style of
-    # the caption that the next paragraph may continue. Any other element
-    # ends both.
+    # open_list: the list block the next list item extends. caption_style:
+    # the style a wrapped caption line must have. skip_list: drop the list
+    # directly after an unstyled "In this guide" line. Any other element
+    # ends all three.
     open_list = caption_style = None
+    skip_list = False
     for element in body:
         previous_caption, caption_style = caption_style, None
         if element["kind"] == "table":
-            open_list = None
+            open_list, skip_list = None, False
             rows = element["rows"]
             if len(rows) == 1 and len(rows[0]) == 1:
                 blocks.append(_box(rows[0][0], path))
@@ -324,13 +429,13 @@ def body_blocks(body, guide_title):
         text, style = element["text"], element.get("style", "")
         level = heading_level(style)
         if level is not None:
-            open_list = None
+            open_list, skip_list = None, False
             seen_heading = True
             heading = clean_heading(text)
             in_contents = heading.casefold() in CONTENTS_HEADINGS
             if in_contents:
-                # Leave the path alone, so a kept box takes the path of what
-                # came before the contents list.
+                # Leave the path alone, so kept boxes and captions take the
+                # path of what came before the contents list.
                 continue
             # The guides have no H3; anything deeper is treated as an H2.
             level = min(level, 2)
@@ -341,26 +446,34 @@ def body_blocks(body, guide_title):
             path = [part for part in (h1, h2) if part]
             blocks.append({"type": "heading", "level": level, "text": heading})
             continue
-        if in_contents or (not seen_heading and _is_banner(text, guide_title)):
+        if not seen_heading and _is_banner(text, guide_title):
             continue
-        if element.get("list"):
-            ordered = style == ORDERED_STYLE
+        item = list_item(element)
+        if item is not None:
+            ordered, item_text = item
+            if in_contents or skip_list or not item_text:
+                continue
             if open_list is not None and open_list["ordered"] == ordered:
-                open_list["items"].append(text)
+                open_list["items"].append(item_text)
             else:
-                open_list = {"type": "list", "ordered": ordered, "items": [text], "path": path}
+                open_list = {"type": "list", "ordered": ordered, "items": [item_text], "path": path}
                 blocks.append(open_list)
             continue
-        open_list = None
+        open_list, skip_list = None, False
+        if " ".join(text.split()).casefold() in CONTENTS_HEADINGS:
+            # "In this guide" typed in a body style: drop the line and the
+            # list right after it, keep everything else.
+            skip_list = True
+            continue
         if FIGURE_PREFIX.match(text):
             blocks.append({"type": "paragraph", "text": FIGURE_PREFIX.sub("", text), "path": path})
             # Only a dedicated caption style can wrap onto the next paragraph;
             # a caption typed in Normal must not swallow the body text after it.
-            caption_style = style if "caption" in style.casefold() else None
+            caption_style = style if _is_caption_style(style) else None
         elif previous_caption is not None and style == previous_caption:
             # A caption wrapped onto a second paragraph of the same style.
             blocks[-1]["text"] += " " + text
             caption_style = style
-        else:
+        elif not in_contents:
             blocks.append({"type": "paragraph", "text": text, "path": path})
     return blocks
