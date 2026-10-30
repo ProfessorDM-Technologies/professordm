@@ -16,6 +16,7 @@ Contents:
     metadata_template   which of the three metadata templates a guide uses
     split_list          the one list-splitting rule (";", "|", "?", ",")
     question_variants   metadata and routing variants, merged and deduplicated
+    near_duplicates     drops rewordings of an earlier variant (VARIANT_DUP_RATIO)
     snake_case          the shared care-topic normalizer
     review_status       expert review status first, the "Status" label as fallback
     related_ids         related guide ids from metadata, routing and the tail
@@ -34,6 +35,7 @@ text. The CLI prints one row of counts per guide; file names and ids only.
 """
 
 import argparse
+import difflib
 import json
 import re
 import sys
@@ -103,6 +105,13 @@ RELATED_ID = re.compile(r"\b(?:HPA-)?([A-Z]{3,8}-\d{4})\b")
 
 # Characters folded to their straight forms before comparing variants.
 QUOTE_FOLD = str.maketrans({"“": '"', "”": '"', "‘": "'", "’": "'"})
+
+# A variant whose folded text reaches this difflib.SequenceMatcher ratio
+# against an earlier kept variant of the same guide is a rewording and is
+# dropped (spec 14.10). Tuned on the 19 guides, where every pair at 0.8 or
+# above was a rewording and every pair just below was a different question
+# (for example "What is PPFD?" / "What is DLI?", "too large" / "too small").
+VARIANT_DUP_RATIO = 0.8
 
 
 def _clean(value):
@@ -337,11 +346,45 @@ def question_variants(meta, routing):
         routing (dict): From extract_metadata.
 
     Returns:
-        list[str]: The union of variant_lists, metadata order first.
+        list[str]: The union of variant_lists, metadata order first, with
+        exact duplicates and then near duplicates (near_duplicates) removed.
 
     Side effects: none.
     """
-    return dedupe_variants(*variant_lists(meta, routing))
+    return near_duplicates(dedupe_variants(*variant_lists(meta, routing)))[0]
+
+
+def near_duplicates(variants):
+    """Drop variants that reword an earlier kept variant.
+
+    Runs after exact deduplication and before chunk.split_variants, so a
+    rewording never takes a card or held-out slot. Earlier variants win,
+    so a metadata variant beats a routing one.
+
+    Args:
+        variants (list[str]): Exact-deduplicated variants, in priority order.
+
+    Returns:
+        tuple[list[str], list[tuple[int, int, float]]]: (kept variants,
+        dropped pairs). Each pair is (index of the kept variant it matched,
+        index of the dropped variant, ratio), indices into `variants`; when
+        several kept variants match, the highest ratio is reported. Ratios
+        compare _variant_key texts.
+
+    Side effects: none.
+    """
+    kept, dropped = [], []
+    for index, variant in enumerate(variants):
+        key = _variant_key(variant)
+        matches = [(difflib.SequenceMatcher(None, kept_key, key).ratio(), kept_index)
+                   for kept_index, kept_key in kept]
+        # Highest ratio; on a tie, the earliest kept variant.
+        best = max(matches, key=lambda match: (match[0], -match[1]), default=None)
+        if best is not None and best[0] >= VARIANT_DUP_RATIO:
+            dropped.append((best[1], index, best[0]))
+        else:
+            kept.append((index, key))
+    return [variants[index] for index, _ in kept], dropped
 
 
 def snake_case(text):

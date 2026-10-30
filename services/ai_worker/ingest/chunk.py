@@ -88,6 +88,10 @@ SENTENCE_BREAK = re.compile(r"(?<=[.!?])\s+")
 # replace_ids swaps each one for a readable name before chunk text is built
 # (spec 14.10). The same pattern as normalize.RELATED_ID.
 GUIDE_ID = re.compile(r"\b(?:HPA-)?([A-Z]{3,8}-\d{4})\b")
+# GUIDE_ID plus the full stop right after it, if any, so a title that ends
+# in its own "?", "!" or "." does not end up as "Why is it wilting?." (spec
+# 14.10).
+GUIDE_ID_AND_STOP = re.compile(GUIDE_ID.pattern + r"(\.?)")
 # Stands in for an id whose guide is not in this batch.
 UNKNOWN_GUIDE = "a related guide"
 
@@ -206,7 +210,9 @@ def replace_ids(blocks, titles):
         tuple[list[dict], int]: (new blocks, number of ids replaced). Each
         GUIDE_ID match in paragraph text, list items, table header and
         cells, and callout title and text becomes the title of that guide,
-        or UNKNOWN_GUIDE when it is not in the batch. Headings are left
+        or UNKNOWN_GUIDE when it is not in the batch. A full stop right
+        after the id is dropped when the title already ends with "?", "!"
+        or ".". Headings are left
         alone. The input blocks are not changed, so doc["related"] and the
         hpa: tags built from doc.json keep the real ids.
 
@@ -217,10 +223,12 @@ def replace_ids(blocks, titles):
     def name(match):
         nonlocal count
         count += 1
-        return titles.get(f"HPA-{match.group(1)}") or UNKNOWN_GUIDE
+        title = titles.get(f"HPA-{match.group(1)}") or UNKNOWN_GUIDE
+        stop = match.group(2)
+        return title if title.endswith(("?", "!", ".")) else title + stop
 
     def swap(text):
-        return GUIDE_ID.sub(name, text)
+        return GUIDE_ID_AND_STOP.sub(name, text)
 
     result = []
     for block in blocks:

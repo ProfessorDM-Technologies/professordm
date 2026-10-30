@@ -6,6 +6,7 @@ python-docx and no network are needed. Run with:
     uv run --python 3.11 python -m unittest discover services/ai_worker/tests
 """
 
+import difflib
 import sys
 import unittest
 from pathlib import Path
@@ -434,6 +435,37 @@ class MetadataTests(unittest.TestCase):
 
 
 
+class NearDuplicateVariantTests(unittest.TestCase):
+    def test_near_duplicate_dropped_and_first_kept(self):
+        """A rewording of an earlier variant is dropped, reported by index, and metadata beats routing."""
+        variants = ["How often should I mist a moon fern?", "How often do I mist my moon ferns?",
+                    "Why are fronds limp?"]
+        kept, dropped = normalize.near_duplicates(variants)
+        self.assertEqual(kept, [variants[0], variants[2]])
+        self.assertEqual([(k, d) for k, d, _ in dropped], [(0, 1)])
+        self.assertGreaterEqual(dropped[0][2], normalize.VARIANT_DUP_RATIO)
+        merged = normalize.question_variants(
+            {"search_question_variants": variants[0]},
+            {"natural-language queries": f"{variants[1]}; {variants[2]}"})
+        self.assertEqual(merged, [variants[0], variants[2]])
+
+    def test_pair_just_below_the_threshold_is_kept(self):
+        """A 0.78 pair is two different questions and both stay."""
+        variants = ["Is my pot too big?", "Is my pot too small?"]
+        ratio = difflib.SequenceMatcher(None, *map(normalize._variant_key, variants)).ratio()
+        self.assertAlmostEqual(ratio, 0.78, places=2)
+        self.assertEqual(normalize.near_duplicates(variants), (variants, []))
+
+    def test_dedup_happens_before_the_even_odd_split(self):
+        """The dropped rewording takes no slot, so the card and held-out sets shift past it."""
+        tail = three_column_tail(content_id="HPA-FUND-0099", content_title=TITLE, search_question_variants=(
+            "How often should I mist a moon fern?; How often do I mist my moon ferns?; "
+            "Why are fronds limp?; When should I repot?"))
+        doc = normalize.normalize_document([h1("First"), p("Body.")] + tail, "x.docx")
+        self.assertEqual(chunk.split_variants(doc["question_variants"]),
+                         (["How often should I mist a moon fern?", "When should I repot?"],
+                          ["Why are fronds limp?"]))
+
 class CitationTests(unittest.TestCase):
     def test_strip_citations_forms(self):
         """Single, consecutive, comma and range markers go, with the space before them; words in brackets stay."""
@@ -773,6 +805,13 @@ class GuideIdTests(unittest.TestCase):
         doc, _ = self.chunk_with_ids(heading(1, "Light"), para(["Light"], "See HPA-FUND-0002."))
         self.assertEqual(doc["blocks"][1]["text"], "See HPA-FUND-0002.")
         self.assertEqual(doc["related"], ["HPA-FUND-0002"])
+
+    def test_full_stop_after_a_title_ending_in_punctuation_is_dropped(self):
+        """'?.' becomes '?' when the title ends with its own punctuation; other titles keep the stop."""
+        titles = {"HPA-TEST-0001": GUIDE, "HPA-FUND-0002": "Why is it wilting?", "HPA-FUND-0003": "Misting Basics"}
+        chunks, _, _ = chunk.chunk_document(guide(heading(1, "Light"), para(
+            ["Light"], "Read HPA-FUND-0002. Then FUND-0003. Done.")), titles)
+        self.assertEqual(chunks[0]["content"], "Read Why is it wilting? Then Misting Basics. Done.")
 
 if __name__ == "__main__":
     unittest.main()
