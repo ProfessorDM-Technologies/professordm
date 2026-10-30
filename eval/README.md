@@ -8,6 +8,7 @@ This folder measures how well `services/ai_worker` triage labels DMs, using a go
 | `eval_triage.py` | Runs `triage()` on every row with the real models and prints the report |
 | `generate_synthetic.py` | Generates, blind-labels and freezes the synthetic test split |
 | `triage_test_meta.json` | How the test split was made: models, seed, cost, script hash, review decisions |
+| `check_providers.py` | One tiny call per model with its real settings, to confirm each works under `data_collection: deny` |
 | `results/` | One JSON file per eval run (git-ignored) |
 | `private/` | Unreviewed candidates from the generator (git-ignored) |
 
@@ -93,3 +94,27 @@ uv run --python 3.11 python eval/generate_synthetic.py freeze          # after h
 The models run at the provider default temperature, so the seed reproduces the mix but not the exact DMs.
 
 **Real accuracy** will come from how often the creator changes a label (`override_category`) once the inbox is live; this synthetic set only tells us we're in the right range.
+
+## Models
+
+Every OpenRouter call sends `provider: {"data_collection": "deny"}` (plus `require_parameters: true` with a schema), so only providers that don't retain prompts are used. `check_providers.py` confirms each model below finds such a provider with exactly these settings. Rerun it whenever a model id or a setting changes:
+
+```bash
+set -a; source .env; set +a
+uv run --python 3.11 python eval/check_providers.py
+```
+
+Last checked 2026-10-29, all 9 checks passed.
+
+| Check | Model id | Settings that work |
+|---|---|---|
+| Triage classify | `google/gemini-3.1-flash-lite` | `temperature: 0`, strict schema |
+| Triage clarify | `google/gemini-3.1-flash-lite` | `temperature: 0`, no schema (plain text) |
+| Draft primary | `anthropic/claude-sonnet-5.5` | no `temperature`, strict schema, `max_tokens: 2000` |
+| Draft fallback | `openai/gpt-5.6-terra` | no `temperature`, `reasoning: {"effort": "low"}`, strict schema, `max_tokens: 4000` |
+| Judge (Sonnet drafts) | `openai/gpt-6.1-sol` | no `temperature`, strict schema |
+| KB eval question generator, judge (Terra drafts) | `google/gemini-2.5-pro` | strict schema, with or without `temperature: 0` (use `0` for judging) |
+| Embeddings | `text-embedding-3-small` (OpenAI) | 1536 dimensions |
+| Triage moderation | `omni-moderation-latest` (OpenAI) | returns `results[0].categories` |
+
+Sonnet 5.5 and GPT-6.1-sol reject `temperature` under `require_parameters`, so drafts and judge scores aren't fully deterministic. Expect small run-to-run differences in draft eval numbers; a gate or prompt change must beat the baseline by more than that noise.
