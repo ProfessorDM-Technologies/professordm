@@ -104,7 +104,7 @@ set -a; source .env; set +a
 uv run --python 3.11 python eval/check_providers.py
 ```
 
-Last checked 2026-10-29, all 9 checks passed.
+Last checked 2026-10-30, all 9 checks passed.
 
 | Check | Model id | Settings that work |
 |---|---|---|
