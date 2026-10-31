@@ -70,16 +70,17 @@ sequenceDiagram
     SND->>IG: confirmation DM "Got it. Expected answer time: creator setting"
 
     rect rgb(243, 232, 255)
-    Note over Q,DB: 4. Draft: knowledge base first, web search to fill gaps
+    Note over Q,DB: 4. Draft: grounded in the creator's guides (no web search in v1)
     end
     Q->>AI: draft job
-    AI->>DB: pgvector search, creator knowledge first
-    alt knowledge base not enough for a complete answer
-        AI->>AI: web search to fill the gaps, sources cited and labeled "from web"
+    AI->>DB: match_knowledge hybrid search (meaning + keywords), sources = doc
+    alt best similarity below the gate (0.475)
+        AI->>DB: no_draft, reason no_coverage (no model call), status = awaiting_creator
+    else enough coverage
+        AI->>AI: draft with Claude Sonnet 5.5 (manual fallback to GPT-5.6 Terra)<br/>using question, clarifications and guide passages
+        AI->>AI: safety check 2 on the draft
+        AI->>DB: insert draft with knowledge citations, status = awaiting_creator
     end
-    AI->>AI: draft with Claude Sonnet 5 using question, clarifications, image, knowledge, web
-    AI->>AI: safety check 2 on the draft
-    AI->>DB: insert draft with citations (knowledge vs web), status = awaiting_creator
     DB-->>CW: Realtime: paid question in Inbox, tag "Instagram", "$4.00 earned",<br/>Safety Flag badge + Moderation tab entry if flagged
 
     rect rgb(255, 235, 238)
@@ -88,7 +89,7 @@ sequenceDiagram
     opt question has a Safety Flag
         CR->>CW: review the flag in the Moderation tab before answering
     end
-    CR->>CW: open question, see draft, knowledge + web sources, images, reply-by timer
+    CR->>CW: open question, see draft, knowledge sources, images, reply-by timer
     CR->>CW: rewrite in own voice, add tags. Answer as text and/or voice note (or save draft)
     CW->>CW: block send if text unchanged from draft or no tags
     CR->>CW: Submit answer

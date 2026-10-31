@@ -2,13 +2,13 @@
 sequenceDiagram
     autonumber
     %% OWNER: Chinmay, AI + Knowledge Systems Lead. Guardrails + eval gates co-owned with Karthik.
-    %% One ai-worker Lambda running LangGraph JS graphs, chosen by the SQS job type.
+    %% One ai-worker Lambda (Python 3.11, standard library) running the function chosen by the SQS job type.
     participant SQS as SQS<br/>ai-jobs + outbound
-    participant AI as ai-worker<br/>(Chinmay, LangGraph JS)
+    participant AI as ai-worker<br/>(Chinmay, Python 3.11,<br/>standard library, AWS Lambda)
     participant MOD as OpenAI Moderation<br/>+ embeddings
     participant OR as OpenRouter
     participant GEM as Gemini 3.1 Flash-Lite
-    participant CLN as Claude Sonnet 5
+    participant CLN as Claude Sonnet 5.5
     participant GPT as GPT-5.6 Terra<br/>(fallback)
     participant DB as Supabase + pgvector<br/>(Karthik)
     participant CW as Creator Workspace<br/>(Ritvik)
@@ -64,25 +64,29 @@ sequenceDiagram
     Note over SQS,CW: FLOW 3  DRAFT  job: draft. Runs AFTER payment.
     end
     SQS->>AI: { type: draft, questionId }
-    AI->>MOD: embed question (text-embedding-3-small)
-    AI->>DB: pgvector top-k, creator knowledge first
-    DB-->>AI: entries + ids for citations
-    alt knowledge coverage low (cannot give a complete answer)
-        AI->>OR: web search to fill the gaps (tool choice in ADR, e.g. OpenRouter web plugin)
-        OR-->>AI: web results with URLs
+    AI->>DB: load question, original message, clarification rounds, checkpoint-1 risk topics
+    AI->>MOD: embed question + clarification replies (text-embedding-3-small)
+    AI->>DB: rpc match_knowledge: hybrid search (cosine + full-text, RRF),<br/>sources = doc (creator guides only), review:pending excluded in production
+    DB-->>AI: top 8 chunks (max 3 per guide) with similarity + entry ids
+    Note over AI,OR: No web search in v1. Gaps go to the creator as missing_info.
+    alt best similarity below DRAFT_MIN_SIMILARITY (0.475, tuned on dev)
+        AI->>DB: drafts row: no_draft, reason no_coverage, no model call
+    else enough coverage
+        AI->>OR: draft(question, clarifications, numbered passages K1..Kn), strict schema
+        OR->>CLN: grounded draft in creator voice
+        alt timeout, 429, 404 or 5xx (manual fallback, only if 45 s remain)
+            AI->>OR: same messages with the fallback settings (no OpenRouter models list)
+            OR->>GPT: grounded draft
+            GPT-->>OR: fallback draft
+        else ok
+            CLN-->>OR: draft
+        end
+        OR-->>AI: answer, used_sources, knowledge_coverage, missing_info, risk_topics
+        AI->>AI: validate length, format and refs (one retry), coverage none = no_draft
+        AI->>MOD: safety checkpoint 2 on the answer: moderation, blocked terms, risk topics
+        AI->>DB: drafts row (ready, or no_draft with its reason), knowledge citations only,<br/>model + prompt version, safety_flags checkpoint 2
     end
-    AI->>OR: draft(question, clarifications, image context, entries, web results)
-    OR->>CLN: grounded draft in creator voice guide
-    alt provider error or timeout
-        OR->>GPT: same request
-        GPT-->>OR: fallback draft
-    else ok
-        CLN-->>OR: draft
-    end
-    OR-->>AI: draft text, each part labeled: creator knowledge | web (with URL) | model
-    AI->>MOD: safety checkpoint 2 (draft), L1 to L3
-    AI->>DB: insert draft, citations, model + prompt version, flags
-    DB-->>CW: Realtime: AI draft ready
+    DB-->>CW: Realtime: AI draft ready, or "No AI draft, answer by hand" with the reason
 
     rect rgb(255, 243, 224)
     Note over SQS,CW: FLOW 4  FOLLOW-UP  job: followup
@@ -90,7 +94,7 @@ sequenceDiagram
     SQS->>AI: { type: followup, questionId, followupId }
     AI->>OR: on-topic check with full thread (Gemini)
     alt on topic
-        AI->>OR: assisted reply (Claude Sonnet 5, knowledge first, web if needed), safety checkpoint 2
+        AI->>OR: assisted reply (Claude Sonnet 5.5, knowledge first, no web search in v1), safety checkpoint 2
         AI->>DB: follow-up draft awaiting_creator
     else off topic
         AI->>DB: off_topic flag, creator decides

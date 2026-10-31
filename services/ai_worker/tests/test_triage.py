@@ -135,7 +135,7 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(decision, {
             "status": "ready_for_question", "category": "expert_question", "service_kind": None,
             "confidence": 0.94, "reason": "Asks about crispy calathea leaf tips",
-            "prompt_version": "triage-v4+sweetlife-v1", "model": "test-model", "safety_flags": [],
+            "prompt_version": "triage-v4+sweetlife-v2", "model": "test-model", "safety_flags": [],
             "question": {"question_text": DM, "safety_flagged": False},
             "clarification": None, "outbound": None})
         self.assertEqual(fake.names(), ["moderate", "classify"])
@@ -147,7 +147,7 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(decision, {
             "status": "awaiting_clarification", "category": "needs_clarification", "service_kind": None,
             "confidence": 0.9, "reason": "Asks about crispy calathea leaf tips",
-            "prompt_version": "triage-v4+clarify-v4+sweetlife-v1", "model": "test-model",
+            "prompt_version": "triage-v4+clarify-v4+sweetlife-v2", "model": "test-model",
             "safety_flags": [], "question": None,
             "clarification": {"round": 1, "prompt": CLARIFY_TEXT},
             "outbound": {"type": "clarification", "text": CLARIFY_TEXT}})
@@ -219,7 +219,7 @@ class SafetyTests(unittest.TestCase):
                 self.assertEqual(decision, {
                     "status": "blocked", "category": "safety_concern", "service_kind": None,
                     "confidence": None, "reason": f"Moderation flagged {category}",
-                    "prompt_version": "triage-v4+sweetlife-v1", "model": "omni-moderation-latest",
+                    "prompt_version": "triage-v4+sweetlife-v2", "model": "omni-moderation-latest",
                     "safety_flags": [{"layer": "moderation", "category": "harassment", "detail": None},
                                      {"layer": "moderation", "category": category, "detail": None}],
                     "question": None, "clarification": None,
@@ -335,7 +335,7 @@ class FailureTests(unittest.TestCase):
                 self.assertEqual(decision, {
                     "status": "awaiting_clarification", "category": "needs_clarification", "service_kind": None,
                     "confidence": None, "reason": "No text in the message, asks for a description in words",
-                    "prompt_version": "triage-v4+sweetlife-v1", "model": None, "safety_flags": [],
+                    "prompt_version": "triage-v4+sweetlife-v2", "model": None, "safety_flags": [],
                     "question": None,
                     "clarification": {"round": 1, "prompt": SWEETLIFE_FLORA["empty_text_prompt"]},
                     "outbound": {"type": "clarification", "text": SWEETLIFE_FLORA["empty_text_prompt"]}})
@@ -347,7 +347,7 @@ class FailureTests(unittest.TestCase):
         decision = run(fake)
         self.assertEqual(decision, {
             "status": "creator_decision", "category": None, "service_kind": None, "confidence": None,
-            "reason": "Model returned invalid output twice", "prompt_version": "triage-v4+sweetlife-v1",
+            "reason": "Model returned invalid output twice", "prompt_version": "triage-v4+sweetlife-v2",
             "model": "test-model",
             "safety_flags": [{"layer": "moderation", "category": "violence", "detail": None}],
             "question": None, "clarification": None, "outbound": None})
@@ -403,7 +403,7 @@ class ReassessTests(unittest.TestCase):
         self.assertEqual(decision, {
             "status": "ready_for_question", "category": "expert_question", "service_kind": None,
             "confidence": 0.94, "reason": "Asks about crispy calathea leaf tips",
-            "prompt_version": "triage-v4+sweetlife-v1", "model": "test-model", "safety_flags": [],
+            "prompt_version": "triage-v4+sweetlife-v2", "model": "test-model", "safety_flags": [],
             "question": {"question_text": "why are the tips brown\na calathea, north window, I water every week",
                          "safety_flagged": False},
             "clarification": None, "outbound": None})
@@ -419,7 +419,7 @@ class ReassessTests(unittest.TestCase):
         self.assertEqual(decision["status"], "awaiting_clarification")
         self.assertEqual(decision["clarification"], {"round": 2, "prompt": "How long has it been happening?"})
         self.assertEqual(decision["outbound"], {"type": "clarification", "text": "How long has it been happening?"})
-        self.assertEqual(decision["prompt_version"], "triage-v4+clarify-v4+sweetlife-v1")
+        self.assertEqual(decision["prompt_version"], "triage-v4+clarify-v4+sweetlife-v2")
         clarify = fake.calls[-1]
         self.assertEqual((clarify[0], clarify[1], clarify[2], len(clarify[3])),
                          ("clarify", "why are the tips brown", ["hi"], 1))
