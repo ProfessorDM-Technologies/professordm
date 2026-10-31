@@ -1,6 +1,6 @@
-# eval: triage evaluation
+# eval: triage and knowledge base evaluation
 
-This folder measures how well `services/ai_worker` triage labels DMs, using a golden set of labeled synthetic DMs.
+This folder measures how well `services/ai_worker` triage labels DMs, using a golden set of labeled synthetic DMs, and how well knowledge base search finds the right guide (see [Knowledge base retrieval eval](#knowledge-base-retrieval-eval)).
 
 | File | What |
 |---|---|
@@ -9,8 +9,11 @@ This folder measures how well `services/ai_worker` triage labels DMs, using a go
 | `generate_synthetic.py` | Generates, blind-labels and freezes the synthetic test split |
 | `triage_test_meta.json` | How the test split was made: models, seed, cost, script hash, review decisions |
 | `check_providers.py` | One tiny call per model with its real settings, to confirm each works under `data_collection: deny` |
+| `eval_retrieval.py` | Knowledge base retrieval eval: guide-level hit@3, hit@5 and MRR, offline or live |
+| `generate_kb_eval.py` | Generates, validates and freezes the question sets for the knowledge base evals |
+| `kb_eval_common.py` | Shared by the knowledge base evals: offline search, split rule, metrics, query embedding cache |
 | `results/` | One JSON file per eval run (git-ignored) |
-| `private/` | Unreviewed candidates from the generator (git-ignored) |
+| `private/` | Unreviewed candidates, the knowledge base golden sets and the query embedding cache (git-ignored) |
 
 ## Golden set format
 
@@ -94,6 +97,90 @@ uv run --python 3.11 python eval/generate_synthetic.py freeze          # after h
 The models run at the provider default temperature, so the seed reproduces the mix but not the exact DMs.
 
 **Real accuracy** will come from how often the creator changes a label (`override_category`) once the inbox is live; this synthetic set only tells us we're in the right range.
+
+## Knowledge base retrieval eval
+
+Checks that a follower's question finds the guide that answers it (spec `docs/plans/kb-draft-implementation-spec.md`, sections 9.1 and 14.7). Every file with questions taken from the guides lives in `private/`, because the repo is public.
+
+| File | What |
+|---|---|
+| `private/retrieval_golden.jsonl` | Frozen messy rows (and Arun's rows once they arrive) |
+| `private/kb_candidates_<set>.jsonl` | Generator candidates for hand review, plus a `.meta.json` with model, seed, cost and filter stats |
+| `private/query_embeddings.json` | Query vectors keyed by the sha256 of the query text (never the text), so reruns don't pay again |
+| `results/retrieval-<timestamp>.json` | One file per run: settings, metrics, and per row the expected and ranked guide ids (no text) |
+
+### Rows
+
+Three origins, all scored the same way:
+
+| Origin | Where it comes from | Id |
+|---|---|---|
+| `variant` | The held-out question variants of every guide, rebuilt at eval time with `chunk.split_variants` from `services/ai_worker/ingest/private/docs/*.json`. Never stored, so they can't drift from what the cards leave out | `<hpa_id>:v<i>`, `i` = index in the guide's full variant list |
+| `messy` | Messy Instagram-style questions from `generate_kb_eval.py`, reviewed by hand | `ret-NNN` |
+| `arun` | Arun's independently written queries (SCRUM-91), appended to `retrieval_golden.jsonl` by hand. Test only: a missing split becomes `test`, `dev` is rejected | any other prefix, for example `arun-01` |
+
+```json
+{"id": "ret-004", "split": "test", "query": "...", "expected_hpa_ids": ["HPA-FUND-0002"], "origin": "messy", "notes": "..."}
+```
+
+`expected_hpa_ids` lists every guide that answers the question (1 to 3 after review). A row is a hit at k when any of them is in the top k.
+
+### Split rule
+
+`split = "dev"` when `int(sha256(id).hexdigest(), 16) % 10 < 3`, else `"test"` (`kb_eval_common.split_for`). About 30% dev, the same for every machine and every run. Tune on dev only (chunking constants, cards); test is reported, never tuned on.
+
+### Metrics and bar
+
+The search returns ranked chunks. The guide ranking is each `hpa_id` at its first occurrence. Per origin and split the report shows n, hit@3, hit@5 and MRR, then the combined variant + messy line on test, Arun's group, and every miss at 5 with its expected and top 3 predicted guides.
+
+**Bar:** hit@5 of 90% or more on test, variant + messy combined.
+
+### Running it
+
+```bash
+set -a; source .env; set +a
+uv run --python 3.11 python eval/eval_retrieval.py                 # offline, vector only (default)
+uv run --python 3.11 python eval/eval_retrieval.py --no-cards      # without the doc cards (kind:card)
+uv run --python 3.11 python eval/eval_retrieval.py --split dev --origin variant
+uv run --python 3.11 python eval/eval_retrieval.py --live          # staging, after the load (needs knowledge.py, PR B)
+```
+
+| Mode | What it searches |
+|---|---|
+| `--offline` (default) | `kb_eval_common.offline_search`: cosine over `services/ai_worker/ingest/private/rows.jsonl` in memory, mirroring `knowledge.search` without SQL. Vector only, so it can't test the keyword half of the hybrid search |
+| `--live` | `knowledge.search` against `match_knowledge` on staging. Needs `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` |
+| `--no-cards` | Adds `exclude_tags=["kind:card"]` to either mode |
+
+Both modes use `k=20, candidates=50, per_doc=50, sources=["doc"]`: ranking guides needs the raw chunk order, so the per-doc cap is effectively off. `--creator-id` defaults to the single creator in `rows.jsonl`. A full offline run embeds only new queries (a fraction of a cent for all 75) and takes a few seconds.
+
+### Generating the question sets
+
+```bash
+set -a; source .env; set +a
+uv run --python 3.11 python eval/generate_kb_eval.py estimate                     # mix and cost, no API calls
+uv run --python 3.11 python eval/generate_kb_eval.py generate --set retrieval --budget 1
+uv run --python 3.11 python eval/generate_kb_eval.py freeze --set retrieval        # after hand review
+```
+
+1. **`generate`.** `google/gemini-2.5-pro` (env `KB_EVAL_GEN_MODEL`), never the drafter or the judge, writes questions from each guide's id, title, summary, care topics and H1/H2 headings. It never sees body text. Requests send `provider: {"data_collection": "deny", "require_parameters": true}` and a strict JSON schema whose guide ids are an enum. Each spec names its target guide(s), cycling through the guides. Candidates that mention media, contradict their kind, or sit within 0.8 (difflib ratio) of any guide question variant or of another candidate are dropped. It refuses to overwrite a candidates file unless given `--force`, so a review in progress is safe.
+2. **Review by hand.** Fix or delete lines in `private/kb_candidates_<set>.jsonl` and check `expected_hpa_ids` (and for drafts `expected_coverage`): the generator only proposes them. Deleting a line shifts the ids assigned at freeze.
+3. **`freeze`.** Validates every row (labels present, guide ids exist, rounds well formed, `flagged_topics` only from the profile's risk topics), assigns `ret-NNN` / `draft-NNN` in file order and `split = split_for(id)`, and appends to `private/retrieval_golden.jsonl` (with `origin: "messy"`) or `private/draft_golden.jsonl`. It refuses if the file already holds that set.
+
+`--set draft` builds about 40 paid questions for the draft eval (PR B): 12 plain, 10 clarified (a vague first message plus 1 or 2 clarification rounds, `question_text` = original and replies joined with `\n` like triage), 10 out of the knowledge base (`expected_coverage: "none"`), 8 risk topics (`safety_flagged: true`), about 8 of them asked in the Knowledge app. Clarified rows are always Instagram, because clarification rounds come from Instagram triage.
+
+The retrieval set was generated on 2026-10-30 for $0.107: 21 written, 15 kept, none dropped by the filters. Review added a second or third answering guide to 6 rows; all 15 rows also hit at 3 against the generator's original ids.
+
+### Results (2026-10-30, offline, vector only)
+
+| Rows | Split | n | hit@3 | hit@5 | MRR | no cards: hit@3 | hit@5 | MRR |
+|---|---|---|---|---|---|---|---|---|
+| variant | dev | 13 | 100.0% | 100.0% | 0.962 | 100.0% | 100.0% | 0.962 |
+| variant | test | 47 | 91.5% | 95.7% | 0.782 | 91.5% | 95.7% | 0.771 |
+| messy | dev | 3 | 100.0% | 100.0% | 1.000 | 100.0% | 100.0% | 1.000 |
+| messy | test | 12 | 100.0% | 100.0% | 1.000 | 100.0% | 100.0% | 1.000 |
+| **variant + messy** | **test** | 59 | 93.2% | **96.6%** | 0.826 | 93.2% | **96.6%** | 0.818 |
+
+Passes the bar in both modes. The cards add a little MRR (0.826 vs 0.818) and no hits; held-out variants are never on a card, so this measures the cards' summary and keywords, not leaked questions. Two test misses, the same in both modes. Nothing was tuned: the chunking constants are unchanged since the chunk review. Arun's group and the `--live` hybrid run come after the staging load.
 
 ## Models
 
