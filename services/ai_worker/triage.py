@@ -14,6 +14,9 @@ Entry points:
 Depends on:
     llm      for every model call (moderation, classification, clarification
              text). Tests replace this module with a fake.
+    safety   for safety layers 1 and 2 (moderation thresholds, blocked terms),
+             shared with draft. Its names are re-exported here, so
+             triage.SEVERE, triage._flag and the rest keep working.
     prompts  for the default creator profile and the prompt version strings.
 
 Never does:
@@ -27,11 +30,18 @@ Never does:
 """
 
 import logging
-import re
 import time
 
 import llm
+import safety
 from prompts import CLARIFY_VERSION, SWEETLIFE_FLORA, TRIAGE_VERSION, prompt_version
+# Re-exported so existing callers (tests, eval_triage.py) can still read them
+# from triage. The values and their reasoning live in safety.py.
+from safety import (BLOCKED_TERMS, MILD_FLAG_THRESHOLD, SCORED_SEVERE, SEVERE, SEVERE_FLAG_THRESHOLD,
+                    blocked_term, flag)
+
+_flag = flag
+_blocked_term = blocked_term
 
 
 # Below this classifier confidence, the creator decides instead of the router.
@@ -41,89 +51,14 @@ from prompts import CLARIFY_VERSION, SWEETLIFE_FLORA, TRIAGE_VERSION, prompt_ver
 # until real DMs show where confidence and accuracy diverge.
 CONFIDENCE_CUTOFF = 0.6
 
-# A non-blocking moderation category only becomes a safety flag at this score
-# or above (OpenAI must also have flagged it). Without this, pest questions like
-# "how do I kill the fungus gnats" were flagged for violence at 0.40 and sent to
-# the creator's Moderation tab. 0.5 cleared most pest phrases we probed
-# (violence 0.12 to 0.45) while keeping clear harassment (0.65 to 0.89). The
-# most graphic ones ("no survivors", "bug homicide") scored about 0.52 and still
-# get a mild flag, which only marks the question for review. Calibrated on
-# synthetic data only; revisit with real DMs.
-MILD_FLAG_THRESHOLD = 0.5
-
-# The threatening categories in SCORED_SEVERE only block at this score or
-# above. Below it they are treated like any other category (flagged at
-# MILD_FLAG_THRESHOLD). Chosen so "Answer me or I'll make you regret it"
-# (harassment/threatening 0.52) still blocks. Real threats that score lower
-# (0.22 to 0.33 in the test split) are still caught by the classifier as
-# safety_concern and reach the creator. Calibrated on synthetic data only.
-SEVERE_FLAG_THRESHOLD = 0.5
-
 # Maximum clarification questions per message. Two rounds give the follower a
 # fair chance to add the missing details without turning the DM into an
 # interview; after that a human (the creator) is better placed to decide.
 # Matches the clarification_rounds.round check (1 to 2) in the schema.
 MAX_ROUNDS = 2
 
-# OpenAI moderation categories that block the message outright: no
-# classification, a polite decline (or crisis_text for self-harm), and a
-# safety flag. These are the categories where an automated reply or a paid
-# answer must never happen.
-# illicit/violent is deliberately NOT here. It fires on pest-killing language
-# ("whats the best way to nuke them?? 💀" scored 0.80), and blocking would send
-# a decline to a follower asking about bugs. It is flag-only now: a genuinely
-# harmful request (a ricin question scored 0.62) still gets a moderation flag,
-# and the classifier labels it safety_concern, so it reaches creator_decision.
-SEVERE = {
-    "self-harm/intent",
-    "self-harm/instructions",
-    "sexual/minors",
-    "harassment/threatening",
-    "hate/threatening",
-}
-
-# The subset of SEVERE that only blocks at SEVERE_FLAG_THRESHOLD. self-harm/*
-# and sexual/minors block on OpenAI's own flag at any score, because missing
-# one costs far more than an occasional false block.
-SCORED_SEVERE = {"harassment/threatening", "hate/threatening"}
-
-# Base blocked phrases for every creator, matched case-insensitively as whole
-# words with any whitespace between words. A match blocks with a decline.
-# Kept short on purpose: moderation and the classifier cover most abuse, and
-# slurs are left to moderation so they do not live in source. "doxx" and
-# "doxxing" were removed so a victim reporting it is not blocked. Each
-# creator's own terms go in the profile's extra_blocked_terms. Placeholder
-# until Kristin and Karthik sign off the final list.
-BLOCKED_TERMS = (
-    "kill yourself",
-    "kys",
-    "send nudes",
-    "child porn",
-)
-
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
-
-def _flag(layer, category, detail=None):
-    """Build one safety flag entry for the decision.
-
-    Args:
-        layer (str): "moderation" (OpenAI moderation), "rules" (blocked terms)
-            or "policy" (the classifier's risk_flag or a safety_concern label).
-            These match the safety_flags.layer check in the schema.
-        category (str): What was found, for example "violence",
-            "blocked_term", "risk_topic" or "safety_concern".
-        detail (str | None): Extra context. Only ever None or one of the
-            profile's risk topics, never DM text, because flags are stored and
-            shown to reviewers.
-
-    Returns:
-        dict: {"layer": str, "category": str, "detail": str | None}
-
-    Side effects: none.
-    """
-    return {"layer": layer, "category": category, "detail": detail}
 
 
 def _decision(status, profile, *, category=None, service_kind=None, confidence=None, reason=None,
@@ -215,35 +150,12 @@ def _blocked(profile, flags, reason, model=None, text_key="decline_text"):
                      safety_flags=flags, outbound={"type": "decline", "text": profile[text_key]})
 
 
-def _blocked_term(text, profile):
-    """Check the DM against the base and creator blocked terms (safety layer 2).
-
-    Matching is case-insensitive and whole-word: "kys" matches "kys" but not
-    "skys". Spaces inside a term match any run of whitespace, so "kill
-    yourself" also matches "KILL   yourself". Lookarounds are used instead of
-    \\b so terms that start or end with punctuation still match correctly.
-
-    Args:
-        text (str): The DM text (already stripped).
-        profile (dict): The creator profile; its extra_blocked_terms are added
-            to BLOCKED_TERMS.
-
-    Returns:
-        bool: True if any term matches.
-
-    Side effects: none.
-    """
-    terms = [*BLOCKED_TERMS, *profile.get("extra_blocked_terms", [])]
-    pattern = "|".join(re.escape(term.strip()).replace(r"\ ", r"\s+") for term in terms if term.strip())
-    return bool(pattern) and re.search(rf"(?<!\w)(?:{pattern})(?!\w)", text, re.IGNORECASE) is not None
-
-
 def _screen(text, profile):
     """Run safety layers 1 (moderation) and 2 (blocked terms) on one DM.
 
-    A severe moderation hit blocks first (layer 1), then a blocked term
-    (layer 2). Everything else is returned as flags and the message continues
-    to classification.
+    A thin wrapper around safety.screen: a severe moderation hit blocks first
+    (layer 1), then a blocked term (layer 2). Everything else is returned as
+    flags and the message continues to classification.
 
     Args:
         text (str): The DM text to screen (a new DM, or the newest reply).
@@ -252,7 +164,8 @@ def _screen(text, profile):
     Returns:
         tuple[dict | None, list[dict]]: (blocked_decision, flags).
         blocked_decision is a "blocked" decision when the message must stop
-        here, otherwise None. flags are the moderation flags to carry forward.
+        here, otherwise None. flags are the moderation flags to carry forward
+        (callers only use them when nothing blocked).
 
     Raises:
         llm.LLMError: If the moderation call fails. Not caught here, so the
@@ -261,21 +174,16 @@ def _screen(text, profile):
 
     Side effects: one moderation API call (through llm), logged without text.
     """
-    hits = llm.moderate(text)
-    # hits holds only the categories OpenAI flagged, mapped to their scores.
-    severe = [category for category, score in hits.items() if category in SEVERE
-              and (category not in SCORED_SEVERE or score >= SEVERE_FLAG_THRESHOLD)]
-    # Severe hits are always recorded; anything else needs MILD_FLAG_THRESHOLD
-    # so pest-killing language does not flag every pest question.
-    flags = [_flag("moderation", category) for category, score in hits.items()
-             if category in severe or score >= MILD_FLAG_THRESHOLD]
-    if severe:
+    # llm.moderate is looked up here, at call time, so a test that replaces
+    # triage.llm with a fake also replaces the moderation call.
+    screened = safety.screen(text, profile, moderate=llm.moderate)
+    flags = screened["flags"]
+    if screened["severe"]:
         # Someone in crisis gets crisis resources (988), not a generic decline.
-        crisis = any(category.startswith("self-harm") for category in severe)
-        return _blocked(profile, flags, f"Moderation flagged {', '.join(severe)}", llm.MODERATION_MODEL,
-                        "crisis_text" if crisis else "decline_text"), flags
-    if _blocked_term(text, profile):
-        return _blocked(profile, [*flags, _flag("rules", "blocked_term")], "Matched a blocked term"), flags
+        return _blocked(profile, flags, f"Moderation flagged {', '.join(screened['severe'])}", llm.MODERATION_MODEL,
+                        "crisis_text" if screened["crisis"] else "decline_text"), flags
+    if screened["blocked_term"]:
+        return _blocked(profile, flags, "Matched a blocked term"), flags
     return None, flags
 
 

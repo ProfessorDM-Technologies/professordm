@@ -130,7 +130,7 @@ SWEETLIFE_FLORA = {
     # A list, because the schema turns it into the only allowed risk_reason
     # values, which keeps DM text out of flags.
     "risk_topics": ["plants toxic to pets or kids", "pesticides or chemical use", "ingesting plants"],
-    # This creator's own blocked phrases, added to triage.BLOCKED_TERMS.
+    # This creator's own blocked phrases, added to safety.BLOCKED_TERMS.
     # Empty until Kristin signs off the real list.
     "extra_blocked_terms": [],
     # Tone for clarification DMs.

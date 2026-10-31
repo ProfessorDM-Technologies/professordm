@@ -46,7 +46,8 @@ DM text (+ recent DMs from the same follower)
 
 | File | What |
 |---|---|
-| `triage.py` | `triage()`, `reassess()`, routing, thresholds, base blocked list. No HTTP |
+| `triage.py` | `triage()`, `reassess()`, routing, confidence cutoff. No HTTP |
+| `safety.py` | Safety layers 1 and 2, shared with draft: moderation thresholds, severe categories, base blocked list, `screen()`. No HTTP (the moderation call is passed in) |
 | `llm.py` | The only file with HTTP calls: moderation, classify, clarification text |
 | `prompts.py` | Generic templates, the Sweetlife Flora profile, `profile_for()`, version strings |
 | `tests/test_triage.py` | 46 unit tests with a fake `llm`, no real model calls |
@@ -204,7 +205,7 @@ The backend sets `triaging` and `reassessing` itself around the call (see [For A
 
 1. **Empty text.** If there's no text (a photo-only DM), triage asks the follower to describe the problem in words using the profile's `empty_text_prompt`. There's no model call.
 2. **Safety layer 1, moderation.** The DM goes to `omni-moderation-latest`. A category counts only if OpenAI flags it; the thresholds below then decide what happens.
-3. **Safety layer 2, blocked terms.** A case-insensitive, whole-word regex runs over the base list in `triage.py` plus the profile's `extra_blocked_terms`. A match blocks and sends a decline.
+3. **Safety layer 2, blocked terms.** A case-insensitive, whole-word regex runs over the base list in `safety.py` plus the profile's `extra_blocked_terms`. A match blocks and sends a decline.
 4. **Classify (safety layer 3 included).** The classifier is called at temperature 0 with a strict JSON schema. It returns `category`, `service_kind`, `confidence`, `reason`, `risk_flag` and `risk_reason`. The `risk_flag` is the policy check: it marks a profile risk topic (such as pesticides) without blocking. Invalid output is retried once, then goes to `creator_decision`.
 5. **Route.** Apply the routing table below.
 
