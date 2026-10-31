@@ -62,7 +62,8 @@ as $$
   left join semantic s on s.id = b.id
   left join keyword  k on k.id = b.id
   where s.id is not null or k.id is not null
-  order by score desc
+  -- similarity breaks ties, so the order is repeatable when two rows have the same RRF score.
+  order by score desc, similarity desc
   limit match_count;
 $$;
 
