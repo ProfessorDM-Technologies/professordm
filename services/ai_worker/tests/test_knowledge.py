@@ -116,7 +116,9 @@ class RequestTests(unittest.TestCase):
     def call(self, outcome, env=ENV, **kwargs):
         """Run search with the default rpc and a FakeUrlopen; return (results or error, fake urlopen)."""
         fake = FakeUrlopen(outcome)
-        with patch.dict(os.environ, env, clear=True), patch.object(knowledge, "urlopen", fake):
+        # assertLogs captures the PASS or FAIL line so test output stays clean.
+        with patch.dict(os.environ, env, clear=True), patch.object(knowledge, "urlopen", fake), \
+                self.assertLogs("knowledge", "INFO"):
             try:
                 return knowledge.search(QUERY, "creator-a", embed=FakeEmbed(), **kwargs), fake
             except (llm.LLMError, RuntimeError) as error:
@@ -267,7 +269,7 @@ class ResultTests(unittest.TestCase):
 
     def test_rpc_error_propagates(self):
         """An LLMError from the rpc is raised, never turned into empty results."""
-        with self.assertRaises(llm.LLMError):
+        with self.assertRaises(llm.LLMError), self.assertLogs("knowledge", "WARNING"):
             search(llm.LLMError("supabase", 500, "XX000"))
 
 
