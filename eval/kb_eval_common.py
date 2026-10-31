@@ -150,9 +150,11 @@ def cached_embed(embed, path=QUERY_CACHE, model=None):
             (llm.EMBED_MODEL). None skips the model check (tests).
 
     Returns:
-        callable: texts -> (vectors, meta), the same contract as embed.
-        Cached texts make no call; meta then reports 0 tokens. The wrapper
-        also has a .stats dict {"hits": int, "misses": int}.
+        callable: (texts, **options) -> (vectors, meta), the same contract as
+        embed. options (knowledge.search passes retry=False) are handed to
+        embed unchanged on a miss. Cached texts make no call; meta then
+        reports 0 tokens. The wrapper also has a .stats dict {"hits": int,
+        "misses": int}.
 
     Side effects: reads the cache file once; every call with a miss calls
     embed for the missing texts and rewrites the file.
@@ -164,14 +166,14 @@ def cached_embed(embed, path=QUERY_CACHE, model=None):
         if model is None or saved.get("model") == model:
             vectors = saved.get("vectors", {})
 
-    def wrapped(texts):
+    def wrapped(texts, **options):
         """Embed only the texts that are not cached yet; see cached_embed."""
         texts = list(texts)
         keys = [_query_key(text) for text in texts]
         missing = [i for i, key in enumerate(keys) if key not in vectors]
         meta = {"model": model, "tokens": 0, "latency_ms": 0}
         if missing:
-            fresh, meta = embed([texts[i] for i in missing])
+            fresh, meta = embed([texts[i] for i in missing], **options)
             for i, vector in zip(missing, fresh):
                 vectors[keys[i]] = vector
             path.parent.mkdir(exist_ok=True)

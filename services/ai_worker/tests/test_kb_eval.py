@@ -156,6 +156,21 @@ class CacheAndLoadTests(unittest.TestCase):
             self.assertEqual(vectors, [[0.5, 0.5]])
             self.assertNotIn("secret question", path.read_text())
 
+    def test_cache_passes_options_to_embed(self):
+        """Keyword options such as knowledge.search's retry=False reach the inner embed on a miss."""
+        calls = []
+
+        def inner(texts, **options):
+            """Record the texts and options and return one fixed vector per text."""
+            calls.append((list(texts), options))
+            return [[1.0] for _ in texts], {"model": "fake", "tokens": 1, "latency_ms": 0}
+
+        with tempfile.TemporaryDirectory() as folder:
+            embed = common.cached_embed(inner, Path(folder) / "cache.json", model="m1")
+            embed(["q"], retry=False)
+            embed(["q"], retry=False)
+        self.assertEqual(calls, [(["q"], {"retry": False})])
+
     def test_cache_for_another_model_is_ignored(self):
         """Vectors cached for a different embedding model are never reused."""
         with tempfile.TemporaryDirectory() as folder:
