@@ -188,12 +188,12 @@ class EmptyAndGateTests(unittest.TestCase):
     def test_gate_below_cutoff_makes_no_model_call(self):
         """A best similarity under DRAFT_MIN_SIMILARITY is no_coverage, keeps what was checked, and calls no model."""
         fake = FakeLLM()
-        got = run(fake, search=FakeSearch([result(1, 0.29), result(2, 0.1)]))
+        got = run(fake, search=FakeSearch([result(1, 0.47), result(2, 0.1)]))
         self.assertEqual(got, decision(reason="no_coverage", retrieved=[
-            {"entry_id": "entry-1", "title": "Test Guide > Section 1", "similarity": 0.29},
+            {"entry_id": "entry-1", "title": "Test Guide > Section 1", "similarity": 0.47},
             {"entry_id": "entry-2", "title": "Test Guide > Section 2", "similarity": 0.1}]))
         self.assertEqual(fake.calls, [])
-        self.assertEqual(draft.DRAFT_MIN_SIMILARITY, 0.30)
+        self.assertEqual(draft.DRAFT_MIN_SIMILARITY, 0.475)
 
     def test_gate_with_no_results(self):
         """No results count as best similarity 0: no_coverage with nothing retrieved."""
@@ -206,7 +206,7 @@ class EmptyAndGateTests(unittest.TestCase):
         fake = FakeLLM()
         self.assertEqual(run(fake, search=FakeSearch([result(1, 0.2, score=0.99)]))["reason"], "no_coverage")
         self.assertEqual(fake.calls, [])
-        drafted = run(FakeLLM(reply()), search=FakeSearch([result(1, 0.30, score=0.0)]))
+        drafted = run(FakeLLM(reply()), search=FakeSearch([result(1, 0.475, score=0.0)]))
         self.assertEqual(drafted["status"], "drafted")
 
     def test_search_query_creator_and_settings(self):

@@ -52,11 +52,19 @@ from prompts import DRAFT_VERSION, SWEETLIFE_FLORA, answer_char_target, draft_pr
 
 
 # Below this best cosine similarity, retrieval found nothing close enough to
-# draft from: no_draft with reason no_coverage and no model call. 0.30 is the
-# starting value (spec 14.6); B3 tunes it on the dev split of the draft eval
-# and then freezes it. It gates on similarity, never on the RRF score: score
-# only measures rank position, so the best row of any query scores high.
-DRAFT_MIN_SIMILARITY = 0.30
+# draft from: no_draft with reason no_coverage and no model call. It gates on
+# similarity, never on the RRF score: score only measures rank position, so
+# the best row of any query scores high.
+# 2026-10-30, tuned on dev, frozen (eval_draft.py --gate-sweep, offline). On
+# the 17 dev rows the 5 out-of-KB rows peak at 0.465 and the 12 answerable
+# rows start at 0.515. 0.475 is the lowest cutoff that stops all 5 out-of-KB
+# rows while stopping 0 of 12 answerable ones (0.450 stops 2 of 5; 0.500 also
+# stops 5 and 0, and the tie goes to the lower cutoff, because a row past the
+# gate can still end as no_draft through the model's coverage "none", while
+# an answerable row stopped here loses its draft). The start value was 0.30
+# (spec 14.6). Change it only after a new dev sweep, never because of a test
+# row.
+DRAFT_MIN_SIMILARITY = 0.475
 
 # Passages retrieved per draft (spec 6.5 step 3). Eight chunks of 300 to 500
 # tokens are enough for a question that spans two guides and keep the call
