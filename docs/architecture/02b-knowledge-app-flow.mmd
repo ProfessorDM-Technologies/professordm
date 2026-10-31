@@ -68,7 +68,7 @@ sequenceDiagram
         KA->>STR: Submit and Pay with saved card or Checkout
         STR->>DB: via stripe-webhook: paid, enqueue draft
     end
-    AI->>DB: draft (knowledge first, web to fill gaps), safety check 2, awaiting_creator
+    AI->>DB: draft from the creator's guides (hybrid search, sources = doc, no web search in v1),<br/>Sonnet 5.5 with manual Terra fallback, no_draft (no_coverage) below the similarity gate,<br/>safety check 2, knowledge citations only, awaiting_creator
     DB-->>CW: Realtime: Inbox item tagged "Ask Sweetlife Flora"
     Note over CW: Creator review identical to diagram 02 step 5: flag review if flagged,<br/>mandatory edit + tags, text and/or voice note, safety check 3,<br/>flagged answers go to the ProfessorDM team before delivery
 
