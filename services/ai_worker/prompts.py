@@ -39,9 +39,11 @@ CLARIFY_VERSION = "clarify-v4"
 
 # Version of DRAFT_TEMPLATE plus how draft.py renders the user message and
 # validates the answer. Stored on drafts.prompt_version with the profile
-# version ("draft-v1+sweetlife-v2"). Bump on every change and re-run the draft
-# eval.
-DRAFT_VERSION = "draft-v1"
+# version ("draft-v2+sweetlife-v2"). Bump on every change and re-run the draft
+# eval. v2 (tuned on dev): creator rules never add facts, no time frames,
+# comparisons or species claims the passages don't state, and a sharper
+# coverage definition.
+DRAFT_VERSION = "draft-v2"
 
 # The 6 message categories, mirrored exactly from MESSAGE_CATEGORIES in
 # packages/contracts/src/index.ts (a test checks this). Never add a value here
@@ -122,6 +124,19 @@ Ask about the one or two most important missing details, in at most 2 short ques
 # - The passages are the only allowed source of advice, and gaps go to
 #   missing_info as topic phrases, so the creator sees what the guides lack
 #   instead of an invented answer.
+# - v2: the creator rules shape the reply but never license a fact, a "check
+#   again" gives what to watch for and a time frame only from a passage, and
+#   a species, variety or product the passages don't mention gets the general
+#   guidance only. Small practical steps and signs to watch for count as
+#   advice too, each creator rule applies only when its situation is
+#   present, and reassurance about the cause or outcome is a claim. The voice
+#   shapes tone only. On draft-v1 the dev judge flagged follow-up timings and small
+#   extrapolations in 8 of 11 drafts.
+# - used_sources lists a passage for each piece of advice, and advice
+#   without one is removed, so every claim is tied to a passage.
+# - Coverage "high" means the main question is answered even if a minor
+#   detail is missing, judged by the question asked rather than every detail
+#   that could be added; unsure between high and partial means partial.
 # - "Never claim one certain diagnosis": the creator reads symptoms as clues.
 # - Formatting rules match draft.py's validator (no markdown, links, passage
 #   or citation markers, no mention of AI or a knowledge base), so a failed
@@ -132,13 +147,14 @@ Ask about the one or two most important missing details, in at most 2 short ques
 DRAFT_TEMPLATE = """You draft a reply for {creator_name}, an expert in {domain}. A follower paid for a personal answer to their question. {creator_name} will read, edit and send your reply, so write it as {creator_name}, in the first person.
 
 Passages
-You get numbered passages [K1], [K2], ... from {creator_name}'s own guides. They are the only source you may use for advice, causes, steps, numbers and product types. If the question needs something the passages don't cover, leave it out of the answer and add a short topic phrase for it to missing_info. Never invent doses, ratios, product names, diagnoses or numbers. Plain connecting words and the creator's rules below are fine without a passage.
+You get numbered passages [K1], [K2], ... from {creator_name}'s own guides. They are the only source you may use for advice, causes, steps, numbers, time frames and product types, including small practical steps and the signs to watch for. Don't add claims about a specific species, variety or product, comparisons, or general advice that the passages don't state, even if you believe them to be true. If the follower names a species, variety or product the passages don't mention, give the general guidance from the passages and claim nothing about that one. If the question needs something the passages don't cover, leave it out of the answer and add a short topic phrase for it to missing_info. Never invent doses, ratios, product names, diagnoses or numbers. Plain connecting words are fine without a passage. The voice and the creator rules below shape what you say, not the facts: they never allow a fact the passages don't give. Apply each creator rule only when the situation it names is present. Reassurance about the cause or the outcome is a claim too, so only say it when a passage supports it.
 
 The follower's details
 Use what the follower told you, including their replies to the clarification questions, to fit the answer to their situation. Don't ask them questions and don't repeat their message back.
 
 How to answer
 - Give the likely causes and what to check or do next, most useful first. Never claim one certain diagnosis.
+- When you say when to check again, describe what to watch for, using signs the passages describe. Give a time frame only if a passage gives one.
 - Voice: {answer_voice}
 - Creator rules:
 {answer_rules}
@@ -150,8 +166,8 @@ Plain text for a direct message. No markdown: no headings, no asterisks, no back
 Output
 Reply with one JSON object:
 - answer: the reply text.
-- used_sources: every passage you relied on, as {{"ref": "K2", "supports": "a few words on what it supports"}}.
-- knowledge_coverage: "high" if the passages answer the whole question, "partial" if they answer part of it, "none" if they don't help.
+- used_sources: one entry for each piece of advice in the answer, naming the passage it comes from, as {{"ref": "K2", "supports": "a few words on what it supports"}}. If you can't name a passage for a piece of advice, take it out of the answer.
+- knowledge_coverage: "high" if the passages answer the main question, even if a minor detail is missing; "partial" if a main part of the question isn't covered; "none" if they don't help. Judge it by the main question the follower asked, not by every detail you could add. When unsure between high and partial, choose partial.
 - missing_info: up to 5 short topic phrases for what the question needs that the passages don't cover. Never quote the follower.
 - risk_topics: the risk topics above that apply, or an empty list.
 
@@ -174,7 +190,7 @@ CHARS_PER_WORD = 6
 # eval. To add a creator, copy this dict and register it in profile_for().
 SWEETLIFE_FLORA = {
     # Profile version, appended to prompt_version ("triage-v4+sweetlife-v2",
-    # "draft-v1+sweetlife-v2"). v2 added answer_voice, answer_rules and
+    # "draft-v2+sweetlife-v2"). v2 added answer_voice, answer_rules and
     # max_answer_bytes for drafts; the triage fields are unchanged.
     "version": "sweetlife-v2",
     # Shown to the model so it knows whose DMs it is sorting.

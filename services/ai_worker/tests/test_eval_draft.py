@@ -38,13 +38,13 @@ def drafted(answer=ANSWER, cited=("entry-1",), coverage="high", model="anthropic
             "draft": {"ai_text": answer, "used_web_search": False,
                       "citations": [{"kind": "knowledge", "ref": e, "title": "T", "hpa_id": "HPA-TEST-0001",
                                      "supports": "light"} for e in cited]},
-            "safety_flags": list(flags), "model": model, "prompt_version": "draft-v1+test", "retrieved": []}
+            "safety_flags": list(flags), "model": model, "prompt_version": "draft-v2+test", "retrieved": []}
 
 
 def no_draft(reason, coverage="none"):
     """Build a no_draft decision."""
     return {"status": "no_draft", "reason": reason, "knowledge_coverage": coverage, "missing_info": [],
-            "draft": None, "safety_flags": [], "model": None, "prompt_version": "draft-v1+test", "retrieved": []}
+            "draft": None, "safety_flags": [], "model": None, "prompt_version": "draft-v2+test", "retrieved": []}
 
 
 def golden(row_id="draft-001", kind="plain", coverage="high", expected=("HPA-TEST-0001",), channel="instagram",
@@ -218,6 +218,12 @@ class SweepAndSummaryTests(unittest.TestCase):
         self.assertEqual(eval_draft.SWEEP[-1], 0.5)
         self.assertEqual(len(eval_draft.SWEEP), 13)
 
+    def test_stopped_by_gate_only_without_a_model(self):
+        self.assertTrue(eval_draft.stopped_by_gate(scored(golden(), no_draft("no_coverage"))))
+        model_none = {**no_draft("no_coverage"), "model": "anthropic/claude-sonnet-5.5"}
+        self.assertFalse(eval_draft.stopped_by_gate(scored(golden(), model_none)))
+        self.assertFalse(eval_draft.stopped_by_gate(scored(golden(), drafted())))
+
     def test_p90(self):
         self.assertEqual(eval_draft.p90(list(range(1, 11))), 9)
         self.assertEqual(eval_draft.p90([5]), 5)
@@ -242,6 +248,8 @@ class SweepAndSummaryTests(unittest.TestCase):
         self.assertEqual(s["coverage"]["confusion"]["partial"]["none"], 1)
         self.assertEqual((s["abstention"]["hits"], s["abstention"]["n"]), (1, 2))
         self.assertEqual((s["false_abstention"]["hits"], s["false_abstention"]["n"]), (1, 2))
+        # draft-d stopped on invalid output (a model outcome), not at the gate.
+        self.assertEqual((s["false_abstention_gate"]["hits"], s["false_abstention_model"]["hits"]), (0, 1))
         self.assertEqual((s["grounded"]["hits"], s["grounded"]["n"]), (1, 2))
         self.assertEqual((s["uses_clarification"]["hits"], s["uses_clarification"]["n"]), (1, 1))
         self.assertEqual((s["retrieval_hit"]["hits"], s["retrieval_hit"]["n"]), (1, 2))
