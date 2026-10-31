@@ -1,4 +1,4 @@
-"""Model calls for triage: moderation, classification and clarification text.
+"""Model calls: moderation, classification, clarification text and embeddings.
 
 This is the only file in ai_worker that makes HTTP calls. Keeping every
 network call here lets triage.py stay pure decision logic, and lets the tests
@@ -8,6 +8,8 @@ Services:
     OpenAI moderation (omni-moderation-latest)  safety layer 1, free
     OpenRouter chat completions (TRIAGE_MODEL)  classification and the
                                                 clarification question
+    OpenAI embeddings (text-embedding-3-small)  knowledge base vectors, for
+                                                ingest and for query text
 
 Depends on:
     The standard library only (urllib, json, re, time, os, logging), matching
@@ -20,11 +22,12 @@ Depends on:
 Never does:
     - Decide routing or statuses (that is triage.py).
     - Touch the database or Instagram.
-    - Log DM text, model output text or keys. Logs carry stage, category,
-      confidence, flagged category names, character counts, latency and error
-      types only.
-    - Retry network errors. An LLMError goes up to the backend, which resets
-      the message status and retries later.
+    - Log DM text, model output text, embedding input text or keys. Logs
+      carry stage, category, confidence, flagged category names, character
+      counts, batch and token counts, latency and error types only.
+    - Retry network errors at runtime. An LLMError goes up to the backend,
+      which resets the message status and retries later. The one exception
+      is embed(retry=True), which only the laptop ingest scripts use.
 """
 
 import json
@@ -66,6 +69,32 @@ MEDIA_WORDS = re.compile(r"\b(photos?|pics?|pictures?|images?|videos?|screenshot
 # Seconds per model call. Keeps one slow provider from holding the Lambda;
 # typical calls take 0.3 to 2 seconds.
 TIMEOUT = 10
+
+EMBEDDINGS_URL = "https://api.openai.com/v1/embeddings"
+
+# The embedding model for knowledge entries and query text (spec 6.1). Every
+# stored vector and every query vector must come from this same model, or the
+# similarity scores mean nothing; changing it means re-embedding every row.
+EMBED_MODEL = "text-embedding-3-small"
+
+# Vector length of EMBED_MODEL, and of knowledge_entries.embedding
+# (vector(1536)). A vector of any other length would be rejected by the
+# database or compare against the wrong space, so embed() checks every one.
+EMBED_DIMENSIONS = 1536
+
+# Inputs per embeddings request. OpenAI accepts up to 2048, but 100 chunks of
+# up to about 800 tokens stay far below the per-request token limit, and a
+# failed batch costs little to retry.
+EMBED_BATCH = 100
+
+# Seconds to wait before each retry of a failed embeddings batch when
+# embed(retry=True): exponential, so a rate limit has time to clear. Five
+# tries in total (the first plus one per wait), about 15 s at most.
+EMBED_BACKOFF = (1, 2, 4, 8)
+
+# The sleep used between embed retries. Module-level so tests can replace it
+# and run without waiting.
+_sleep = time.sleep
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -465,3 +494,132 @@ def write_clarification(text, recent_messages, profile, rounds=None):
         raise InvalidOutput("bad_clarification")
     logger.info("Triage stage=clarify PASS chars=%d latency_ms=%d", len(prompt), meta["latency_ms"])
     return prompt
+
+
+def _retryable(error):
+    """Say whether a failed embeddings request is worth trying again.
+
+    Args:
+        error (LLMError): The failure from _json_request.
+
+    Returns:
+        bool: True for a rate limit (429), a server error (5xx) or a network
+        error (status None). False for any other 4xx, which would fail the
+        same way again.
+
+    Side effects: none.
+    """
+    return error.status is None or error.status == 429 or error.status >= 500
+
+
+def _embed_batch(batch, headers, retry, timeout):
+    """Send one embeddings request, retrying it if allowed.
+
+    Args:
+        batch (list[str]): At most EMBED_BATCH input texts.
+        headers (dict[str, str]): Request headers, including Authorization.
+        retry (bool): Retry retryable failures with EMBED_BACKOFF waits.
+        timeout (float): Seconds per request.
+
+    Returns:
+        tuple[Any, int]: (response, retries). response is the parsed JSON;
+        retries is how many failed tries came before it.
+
+    Raises:
+        LLMError: On the first failure when retry is False, on any failure
+            that is not retryable, or on the last failure once every wait in
+            EMBED_BACKOFF is used.
+
+    Side effects: one HTTPS request per try, and a _sleep before each retry.
+    """
+    body = {"model": EMBED_MODEL, "input": batch}
+    for retries, wait in enumerate((*EMBED_BACKOFF, None)):
+        try:
+            return _json_request("openai", EMBEDDINGS_URL, headers, body, timeout), retries
+        except LLMError as error:
+            if not retry or wait is None or not _retryable(error):
+                raise
+        _sleep(wait)
+
+
+def _vectors(response, count):
+    """Check one embeddings response and return its vectors in input order.
+
+    Args:
+        response (Any): The parsed JSON from the embeddings endpoint.
+        count (int): How many inputs the request sent.
+
+    Returns:
+        list[list[float]]: count vectors, sorted by each item's index, so
+        vector i belongs to input i of the request.
+
+    Raises:
+        LLMError: "bad_response" when data is missing, has the wrong number
+            of items, or its indexes are not exactly 0 to count - 1;
+            "bad_dimensions" when any vector does not have EMBED_DIMENSIONS
+            numbers.
+
+    Side effects: none.
+    """
+    data = response.get("data") if isinstance(response, dict) else None
+    if not isinstance(data, list) or not all(isinstance(item, dict) for item in data):
+        raise LLMError("openai", None, "bad_response")
+    items = sorted(data, key=lambda item: item.get("index") if isinstance(item.get("index"), int) else -1)
+    if [item.get("index") for item in items] != list(range(count)):
+        raise LLMError("openai", None, "bad_response")
+    vectors = [item.get("embedding") for item in items]
+    for vector in vectors:
+        if (not isinstance(vector, list) or len(vector) != EMBED_DIMENSIONS
+                or not all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in vector)):
+            raise LLMError("openai", None, "bad_dimensions")
+    return vectors
+
+
+def embed(texts, *, retry=False, timeout=TIMEOUT):
+    """Embed texts with EMBED_MODEL, in batches of at most EMBED_BATCH.
+
+    Args:
+        texts (list[str]): The input texts. For a knowledge entry this is
+            title + "\\n" + content.
+        retry (bool): False at runtime (a query embedding fails fast, like
+            triage, and the job retries later). True for ingest only: a 429,
+            5xx or network error is retried after each wait in EMBED_BACKOFF,
+            at most 5 tries per batch.
+        timeout (float): Seconds per request.
+
+    Returns:
+        tuple[list[list[float]], dict]: (vectors, meta). vectors[i] is the
+        EMBED_DIMENSIONS-long vector of texts[i]. meta is {"model": str,
+        "tokens": int, "latency_ms": int}, with tokens and latency_ms summed
+        over every batch (latency includes any retry waits). An empty input
+        makes no request and returns ([], meta with zeros).
+
+    Raises:
+        LLMError: On an API failure (see retry), "bad_response" for a
+            response without usable data, or "bad_dimensions" for a vector of
+            the wrong length.
+        RuntimeError: If OPENAI_API_KEY is missing.
+
+    Side effects: one HTTPS request per batch (more with retries) and one log
+    line with counts and latency only (never input text).
+    """
+    texts = list(texts)
+    meta = {"model": EMBED_MODEL, "tokens": 0, "latency_ms": 0}
+    if not texts:
+        return [], meta
+    headers = {"Authorization": f"Bearer {_key('OPENAI_API_KEY')}", "Content-Type": "application/json"}
+    vectors, batches, retries = [], 0, 0
+    for start in range(0, len(texts), EMBED_BATCH):
+        batch = texts[start:start + EMBED_BATCH]
+        started = time.monotonic()
+        response, tries_failed = _embed_batch(batch, headers, retry, timeout)
+        meta["latency_ms"] += int((time.monotonic() - started) * 1000)
+        vectors += _vectors(response, len(batch))
+        usage = response.get("usage") or {}
+        meta["tokens"] += usage.get("total_tokens") or usage.get("prompt_tokens") or 0
+        meta["model"] = response.get("model") or EMBED_MODEL
+        batches += 1
+        retries += tries_failed
+    logger.info("Embed stage=embed PASS batches=%d inputs=%d tokens=%d retries=%d latency_ms=%d",
+                batches, len(texts), meta["tokens"], retries, meta["latency_ms"])
+    return vectors, meta
