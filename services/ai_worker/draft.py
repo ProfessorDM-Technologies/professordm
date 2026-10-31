@@ -55,15 +55,17 @@ from prompts import DRAFT_VERSION, SWEETLIFE_FLORA, answer_char_target, draft_pr
 # draft from: no_draft with reason no_coverage and no model call. It gates on
 # similarity, never on the RRF score: score only measures rank position, so
 # the best row of any query scores high.
-# 2026-10-30, tuned on dev, frozen (eval_draft.py --gate-sweep, offline). On
-# the 17 dev rows the 5 out-of-KB rows peak at 0.465 and the 12 answerable
-# rows start at 0.515. 0.475 is the lowest cutoff that stops all 5 out-of-KB
-# rows while stopping 0 of 12 answerable ones (0.450 stops 2 of 5; 0.500 also
-# stops 5 and 0, and the tie goes to the lower cutoff, because a row past the
-# gate can still end as no_draft through the model's coverage "none", while
-# an answerable row stopped here loses its draft). The start value was 0.30
-# (spec 14.6). Change it only after a new dev sweep, never because of a test
-# row.
+# 2026-10-30, tuned on dev, frozen (eval_draft.py --gate-sweep, offline).
+# Re-swept on the 30-row dev set (13 answerable rows added): the 5 out-of-KB
+# rows peak at 0.465 and the 25 answerable rows start at 0.493. 0.475 is the
+# lowest cutoff that stops all 5 out-of-KB rows while stopping 0 of 25
+# answerable ones (0.450 stops 2 of 5; 0.500 also stops 5 but wrongly stops 1
+# of 25, and ties go to the lower cutoff, because a row past the gate can
+# still end as no_draft through the model's coverage "none", while an
+# answerable row stopped here loses its draft). The margin is small: 0.018
+# below the lowest answerable dev row. The first sweep, on 17 dev rows, gave
+# the same value. The start value was 0.30 (spec 14.6). Change it only after
+# a new dev sweep, never because of a test row.
 DRAFT_MIN_SIMILARITY = 0.475
 
 # Passages retrieved per draft (spec 6.5 step 3). Eight chunks of 300 to 500
