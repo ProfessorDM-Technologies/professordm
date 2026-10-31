@@ -1,4 +1,4 @@
-"""Model calls: moderation, classification, clarification text and embeddings.
+"""Model calls: moderation, classification, clarification text, drafts and embeddings.
 
 This is the only file in ai_worker that makes HTTP calls. Keeping every
 network call here lets triage.py stay pure decision logic, and lets the tests
@@ -8,26 +8,35 @@ Services:
     OpenAI moderation (omni-moderation-latest)  safety layer 1, free
     OpenRouter chat completions (TRIAGE_MODEL)  classification and the
                                                 clarification question
+    OpenRouter chat completions (DRAFT_MODEL,   the grounded answer draft,
+        then DRAFT_FALLBACK_MODEL)              with a manual fallback
     OpenAI embeddings (text-embedding-3-small)  knowledge base vectors, for
                                                 ingest and for query text
+
+Every OpenRouter call sends provider {"data_collection": "deny"}, so only
+providers that do not retain prompts are used (real DMs pass through).
 
 Depends on:
     The standard library only (urllib, json, re, time, os, logging), matching
     services/instagram_backend, so the Lambda needs no packaging.
     prompts for the templates, categories and service kinds.
     Environment variables OPENAI_API_KEY, OPENROUTER_API_KEY and optionally
-    TRIAGE_MODEL, read at call time, never at import, so tests and Lambda
-    configuration can set them late.
+    TRIAGE_MODEL, DRAFT_MODEL and DRAFT_FALLBACK_MODEL, read at call time,
+    never at import, so tests and Lambda configuration can set them late.
 
 Never does:
-    - Decide routing or statuses (that is triage.py).
+    - Decide routing or statuses (that is triage.py), or validate draft
+      fields (that is draft.py).
     - Touch the database or Instagram.
     - Log DM text, model output text, embedding input text or keys. Logs
       carry stage, category, confidence, flagged category names, character
-      counts, batch and token counts, latency and error types only.
+      counts, batch and token counts, model ids, cost, latency and error
+      types only.
     - Retry network errors at runtime. An LLMError goes up to the backend,
-      which resets the message status and retries later. The one exception
-      is embed(retry=True), which only the laptop ingest scripts use.
+      which resets the message status and retries later. Two exceptions:
+      embed(retry=True), which only the laptop ingest scripts use, and
+      write_draft(), which tries a different model once when the primary
+      has an outage.
 """
 
 import json
@@ -95,6 +104,42 @@ EMBED_BACKOFF = (1, 2, 4, 8)
 # The sleep used between embed retries. Module-level so tests can replace it
 # and run without waiting.
 _sleep = time.sleep
+
+# Sent on every OpenRouter call (spec section 0, rule 6). OpenRouter then
+# routes only to providers that do not store or train on prompts. Step 0
+# (eval/check_providers.py) confirmed every model we use still finds one.
+DATA_COLLECTION = "deny"
+
+# The draft writer when DRAFT_MODEL is not set (spec 14.3). Same price as the
+# tech matrix's Sonnet 5; record any change in the PR and the decision log.
+DEFAULT_DRAFT_MODEL = "anthropic/claude-sonnet-5.5"
+
+# The manual fallback when DRAFT_FALLBACK_MODEL is not set. A different
+# provider family, so an Anthropic outage does not stop drafting.
+DEFAULT_DRAFT_FALLBACK_MODEL = "openai/gpt-5.6-terra"
+
+# Seconds per draft call, for the primary and the fallback alike (spec 14.7
+# Q2). A grounded answer of up to 2000 tokens takes far longer than a triage
+# label. Whether a call may start at all is decided by MIN_SECONDS_FOR_CALL
+# against the 120 s draft Lambda's deadline.
+DRAFT_TIMEOUT = 45
+
+# No draft call starts with fewer seconds than this left before the deadline.
+# Equal to DRAFT_TIMEOUT, so a call that is started can always run to its own
+# timeout before the Lambda is killed; otherwise write_draft raises and the
+# job is retried from the queue instead.
+MIN_SECONDS_FOR_CALL = 45
+
+# Request settings for the primary draft model, confirmed by step 0 (eval
+# README "Models"). Sonnet 5.5 rejects temperature under require_parameters
+# (404 "no endpoints", spec 14.8), so it is left out (None). 2000 tokens is
+# well above the longest channel limit (spec 14.3 Q12).
+DRAFT_SETTINGS = {"temperature": None, "max_tokens": 2000}
+
+# Request settings for the fallback, confirmed by step 0. Terra also runs
+# without temperature; low reasoning effort keeps latency near the primary's,
+# and its reasoning tokens count against max_tokens, hence 4000 (spec 14.3).
+DRAFT_FALLBACK_SETTINGS = {"temperature": None, "max_tokens": 4000, "extra": {"reasoning": {"effort": "low"}}}
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -216,24 +261,43 @@ def model_id():
     return os.environ.get("TRIAGE_MODEL") or DEFAULT_MODEL
 
 
-def _openrouter(system, user, schema=None):
+def _openrouter(system, user, schema=None, *, model=None, temperature=0, timeout=TIMEOUT, max_tokens=None,
+                extra=None, schema_name="triage"):
     """Call OpenRouter chat completions once.
 
-    Temperature is 0 so the same DM gets the same answer as far as the
-    provider allows. With a schema, the response is forced into strict JSON,
-    and require_parameters makes OpenRouter refuse providers that would
-    silently ignore the schema.
+    Temperature defaults to 0 so the same DM gets the same answer as far as
+    the provider allows. With a schema, the response is forced into strict
+    JSON, and require_parameters makes OpenRouter refuse providers that would
+    silently ignore the schema (or any other setting sent). Every call sends
+    data_collection "deny". There is deliberately no OpenRouter "models"
+    list: it would send this same body to every model, and the draft models
+    need different settings (spec 14.3), so write_draft falls back by hand.
+
+    Called with only system, user and schema (as triage does), the body is
+    the same as before these options existed, plus the data_collection key.
 
     Args:
         system (str): The system prompt.
         user (str): The user message (the rendered conversation).
         schema (dict | None): A JSON schema for structured output, or None
             for plain text.
+        model (str | None): The model id; None means model_id() (triage).
+        temperature (float | None): Sent as is; None leaves it out of the
+            body, for models that reject it under require_parameters.
+        timeout (float): Seconds before the request gives up.
+        max_tokens (int | None): Output token cap, sent only when given.
+        extra (dict | None): Extra top-level body fields for one model, for
+            example {"reasoning": {"effort": "low"}}. Merged in before the
+            provider block, so it can never drop data_collection.
+        schema_name (str): The json_schema name OpenRouter passes on, for
+            example "triage" or "draft".
 
     Returns:
         tuple[str | None, dict]: (content, meta). content is the model's reply
         text. meta is {"model": str, "latency_ms": int, "prompt_tokens": int,
-        "completion_tokens": int, "cost": float | None}.
+        "completion_tokens": int, "cost": float | None}. meta["model"] is the
+        model that actually answered (the response's "model"), falling back to
+        the requested id only if the response leaves it out.
 
     Raises:
         LLMError: On any API failure, or a response with an error or no choices.
@@ -241,19 +305,27 @@ def _openrouter(system, user, schema=None):
 
     Side effects: one HTTPS request.
     """
-    model = model_id()
-    body = {"model": model, "temperature": 0,
-            "messages": [{"role": "system", "content": system},
-                         {"role": "user", "content": user}],
-            "usage": {"include": True}}
+    model = model or model_id()
+    body = {"model": model}
+    if temperature is not None:
+        body["temperature"] = temperature
+    body |= {"messages": [{"role": "system", "content": system},
+                          {"role": "user", "content": user}],
+             "usage": {"include": True}}
+    if max_tokens is not None:
+        body["max_tokens"] = max_tokens
+    body |= extra or {}
+    body["provider"] = {"data_collection": DATA_COLLECTION}
     if schema:
         body["response_format"] = {"type": "json_schema", "json_schema": {
-            "name": "triage", "strict": True, "schema": schema}}
-        body["provider"] = {"require_parameters": True}
+            "name": schema_name, "strict": True, "schema": schema}}
+        body["provider"]["require_parameters"] = True
     started = time.monotonic()
+    # timeout goes by keyword so callers and tests that unpack the four
+    # positional arguments (service, url, headers, body) keep working.
     response = _json_request("openrouter", OPENROUTER_URL,
                              {"Authorization": f"Bearer {_key('OPENROUTER_API_KEY')}",
-                              "Content-Type": "application/json"}, body)
+                              "Content-Type": "application/json"}, body, timeout=timeout)
     latency_ms = int((time.monotonic() - started) * 1000)
     if not isinstance(response, dict) or response.get("error") or not response.get("choices"):
         error = response.get("error") if isinstance(response, dict) else None
@@ -623,3 +695,143 @@ def embed(texts, *, retry=False, timeout=TIMEOUT):
     logger.info("Embed stage=embed PASS batches=%d inputs=%d tokens=%d retries=%d latency_ms=%d",
                 batches, len(texts), meta["tokens"], retries, meta["latency_ms"])
     return vectors, meta
+
+
+def _falls_back(error):
+    """Say whether a failed primary draft call should be tried on the fallback.
+
+    Args:
+        error (LLMError): The primary's failure from _openrouter.
+
+    Returns:
+        bool: True for an outage that another provider may not share: a
+        timeout or network error (status None), a rate limit (429), no
+        endpoint for these settings (404) or a server error (5xx). False for
+        any other status (400, 401, 403...), which points at the request or
+        the key and would fail on the fallback too.
+
+    Side effects: none.
+    """
+    return _retryable(error) or error.status == 404
+
+
+def _has_time(deadline, clock):
+    """Say whether a draft call may start before the deadline.
+
+    Args:
+        deadline (float | None): An absolute clock() value, or None for no
+            limit.
+        clock (callable[[], float]): The clock the deadline was set with.
+
+    Returns:
+        bool: True when there is no deadline or at least MIN_SECONDS_FOR_CALL
+        seconds remain.
+
+    Side effects: reads the clock once (only when there is a deadline).
+    """
+    return deadline is None or deadline - clock() >= MIN_SECONDS_FOR_CALL
+
+
+def _draft_call(attempt, model, system, user, schema, settings):
+    """Make one draft call, parse its JSON and log one line.
+
+    Args:
+        attempt (str): "primary" or "fallback", for the log and the meta.
+        model (str): The model id to request.
+        system (str): The system prompt.
+        user (str): The user message.
+        schema (dict): The strict JSON schema for the answer.
+        settings (dict): That model's _openrouter options (DRAFT_SETTINGS or
+            DRAFT_FALLBACK_SETTINGS).
+
+    Returns:
+        tuple[dict, dict]: (data, meta). data is the parsed JSON object. meta
+        is _openrouter's meta plus {"attempt": attempt}.
+
+    Raises:
+        LLMError: On an API failure (logged with status and error code).
+        InvalidOutput: "not_json" when the reply is not a JSON object (logged
+            with the served model, tokens and cost).
+        RuntimeError: If OPENROUTER_API_KEY is missing.
+
+    Side effects: one OpenRouter call and one log line (never text).
+    """
+    started = time.monotonic()
+    try:
+        content, meta = _openrouter(system, user, schema, model=model, timeout=DRAFT_TIMEOUT,
+                                    schema_name="draft", **settings)
+    except LLMError as error:
+        logger.warning("Draft stage=draft_call FAIL attempt=%s model=%s status=%s error=%s latency_ms=%d",
+                       attempt, model, error.status or "network", error.code or "unknown",
+                       int((time.monotonic() - started) * 1000))
+        raise
+    try:
+        data = json.loads(content)
+    except (TypeError, ValueError):
+        data = None
+    usage = (attempt, meta["model"], meta["latency_ms"], meta["prompt_tokens"], meta["completion_tokens"],
+             meta["cost"])
+    if not isinstance(data, dict):
+        # Strict JSON makes this rare. draft.py owns the one retry for bad
+        # output; another model would not fix it, so there is no fallback.
+        logger.warning("Draft stage=draft_call FAIL attempt=%s model=%s error=not_json latency_ms=%d "
+                       "prompt_tokens=%d completion_tokens=%d cost=%s", *usage)
+        raise InvalidOutput("not_json")
+    logger.info("Draft stage=draft_call PASS attempt=%s model=%s latency_ms=%d prompt_tokens=%d "
+                "completion_tokens=%d cost=%s", *usage)
+    return data, {**meta, "attempt": attempt}
+
+
+def write_draft(system, user, schema, *, deadline=None, clock=time.monotonic):
+    """Write one grounded answer draft, falling back to a second model on an outage.
+
+    Flow (spec 6.1, 14.3 and 14.7 Q2):
+        1. With fewer than MIN_SECONDS_FOR_CALL seconds before the deadline,
+           raise at once without a call, so the job is retried from the queue.
+        2. Call DRAFT_MODEL with DRAFT_SETTINGS.
+        3. If it timed out, lost the network, was rate limited (429), had no
+           endpoint (404) or hit a server error (5xx), and the deadline still
+           allows a call by the same rule, call DRAFT_FALLBACK_MODEL with
+           DRAFT_FALLBACK_SETTINGS. Otherwise re-raise the primary's error.
+        4. Any other status (400, 401, 403...) re-raises at once.
+
+    Args:
+        system (str): The system prompt.
+        user (str): The user message (question, clarification and passages).
+        schema (dict): The strict JSON schema for the answer.
+        deadline (float | None): The latest clock() value by which a call may
+            still be safely running (draft.py derives it from the Lambda's
+            time left). None means no limit, for eval and local runs.
+        clock (callable[[], float]): Seconds, monotonic. Tests pass a fake.
+
+    Returns:
+        tuple[dict, dict]: (data, meta). data is the parsed JSON object, not
+        yet validated (field checks live in draft.py). meta is {"model":
+        served model id, "latency_ms", "prompt_tokens", "completion_tokens",
+        "cost", "attempt": "primary" | "fallback"}, with tokens and cost from
+        the call that answered.
+
+    Raises:
+        LLMError: ("openrouter", None, "deadline") when the primary cannot
+            start in time; otherwise the primary's error when it is not an
+            outage or the fallback cannot start in time, or the fallback's own
+            error.
+        InvalidOutput: "not_json" when the answering model's reply is not a
+            JSON object. Never sent to the fallback.
+        RuntimeError: If OPENROUTER_API_KEY is missing.
+
+    Side effects: one or two OpenRouter calls, one log line per call (and one
+    when the primary is skipped for the deadline). Never logs text.
+    """
+    primary = os.environ.get("DRAFT_MODEL") or DEFAULT_DRAFT_MODEL
+    if not _has_time(deadline, clock):
+        logger.warning("Draft stage=draft_call FAIL attempt=primary model=%s status=skipped error=deadline "
+                       "latency_ms=0", primary)
+        raise LLMError("openrouter", None, "deadline")
+    try:
+        return _draft_call("primary", primary, system, user, schema, DRAFT_SETTINGS)
+    except LLMError as error:
+        if not _falls_back(error) or not _has_time(deadline, clock):
+            raise
+    fallback = os.environ.get("DRAFT_FALLBACK_MODEL") or DEFAULT_DRAFT_FALLBACK_MODEL
+    return _draft_call("fallback", fallback, system, user, schema, DRAFT_FALLBACK_SETTINGS)

@@ -364,6 +364,7 @@ A question with `safety_flagged = true` must be reviewed in Moderation before it
 ## For Karthik: infra, security and quality gates
 
 - **Secrets:** `OPENAI_API_KEY` and `OPENROUTER_API_KEY` belong in SSM (SecureString). The Lambda reads them as `runtime._parameter` does and puts them in `os.environ` before the first call. They're read at call time, never at import, and never logged. `TRIAGE_MODEL` is optional plain config.
+- **Data collection:** every OpenRouter call (triage and draft) sends `provider: {"data_collection": "deny"}`, plus `require_parameters: true` with a schema, so only providers that don't retain prompts get real DMs. `eval/check_providers.py` confirms each model still finds one.
 - **Runtime:** Python 3.11, standard library only (`urllib`, `json`, `re`, `time`, `os`, `logging`), with flat imports like `instagram_backend`. No packaging step.
 - **Latency and cost per DM** (3.1 Flash-Lite, 202 eval DMs):
   - median 1.5 s, 90th percentile 2.5 s, 2.6 s when a clarification is written
