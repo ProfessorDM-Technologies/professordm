@@ -285,6 +285,63 @@ class GeneratorTests(unittest.TestCase):
                     gen.freeze("retrieval")
 
 
+    def test_kinds_counts_and_avoid(self):
+        """--kinds limits the kinds and counts, app rows scale with the count, and --avoid reaches every spec line."""
+        import random
+        self.assertEqual(gen.parse_kinds("out_of_kb=8", "draft"), {"out_of_kb": 8})
+        self.assertEqual(gen.parse_kinds("plain,risk", "draft"), {"plain": 12, "risk": 8})
+        self.assertIsNone(gen.parse_kinds(None, "draft"))
+        for bad in ("nope", "plain=0", "plain=x"):
+            with self.assertRaises(SystemExit):
+                gen.parse_kinds(bad, "draft")
+        specs = gen.specs("draft", DOCS, random.Random(1), {"out_of_kb": 8}, "topic one; topic two")
+        self.assertEqual({s["kind"] for s in specs}, {"out_of_kb"})
+        self.assertEqual(sum(s["channel"] == "knowledge_app" for s in specs[:8]), 2)
+        self.assertIn("topic one; topic two", gen.describe(1, specs[0]))
+        item = {"message": "my made-up moss ball is grey", "rounds": [], "expected_hpa_ids": [],
+                "expected_coverage": "none", "flagged_topics": [], "notes": ""}
+        row, _ = gen.to_candidate("draft", specs[0], item)
+        self.assertNotIn("topic one", row["notes"])
+
+    def test_existing_texts_reads_golden_and_other_candidate_files(self):
+        """The duplicate filter sees frozen rows and earlier candidate files, but not the file being written."""
+        with tempfile.TemporaryDirectory() as folder:
+            private = Path(folder)
+            golden = private / "draft_golden.jsonl"
+            golden.write_text(json.dumps({"id": "draft-001", "question_text": "Frozen Row?"}) + "\n")
+            (private / "kb_candidates_draft.jsonl").write_text(json.dumps({"question_text": "old candidate"}) + "\n")
+            out = private / "kb_candidates_draft_dev.jsonl"
+            out.write_text(json.dumps({"question_text": "being replaced"}) + "\n")
+            with patch.object(gen, "PRIVATE", private), patch.dict(gen.GOLDEN, {"draft": golden}):
+                self.assertEqual(sorted(gen.existing_texts("draft", out)), ["frozen row", "old candidate"])
+
+    def test_freeze_dev_added_appends_dev_rows_without_touching_frozen_ones(self):
+        """--dev-added writes draft-dev-NN dev rows after the frozen rows and refuses a second run."""
+        with tempfile.TemporaryDirectory() as folder:
+            private = Path(folder)
+            golden = private / "draft_golden.jsonl"
+            frozen = json.dumps({"id": "draft-001", "split": "test", "kind": "plain"}) + "\n"
+            golden.write_text(frozen)
+            out = private / "kb_candidates_draft_dev.jsonl"
+            row = {"cid": "c01", "kind": "out_of_kb", "channel": "instagram", "question_text": "made-up moss ball?",
+                   "safety_flagged": False, "expected_hpa_ids": [], "expected_coverage": "none", "notes": ""}
+            out.write_text("".join(json.dumps({**row, "cid": cid}) + "\n" for cid in ("c01", "c02")))
+            with patch.object(gen, "PRIVATE", private), patch.dict(gen.GOLDEN, {"draft": golden}), \
+                    patch.object(gen, "load_docs", return_value=DOCS), patch("builtins.print"):
+                gen.freeze("draft", out, dev_added=True)
+                lines = golden.read_text().splitlines()
+                self.assertEqual(lines[0] + "\n", frozen)
+                added = [json.loads(line) for line in lines[1:]]
+                self.assertEqual([r["id"] for r in added], ["draft-dev-01", "draft-dev-02"])
+                self.assertEqual({(r["split"], r["origin"]) for r in added}, {("dev", "dev_added")})
+                with self.assertRaises(SystemExit):
+                    gen.freeze("draft", out, dev_added=True)
+                with self.assertRaises(SystemExit):
+                    gen.freeze("draft")  # the main set is still frozen
+                with self.assertRaises(SystemExit):
+                    gen.freeze("retrieval", dev_added=True)
+
+
 class EvalRetrievalTests(unittest.TestCase):
     def test_variant_rows_use_held_out_variants_and_full_list_index(self):
         """Variant rows are the held-out variants, with ids from their index in the full list."""

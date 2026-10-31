@@ -18,11 +18,23 @@ Commands:
     freeze     validate the reviewed candidates, assign ids and splits, and
                append them to eval/private/<set>_golden.jsonl
 
+Adding rows to dev later (draft set only): generate with --kinds (for
+example out_of_kb=8), --out (a separate candidates file, so the reviewed
+set is never overwritten) and --avoid (topics the existing rows already
+use), then freeze --dev-added --out with the same file. Those rows get ids
+draft-dev-01.., split "dev" and origin "dev_added"; the frozen rows are
+never touched or renumbered. Done once, when the hash split left dev with
+no out_of_kb rows (the same way triage's dev rows syn-NN were written).
+
 Usage (from the repo root):
     set -a; source .env; set +a
     uv run --python 3.11 python eval/generate_kb_eval.py estimate
     uv run --python 3.11 python eval/generate_kb_eval.py generate --set retrieval --budget 1
     uv run --python 3.11 python eval/generate_kb_eval.py freeze --set retrieval
+    uv run --python 3.11 python eval/generate_kb_eval.py generate --set draft --kinds out_of_kb=8 \
+        --out eval/private/kb_candidates_draft_dev.jsonl --avoid "topic one; topic two"
+    uv run --python 3.11 python eval/generate_kb_eval.py freeze --set draft --dev-added \
+        --out eval/private/kb_candidates_draft_dev.jsonl
 
 Review between generate and freeze: read every candidate, fix or delete
 lines, and check expected_hpa_ids and expected_coverage (the generator only
@@ -32,6 +44,7 @@ original_text and the replies, so edit those, not question_text.
 Outputs (all git-ignored, the questions are derived from the guides):
     eval/private/kb_candidates_<set>.jsonl       candidates for review
     eval/private/kb_candidates_<set>.meta.json   model, seed, cost, filter stats
+                                                 (--out FILE: FILE and its .meta.json)
     eval/private/retrieval_golden.jsonl          frozen messy rows (freeze)
     eval/private/draft_golden.jsonl              frozen draft rows (freeze)
 
@@ -75,6 +88,11 @@ PRIVATE = HERE / "private"
 GOLDEN = {"retrieval": PRIVATE / "retrieval_golden.jsonl", "draft": PRIVATE / "draft_golden.jsonl"}
 # Row id prefixes assigned at freeze: ret-001, draft-001, ...
 ID_PREFIX = {"retrieval": "ret", "draft": "draft"}
+# Rows added to dev after the draft set was frozen (freeze --dev-added):
+# draft-dev-01, ..., with split "dev" set explicitly instead of by hash and
+# this origin, so the report can tell them from the hash-split rows.
+DEV_ADDED_PREFIX = "draft-dev"
+DEV_ADDED_ORIGIN = "dev_added"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 # google/gemini-2.5-pro, confirmed by check_providers.py (eval/README.md
 # "Models"). Never the drafter (Sonnet) or the judge (GPT-6.1-sol): a model
@@ -378,7 +396,7 @@ def _app_slots(count, app_rows):
     return {i for i in range(count) if (i + 1) * app_rows // count > i * app_rows // count}
 
 
-def specs(kind_set, docs, rng):
+def specs(kind_set, docs, rng, counts=None, avoid=None):
     """Build the specs to generate for one set.
 
     Target guides cycle through a shuffled guide list, so the first rows of
@@ -389,19 +407,24 @@ def specs(kind_set, docs, rng):
         kind_set (str): "retrieval" or "draft".
         docs (list[dict]): load_docs() output.
         rng (random.Random): Seeded, so the same seed gives the same mix.
+        counts (dict[str, int] | None): Final rows per kind; None means
+            COUNTS[kind_set]. Knowledge app rows scale with the count
+            (APP_ROWS per COUNTS rows, rounded).
+        avoid (str | None): Topics every spec must stay away from, added to
+            each spec as "avoid".
 
     Returns:
         list[dict]: Specs like {"kind", "channel", "style", "targets": [hpa
-        ids], "rounds"?, "angle"?, "risk_topic"?}, grouped by kind.
+        ids], "rounds"?, "angle"?, "risk_topic"?, "avoid"?}, grouped by kind.
 
     Side effects: none.
     """
     guide_ids = [doc["hpa_id"] for doc in docs]
     out = []
-    for kind, count in COUNTS[kind_set].items():
+    for kind, count in (counts or COUNTS[kind_set]).items():
         order = guide_ids[:]
         rng.shuffle(order)
-        slots = _app_slots(count, APP_ROWS.get(kind, 0))
+        slots = _app_slots(count, round(APP_ROWS.get(kind, 0) * count / COUNTS[kind_set][kind]))
         for i in range(round(count * OVERSAMPLE)):
             app = kind_set == "draft" and i % count in slots
             spec = {"kind": kind, "channel": "knowledge_app" if app else "instagram",
@@ -416,6 +439,8 @@ def specs(kind_set, docs, rng):
                 spec["angle"] = OUT_OF_KB_ANGLES[i % len(OUT_OF_KB_ANGLES)]
             if kind == "risk":
                 spec["risk_topic"] = RISK_TOPICS[i % len(RISK_TOPICS)]
+            if avoid:
+                spec["avoid"] = avoid
             out.append(spec)
     return out
 
@@ -442,6 +467,8 @@ def describe(n, spec):
         parts.append(f"Angle: {spec['angle']}.")
     if spec.get("risk_topic"):
         parts.append(f"Risk topic: {spec['risk_topic']}.")
+    if spec.get("avoid"):
+        parts.append(f"Stay away from these topics, and from any topic a guide covers even in part: {spec['avoid']}.")
     parts.append(f"Channel: {spec['channel']}. Style: {spec['style']}.")
     return " ".join(parts)
 
@@ -537,7 +564,8 @@ def to_candidate(kind_set, spec, item):
         return None, "empty"
     ids = list(dict.fromkeys(item.get("expected_hpa_ids") or []))
     notes = (item.get("notes") or "").strip()
-    spec_note = "; ".join(f"{k}: {', '.join(v) if isinstance(v, list) else v}" for k, v in spec.items() if k != "kind")
+    spec_note = "; ".join(f"{k}: {', '.join(v) if isinstance(v, list) else v}" for k, v in spec.items()
+                         if k not in ("kind", "avoid"))
     if kind_set == "retrieval":
         query = (item.get("query") or "").strip()
         if not query:
@@ -615,18 +643,78 @@ def _shown(path):
         return str(path)
 
 
-def _paths(kind_set):
+def _paths(kind_set, out=None):
     """Return the candidate and metadata file paths for a set.
 
     Args:
         kind_set (str): "retrieval" or "draft".
+        out (str | Path | None): A candidates file given with --out; None
+            means the set's default file.
 
     Returns:
-        tuple[Path, Path]: (candidates.jsonl, candidates.meta.json).
+        tuple[Path, Path]: (candidates.jsonl, candidates.meta.json). For
+        --out FILE.jsonl the metadata is FILE.meta.json next to it.
 
     Side effects: none.
     """
+    if out:
+        path = Path(out)
+        return path, path.with_suffix(".meta.json")
     return PRIVATE / f"kb_candidates_{kind_set}.jsonl", PRIVATE / f"kb_candidates_{kind_set}.meta.json"
+
+
+def parse_kinds(text, kind_set):
+    """Read --kinds: which kinds to generate and how many rows of each.
+
+    Args:
+        text (str | None): Comma-separated kinds, each optionally "=N", for
+            example "out_of_kb=8" or "plain,risk". None or "" means all.
+        kind_set (str): "retrieval" or "draft".
+
+    Returns:
+        dict[str, int] | None: kind -> final row count (COUNTS when no N is
+        given), or None for every kind at its COUNTS.
+
+    Raises:
+        SystemExit: On an unknown kind or a count that is not a positive
+            integer.
+
+    Side effects: none.
+    """
+    if not text:
+        return None
+    counts = {}
+    for part in (p.strip() for p in text.split(",") if p.strip()):
+        kind, _, number = part.partition("=")
+        if kind not in COUNTS[kind_set] or (number and not (number.isdigit() and int(number) > 0)):
+            sys.exit(f"--kinds: {part!r} is not one of {', '.join(COUNTS[kind_set])} with an optional =N")
+        counts[kind] = int(number) if number else COUNTS[kind_set][kind]
+    return counts
+
+
+def existing_texts(kind_set, skip):
+    """Normalized texts of every row the set already holds, for the duplicate filter.
+
+    Reads the set's golden file and every kb_candidates_<set>*.jsonl in
+    PRIVATE except the file being written, so new candidates stay away
+    from frozen rows and from earlier candidate files alike.
+
+    Args:
+        kind_set (str): "retrieval" or "draft".
+        skip (Path): The candidates file this run writes.
+
+    Returns:
+        list[str]: Normalized query, question_text and original_text values.
+
+    Side effects: reads the files.
+    """
+    paths = [GOLDEN[kind_set], *sorted(PRIVATE.glob(f"kb_candidates_{kind_set}*.jsonl"))]
+    texts = []
+    for path in paths:
+        if path.exists() and path.resolve() != Path(skip).resolve():
+            texts += [text for line in path.read_text().splitlines() if line.strip()
+                      for text in _texts(json.loads(line))]
+    return texts
 
 
 def estimate(kind_sets):
@@ -663,13 +751,14 @@ def estimate(kind_sets):
     print(f"Estimated total: ~${total:.2f}")
 
 
-def run(kind_set, seed, budget, workers, force):
+def run(kind_set, seed, budget, workers, force, counts=None, out=None, avoid=None):
     """Generate, filter and save the candidates for one set.
 
     Steps: build the specs, generate every batch in parallel, turn each item
     into a candidate (to_candidate), drop candidates within NEAR_DUPLICATE of
-    any guide question variant or of an earlier kept candidate, keep the
-    first COUNTS per kind, then save the candidates and metadata.
+    any guide question variant, of a row the set already holds
+    (existing_texts) or of an earlier kept candidate, keep the first count
+    per kind, then save the candidates and metadata.
 
     Args:
         kind_set (str): "retrieval" or "draft".
@@ -677,6 +766,11 @@ def run(kind_set, seed, budget, workers, force):
         budget (float): Hard spend limit in USD.
         workers (int): Parallel generator calls.
         force (bool): Overwrite an existing candidates file.
+        counts (dict[str, int] | None): parse_kinds() output; None means
+            every kind at COUNTS.
+        out (str | Path | None): The candidates file (--out); None means
+            the set's default file.
+        avoid (str | None): Topics to stay away from (--avoid).
 
     Returns:
         None.
@@ -688,16 +782,17 @@ def run(kind_set, seed, budget, workers, force):
     Side effects: API calls; writes the candidates and metadata files under
     eval/private/; prints a requested/dropped/kept table and the cost.
     """
-    candidates_path, meta_path = _paths(kind_set)
+    candidates_path, meta_path = _paths(kind_set, out)
     if candidates_path.exists() and not force:
         sys.exit(f"{_shown(candidates_path)} exists and may hold your review; pass --force to replace it")
+    counts = counts or COUNTS[kind_set]
     model = os.environ.get("KB_EVAL_GEN_MODEL") or DEFAULT_MODEL
     docs = load_docs()
     system, reply_schema = system_prompt(docs), schema(docs, kind_set)
     spend = Spend(budget)
-    all_specs = specs(kind_set, docs, random.Random(seed))
+    all_specs = specs(kind_set, docs, random.Random(seed), counts, avoid)
     batches = []
-    for kind in COUNTS[kind_set]:
+    for kind in counts:
         group = [spec for spec in all_specs if spec["kind"] == kind]
         batches += [group[i:i + BATCH] for i in range(0, len(group), BATCH)]
     with ThreadPoolExecutor(max_workers=workers) as pool:
@@ -707,8 +802,8 @@ def run(kind_set, seed, budget, workers, force):
     # either leak a held-out row into this set or repeat what the card indexes.
     variants = [normalize(v) for doc in docs for v in doc.get("question_variants") or []]
     reasons = ("empty", "media", "bad_rounds", "off_kind", "near_variant", "duplicate")
-    stats = {kind: {"requested": 0, **{r: 0 for r in reasons}, "kept": 0} for kind in COUNTS[kind_set]}
-    kept, seen = {kind: [] for kind in COUNTS[kind_set]}, []
+    stats = {kind: {"requested": 0, **{r: 0 for r in reasons}, "kept": 0} for kind in counts}
+    kept, seen = {kind: [] for kind in counts}, existing_texts(kind_set, candidates_path)
     for spec, item in generated:
         s = stats[spec["kind"]]
         s["requested"] += 1
@@ -723,17 +818,17 @@ def run(kind_set, seed, budget, workers, force):
         seen += _texts(row)
         kept[spec["kind"]].append(row)
     rows = []
-    for kind, count in COUNTS[kind_set].items():
+    for kind, count in counts.items():
         rows += kept[kind][:count]
         stats[kind]["kept"] = len(kept[kind][:count])
     rows = [{"cid": f"c{n:02d}", **row} for n, row in enumerate(rows, 1)]
-    PRIVATE.mkdir(exist_ok=True)
+    candidates_path.parent.mkdir(exist_ok=True)
     candidates_path.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows))
     print(f"Wrote {len(rows)} candidates to {_shown(candidates_path)}")
     print("\nKind          requested  empty  media  rounds  off_kind  near_var  dupe  kept/target")
     for kind, s in stats.items():
         print(f"  {kind:<12}{s['requested']:>9}{s['empty']:>7}{s['media']:>7}{s['bad_rounds']:>8}{s['off_kind']:>10}"
-              f"{s['near_variant']:>10}{s['duplicate']:>6}{s['kept']:>7}/{COUNTS[kind_set][kind]}")
+              f"{s['near_variant']:>10}{s['duplicate']:>6}{s['kept']:>7}/{counts[kind]}")
     if kind_set == "draft":
         channels = {c: sum(row["channel"] == c for row in rows) for c in CHANNELS}
         print("Channels: " + ", ".join(f"{c} {n}" for c, n in channels.items()))
@@ -744,7 +839,7 @@ def run(kind_set, seed, budget, workers, force):
             "script_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
             "set": kind_set, "model": model, "served": sorted(spend.served), "temperature": TEMPERATURE,
             "seed": seed, "oversample": OVERSAMPLE, "batch": BATCH, "near_duplicate": NEAR_DUPLICATE,
-            "counts": COUNTS[kind_set], "candidates": len(rows), "stats": stats,
+            "counts": counts, "avoid": avoid, "candidates": len(rows), "stats": stats,
             "cost_usd": round(spend.cost, 4), "tokens": spend.tokens}
     meta_path.write_text(json.dumps(meta, indent=2) + "\n")
 
@@ -811,7 +906,7 @@ def validate(kind_set, row, guide_ids):
     return problems
 
 
-def freeze(kind_set):
+def freeze(kind_set, out=None, dev_added=False):
     """Validate the reviewed candidates and append them to the set's golden file.
 
     Ids are assigned in candidate order (ret-001 or draft-001 onward) and
@@ -820,26 +915,40 @@ def freeze(kind_set):
     original_text and the replies (join_question), so a reviewer's edit to a
     reply is never left out of the question.
 
+    With dev_added (draft set only), the rows are draft-dev-01 onward with
+    split "dev" and origin DEV_ADDED_ORIGIN instead, appended after the
+    frozen rows, which are never touched.
+
     Args:
         kind_set (str): "retrieval" or "draft".
+        out (str | Path | None): The candidates file (--out); None means
+            the set's default file.
+        dev_added (bool): Freeze rows added to dev after the set was frozen.
 
     Returns:
         None.
 
     Raises:
         SystemExit: If the golden file already holds this set (it is frozen
-            once), there are no candidates, or any candidate is invalid (all
-            problems are listed by candidate id).
+            once; with dev_added, if it already holds draft-dev rows), there
+            are no candidates, any candidate is invalid (all problems are
+            listed by candidate id), or dev_added is asked for on the
+            retrieval set.
 
     Side effects: appends to the golden file and adds frozen_at, the row
     count and the split counts to the candidates metadata.
     """
-    candidates_path, meta_path = _paths(kind_set)
-    golden_path, prefix = GOLDEN[kind_set], ID_PREFIX[kind_set]
+    if dev_added and kind_set != "draft":
+        sys.exit("--dev-added is for the draft set only")
+    candidates_path, meta_path = _paths(kind_set, out)
+    golden_path = GOLDEN[kind_set]
+    prefix = DEV_ADDED_PREFIX if dev_added else ID_PREFIX[kind_set]
     golden = [json.loads(line) for line in golden_path.read_text().splitlines() if line.strip()] \
         if golden_path.exists() else []
-    if any(str(row.get("id", "")).startswith(prefix + "-") for row in golden):
-        sys.exit(f"{_shown(golden_path)} already holds the {kind_set} set; it is frozen")
+    # Exactly "<prefix>-<digits>", so draft-dev-01 never counts as the main
+    # draft set and the reverse.
+    if any(re.fullmatch(rf"{prefix}-\d+", str(row.get("id", ""))) for row in golden):
+        sys.exit(f"{_shown(golden_path)} already holds the {prefix} rows; they are frozen")
     if not candidates_path.exists():
         sys.exit(f"No candidates at {_shown(candidates_path)}; run generate first")
     rows = [json.loads(line) for line in candidates_path.read_text().splitlines() if line.strip()]
@@ -852,12 +961,15 @@ def freeze(kind_set):
         sys.exit("Fix these candidates first:\n  " + "\n  ".join(problems))
     out = []
     for n, row in enumerate(rows, 1):
-        row_id = f"{prefix}-{n:03d}"
+        row_id = f"{prefix}-{n:02d}" if dev_added else f"{prefix}-{n:03d}"
         if kind_set == "retrieval":
             out.append({"id": row_id, "split": split_for(row_id), "query": row["query"].strip(),
                         "expected_hpa_ids": row["expected_hpa_ids"], "origin": "messy", "notes": row.get("notes", "")})
             continue
-        frozen = {"id": row_id, "split": split_for(row_id), "kind": row["kind"], "channel": row["channel"]}
+        frozen = {"id": row_id, "split": "dev" if dev_added else split_for(row_id)}
+        if dev_added:
+            frozen["origin"] = DEV_ADDED_ORIGIN
+        frozen.update({"kind": row["kind"], "channel": row["channel"]})
         if row["kind"] == "clarified":
             rounds = [{"round": r["round"], "prompt": r["prompt"].strip(), "reply": r["reply"].strip()}
                       for r in row["rounds"]]
@@ -895,6 +1007,13 @@ def main():
         --budget X     hard spend limit in USD (default 2.0)
         --workers N    parallel generator calls (default 4)
         --force        let generate replace an existing candidates file
+        --kinds K      generate only these kinds, each optionally =N rows,
+                       for example out_of_kb=8 (parse_kinds)
+        --out FILE     the candidates file for generate and freeze (default
+                       eval/private/kb_candidates_<set>.jsonl)
+        --avoid TEXT   topics generate must stay away from; kept on the
+                       command line and in the git-ignored metadata only
+        --dev-added    freeze the rows as draft-dev-NN dev rows (draft only)
 
     Returns:
         None.
@@ -908,6 +1027,10 @@ def main():
     parser.add_argument("--budget", type=float, default=2.0)
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--force", action="store_true")
+    parser.add_argument("--kinds")
+    parser.add_argument("--out")
+    parser.add_argument("--avoid")
+    parser.add_argument("--dev-added", action="store_true")
     args = parser.parse_args()
     if args.command == "estimate":
         estimate([args.kind_set] if args.kind_set else list(SETS))
@@ -915,9 +1038,10 @@ def main():
     if not args.kind_set:
         parser.error(f"{args.command} needs --set retrieval or --set draft")
     if args.command == "generate":
-        run(args.kind_set, args.seed, args.budget, args.workers, args.force)
+        run(args.kind_set, args.seed, args.budget, args.workers, args.force,
+            parse_kinds(args.kinds, args.kind_set), args.out, args.avoid)
     else:
-        freeze(args.kind_set)
+        freeze(args.kind_set, args.out, args.dev_added)
 
 
 if __name__ == "__main__":
