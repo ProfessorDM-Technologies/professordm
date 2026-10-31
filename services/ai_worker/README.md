@@ -476,7 +476,7 @@ Every decision has exactly these keys:
     "missing_info": ["what the guides don't cover, as short topic phrases"],
     "safety_flags": [{"layer": "policy", "category": "risk_topic", "detail": "pesticides or chemical use"}],
     "model": "anthropic/claude-sonnet-5.5",   # the model that actually answered (may be the fallback); None without a call
-    "prompt_version": "draft-v2+sweetlife-v2",
+    "prompt_version": "draft-v3+sweetlife-v2",
     "retrieved": [{"entry_id": "...", "title": "...", "similarity": 0.61}],   # logs and eval only, not stored
 }
 ```
@@ -508,12 +508,12 @@ Coverage is `none` for an empty question, a gate stop and invalid output, and th
 | `RuntimeError` | A key or Supabase setting is missing |
 | `ValueError` | The profile has no byte limit for `channel` |
 
-### Latency and cost (draft eval, offline search, `draft-v2+sweetlife-v2`)
+### Latency and cost (draft eval, offline search, `draft-v3+sweetlife-v2`)
 
 | Split | Drafted | Mean latency | p90 latency | Mean cost per draft |
 |---|---|---|---|---|
-| dev (17 rows) | 11 | 9.3 s | 14.3 s | $0.0175 |
-| test (28 rows) | 23 | 9.0 s | 13.1 s | $0.0177 |
+| dev (30 rows) | 24 | 6.8 s | 12.9 s | $0.0153 |
+| test (28 rows) | 23 | 7.9 s | 10.5 s | $0.0176 |
 
 The target is under $0.02 per draft. Gate stops cost only the query embedding. No eval draft needed the fallback. Quality numbers are in [eval/README.md](../../eval/README.md#draft-eval).
 
@@ -555,7 +555,7 @@ Citation titles look like `Guide title > Section > Subsection`. Checkpoint-2 fla
 
 The same rules as [triage](#changing-the-prompt-safely), with `DRAFT_VERSION`:
 
-1. Edit `DRAFT_TEMPLATE`, the user message or the validators in `draft.py`, then bump `DRAFT_VERSION` (`draft-v2` -> `draft-v3`). If you change `answer_voice`, `answer_rules` or `max_answer_bytes`, bump the profile `version` too. That also changes triage's `prompt_version`, so rerun the triage eval.
+1. Edit `DRAFT_TEMPLATE`, the user message or the validators in `draft.py`, then bump `DRAFT_VERSION` (`draft-v3` -> `draft-v4`). If you change `answer_voice`, `answer_rules` or `max_answer_bytes`, bump the profile `version` too. That also changes triage's `prompt_version`, so rerun the triage eval.
 2. Keep the template generic: no domain words (a test checks).
 3. Run the unit tests, then `eval/eval_draft.py --split dev`.
 4. Tune only on **dev**. Run test once per change and never change the prompt, the validators or the gate because of a test row. If a test row shows a real gap, add a similar dev row.
@@ -573,7 +573,8 @@ The same rules as [triage](#changing-the-prompt-safely), with `DRAFT_VERSION`:
 - **Single creator.** `profile_for()` returns the same profile for every creator.
 
 **Drafting:**
-- **Draft quality bars not met yet.** On test, `draft-v2` drafts pass every automatic check but score 69.6% grounded (bar 90%) and 46.4% coverage accuracy (bar 80%). Most coverage misses are one step lower than the review label (`high` -> `partial`), and most unsupported claims are small extrapolations or reassurance. The creator always edits the draft before sending.
+- **Draft quality bars not met yet.** On test, `draft-v3` drafts pass every automatic check but score 78.3% grounded (bar 90%; draft-v2 scored 69.6%). Coverage accuracy is 57.1% (bar 80%; draft-v2 scored 46.4%). The remaining unsupported claims are mostly small general claims, definitions or reassurance. The creator always edits the draft before sending.
+- **Coverage is cautious, and only drives the inbox badge.** On dev every coverage miss is one step lower than the label: the model never overclaims. On test, 8 of 12 misses are one step lower. The other 4 go higher: 3 rows no guide covers got past the gate and were labelled `partial`, and 1 `partial` row came back `high`. Scored only as "the guides help" vs "they don't", coverage is 82.1% on test. That split was added after seeing the results and isn't a bar.
 - **Placeholder voice and rules.** `answer_voice` and `answer_rules` were written from the Academy guides' style and are placeholders until Kristin signs off.
 - **Model version.** The drafter is Sonnet 5.5 (`anthropic/claude-sonnet-5.5`), not the tech matrix's Sonnet 5. It's the same price; record it in Nova's decision log.
 - **Arun's retrieval queries are pending** (SCRUM-91). The retrieval eval accepts them with no code change.
@@ -581,7 +582,7 @@ The same rules as [triage](#changing-the-prompt-safely), with `DRAFT_VERSION`:
 - **No web search.** `used_web_search` is always false; gaps go to the creator through `missing_info`.
 - **Text only.** Figures are kept only as captions, and the follower's photos aren't read.
 - **No drafts from Q&A in v1.** Drafts search `sources=["doc"]`, so the 8 team-written demo Q&A answers are never cited. Add `"question"` once real answered Q&A exist.
-- **Small gate sample.** `DRAFT_MIN_SIMILARITY = 0.475` was tuned on 17 dev rows, 0.040 below the lowest answerable one. On test it stopped 2 answerable rows and let 2 out-of-KB rows through. Recheck it on real questions.
+- **Small gate margin.** `DRAFT_MIN_SIMILARITY = 0.475` was tuned on 30 dev rows (5 out of the knowledge base) and sits 0.018 below the lowest answerable one. On test it stopped 2 answerable rows and let 2 out-of-KB rows through. Recheck it on real questions.
 
 ## Open questions
 
@@ -605,5 +606,5 @@ The same rules as [triage](#changing-the-prompt-safely), with `DRAFT_VERSION`:
 | Arun's 10 retrieval queries (SCRUM-91) | Arun, Karthik |
 | `KB_EXCLUDE_TAGS=review:pending` in production | Karthik |
 | Draft Lambda timeout 120 s, queue visibility timeout 720 s | Karthik, Akshay |
-| Draft quality below the grounded and coverage bars: tune further on dev, or accept for v1 since the creator edits every draft | Chinmay, Karthik |
+| Grounded (78.3% on test, bar 90%) and coverage (57.1%, bar 80%) below their bars: recheck on real paid questions | Chinmay, Karthik |
 | Rechecking `DRAFT_MIN_SIMILARITY` on real paid questions | Chinmay |

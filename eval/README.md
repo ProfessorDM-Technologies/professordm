@@ -163,6 +163,8 @@ uv run --python 3.11 python eval/generate_kb_eval.py generate --set retrieval --
 uv run --python 3.11 python eval/generate_kb_eval.py freeze --set retrieval        # after hand review
 ```
 
+For rows added to dev later: `--kinds KIND=N` (only these kinds and counts), `--out FILE` (a separate candidates file), `--avoid "<topics>"` (kept on the command line), `--covered-risk` (risk questions a guide answers), and `freeze --dev-added --out FILE` (next free `draft-dev-NN`, refuses a file already frozen). See [Draft eval](#draft-eval).
+
 1. **`generate`.** `google/gemini-2.5-pro` (env `KB_EVAL_GEN_MODEL`), never the drafter or the judge, writes questions from each guide's id, title, summary, care topics and H1/H2 headings. It never sees body text. Requests send `provider: {"data_collection": "deny", "require_parameters": true}` and a strict JSON schema whose guide ids are an enum. Each spec names its target guide(s), cycling through the guides. Candidates that mention media, contradict their kind, or sit within 0.8 (difflib ratio) of any guide question variant or of another candidate are dropped. It refuses to overwrite a candidates file unless given `--force`, so a review in progress is safe.
 2. **Review by hand.** Fix or delete lines in `private/kb_candidates_<set>.jsonl` and check `expected_hpa_ids` (and for drafts `expected_coverage`): the generator only proposes them. Deleting a line shifts the ids assigned at freeze.
 3. **`freeze`.** Validates every row (labels present, guide ids exist, rounds well formed, `flagged_topics` only from the profile's risk topics), assigns `ret-NNN` / `draft-NNN` in file order and `split = split_for(id)`, and appends to `private/retrieval_golden.jsonl` (with `origin: "messy"`) or `private/draft_golden.jsonl`. It refuses if the file already holds that set.
@@ -192,7 +194,7 @@ Checks `draft()` end to end: the real search, the real draft models and checkpoi
 | File | What |
 |---|---|
 | `eval_draft.py` | Runs `draft()` on every row, checks, judges and reports per split; `--gate-sweep` tunes the gate |
-| `private/draft_golden.jsonl` | The frozen rows: 40 from `generate_kb_eval.py --set draft` plus 5 dev rows added later (below) |
+| `private/draft_golden.jsonl` | The frozen rows: 40 from `generate_kb_eval.py --set draft` plus 18 dev rows added later (below) |
 | `private/kb_candidates_draft*.jsonl` | The generator candidates and their `.meta.json` (model, seed, cost, filter stats) |
 | `results/draft-<timestamp>.json` | One file per run: settings, metrics per split, and per row the labels, outcome, passage ids and similarities, checks, judge verdict, latency and cost. The judge's `unsupported_claims` are kept only here; no question, passage or answer text |
 | `results/draft-sweep-<timestamp>.json` | One file per gate sweep: each row's best similarity and the table |
@@ -214,11 +216,15 @@ Checks `draft()` end to end: the real search, the real draft models and checkpoi
 | `safety_flagged`, `flagged_topics` | `risk` rows: `true` and the checkpoint-1 topics |
 | `expected_hpa_ids` | The guides that answer it (empty for `none`) |
 | `expected_coverage` | `high`, `partial` or `none`, set by hand review |
-| `origin` | `dev_added` on the 5 rows added after the freeze |
+| `origin` | `dev_added` on the 18 rows added after the freeze |
 
-**Mix after review:** 45 rows, 17 dev and 28 test. Of the 40 generated rows, review relabelled 5 `out_of_kb` rows as `plain` / `partial`, because a guide partly covers them, and relabelled 4 risk rows as `high` or `partial`. That leaves only 5 `out_of_kb` rows among the 40, and the hash put all of them in test.
+**Review of the 40 generated rows.** Review changed labels on 15 rows: 11 coverage or kind changes and 4 added guides. Five of the coverage or kind changes turned `out_of_kb` rows into `plain` / `partial`, because a guide partly covers them. That leaves only 5 `out_of_kb` rows among the 40, and the hash put all of them in test: 12 dev, 28 test.
 
-**Dev out-of-KB rows added after the freeze.** With no `out_of_kb` (or `none`) rows in dev, the gate could not be tuned, so 5 were added the same way triage's dev rows `syn-NN` were written. `generate_kb_eval.py generate --set draft --kinds out_of_kb=8 --out private/kb_candidates_draft_dev.jsonl --avoid "<topics already used>"` wrote 8 candidates ($0.062), kept away from the existing out-of-KB topics, from topics a guide partly covers, and within 0.8 of any existing row or guide question variant. Hand review deleted 3. `freeze --set draft --dev-added --out ...` appended the other 5 as `draft-dev-01..05` (`split: "dev"`, `origin: "dev_added"`), without touching or renumbering the frozen rows.
+**Dev rows added after the freeze**, the same way triage's dev rows `syn-NN` were written. They have ids `draft-dev-NN`, `split: "dev"` and `origin: "dev_added"`, and were appended by `freeze --set draft --dev-added --out <file>` without touching or renumbering the frozen rows:
+- **`draft-dev-01..05`, out of the knowledge base.** Dev had no `out_of_kb` (or `none`) rows, so the gate could not be tuned. `generate --set draft --kinds out_of_kb=8 --out private/kb_candidates_draft_dev.jsonl --avoid "<topics already used>"` wrote 8 candidates ($0.062), kept away from the existing out-of-KB topics, from topics a guide partly covers, and within 0.8 of any existing row or guide question variant. Hand review deleted 3.
+- **`draft-dev-06..18`, answerable.** These give the gate and the prompt more answerable rows to tune against: 6 plain, 4 clarified and 3 risk rows the guides do cover. `generate --set draft --kinds plain=6,clarified=4,risk=4 --covered-risk --out private/kb_candidates_draft_dev2.jsonl` wrote 12. A 2-row risk top-up kept 1 ($0.156 in all), because the generator labelled 5 of 9 covered-risk questions `none`. The generator's coverage instruction uses the draft-v3 definition (below). Hand review relabelled 1, deleted 1 and added 1 hand-written risk row.
+
+The final set has 58 rows: **30 dev** (11 plain, 7 clarified, 7 risk, 5 out_of_kb; 19 `high`, 6 `partial`, 5 `none`) and **28 test** (12 plain, 7 clarified, 4 risk, 5 out_of_kb; 14 `high`, 8 `partial`, 6 `none`). Only 5 `out_of_kb` rows exist per split, so abstention rests on a small sample.
 
 ### Search
 
@@ -250,13 +256,17 @@ The judge is `openai/gpt-6.1-sol` (no `temperature`, strict schema), a different
 
 `eval_draft.py --gate-sweep` (dev only; it refuses another split) runs `draft()` with the gate above any similarity, so each row costs one search and no model call. It prints each row's best similarity, the should-stop rows against the lowest answerable one, and a table for cutoffs 0.20 to 0.50 in steps of 0.025. The pick is the cutoff that stops the most `none` rows while wrongly stopping at most 1 answerable dev row, with ties going to the lowest cutoff.
 
-On 2026-10-30 (offline) the 5 dev out-of-KB rows scored 0.425 to 0.465 and the 12 answerable dev rows 0.515 to 0.656. **0.475** stops 5/5 and wrongly stops 0/12 (0.450 stops 2/5; 0.500 ties). It's frozen in `draft.DRAFT_MIN_SIMILARITY`. The margin is small (0.040 below the lowest answerable dev row, on 12 rows).
+Sweeps on 2026-10-30 (offline):
+- **17 dev rows:** the 5 out-of-KB rows scored 0.425 to 0.465 and the 12 answerable rows 0.515 to 0.656. **0.475** stopped 5/5 and wrongly stopped 0/12.
+- **Re-swept on all 30 dev rows:** the 25 answerable rows start at 0.493. **0.475** again stops 5/5 and wrongly stops 0/25. 0.450 stops 2/5; 0.500 stops 5/5 but wrongly stops 1/25.
+
+It's frozen in `draft.DRAFT_MIN_SIMILARITY`. The margin is small: 0.018 below the lowest answerable dev row.
 
 ### Running it
 
 ```bash
 set -a; source .env; set +a
-uv run --python 3.11 python eval/eval_draft.py --split dev                 # offline, real models, about $0.25
+uv run --python 3.11 python eval/eval_draft.py --split dev                 # offline, real models, about $0.52 (30 rows)
 uv run --python 3.11 python eval/eval_draft.py --split test                # once per prompt version
 uv run --python 3.11 python eval/eval_draft.py --live --split dev          # staging match_knowledge
 uv run --python 3.11 python eval/eval_draft.py --gate-sweep                # dev, no drafting
@@ -265,26 +275,49 @@ uv run --python 3.11 python eval/eval_draft.py --split dev --limit 3 --no-judge 
 
 Other flags: `--rows FILE` (rows.jsonl, also the default creator), `--golden FILE`, `--creator-id`, `--workers N` (default 4). Transient API errors are retried in the eval (production raises them). Drafts and judge scores run without temperature, so expect a row or two of noise between runs.
 
-### Results (2026-10-30, `draft-v2+sweetlife-v2`, gate 0.475)
+### Results (2026-10-30, gate 0.475)
 
-`draft-v1` on dev scored 27.3% grounded and 58.8% coverage. Most unsupported claims were follow-up timings ("check again in a few days") prompted by a creator rule, plus small extrapolations. `draft-v2` was tuned on dev in three runs (grounded 63.6%, 45.5%, 72.7%; coverage 64.7%, 70.6%, 76.5%) and the last, best version ran on test once.
+**How the prompt got here (tuned on dev only):**
+- **`draft-v1`** scored 27.3% grounded and 58.8% coverage on the first 17 dev rows. Most unsupported claims were follow-up timings ("check again in a few days") that a creator rule prompted, plus small extrapolations.
+- **`draft-v2`** came from three dev runs (grounded 63.6%, 45.5%, 72.7%; coverage 64.7%, 70.6%, 76.5%). Its last version ran on test once: the **first test run**.
+- **`draft-v3`** came from three runs on the 30-row dev set (grounded 75.0%, 79.2%, 87.5%; coverage 56.7%, 70.0%, 70.0%). Its last version ran on test once: the **second test run**.
 
-| Metric | dev offline (17) | dev live (17) | test offline (28) | Bar |
-|---|---|---|---|---|
-| Drafted / no_draft | 11 / 6 | 11 / 6 | 23 / 5 | |
-| Automatic checks | 11/11 = 100% | 11/11 = 100% | 23/23 = 100% | 100% PASS |
-| `invalid_output` / `safety_blocked` | 0 / 0 | 0 / 0 | 0 / 0 | |
-| Coverage accuracy | 13/17 = 76.5% | 12/17 = 70.6% | 13/28 = 46.4% | ≥ 80% FAIL |
-| Abstention (`out_of_kb`) | 5/5 | 5/5 | 3/5 | |
-| False abstention (gate / model) | 1/12 (0 / 1) | 1/12 (0 / 1) | 2/22 (2 / 0) | |
-| Grounded | 8/11 = 72.7% | 8/11 = 72.7% | 16/23 = 69.6% | ≥ 90% FAIL |
-| Uses clarification | 3/3 | 3/3 | 7/7 | |
-| Retrieval hit | 12/12 | 12/12 | 21/22 | |
-| Fallback drafts | 0/11 | 0/11 | 0/23 | |
-| Latency mean / p90 | 9.3 / 14.3 s | 8.5 / 14.9 s | 9.0 / 13.1 s | |
-| Cost per draft | $0.0175 | $0.0164 | $0.0177 | < $0.02 PASS |
+What v3 changed:
+- The v2 line "choose partial when unsure" is gone.
+- Coverage `high` means the passages give advice for everything asked. `partial` means the follower asked more than one thing, or for a specific detail such as an exact distance, timing or product, and the passages don't cover all of it.
+- Every sentence with a cause, step, check, number, timing, comparison, reassurance or description must come from a passage.
+- Fewer, well-supported points are preferred.
 
-On test, coverage is mostly one step lower than the review label: 9 of 14 `high` rows came back `partial`, 2 `partial` rows stopped at the gate, and 3 `none` rows came back `partial`. Two of the 5 out-of-KB test rows scored 0.503 and 0.506, above the gate, and two answerable rows scored 0.428 and 0.471, below it. No cutoff separates them on test. The gate was not retuned. Only 5 `out_of_kb` rows exist per split, so abstention rests on a small sample.
+| Metric | dev offline (30) | dev live (30) | test, draft-v3 (second test run) | test, draft-v2 (first test run) | Bar |
+|---|---|---|---|---|---|
+| Drafted / no_draft | 24 / 6 | 24 / 6 | 23 / 5 | 23 / 5 | |
+| Automatic checks | 24/24 = 100% | 24/24 = 100% | 23/23 = 100% | 23/23 = 100% | 100% PASS |
+| `invalid_output` / `safety_blocked` | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | |
+| Coverage accuracy | 21/30 = 70.0% | 24/30 = 80.0% | 16/28 = 57.1% | 13/28 = 46.4% | ≥ 80% FAIL |
+| Abstention (`out_of_kb`) | 5/5 | 5/5 | 3/5 | 3/5 | |
+| False abstention (gate / model) | 1/25 (0 / 1) | 1/25 (0 / 1) | 2/22 (2 / 0) | 2/22 (2 / 0) | |
+| Grounded | 21/24 = 87.5% | 19/24 = 79.2% | 18/23 = 78.3% | 16/23 = 69.6% | ≥ 90% FAIL |
+| Uses clarification | 7/7 | 7/7 | 7/7 | 7/7 | |
+| Retrieval hit | 25/25 | 25/25 | 21/22 | 21/22 | |
+| Fallback drafts | 0/24 | 0/24 | 0/23 | 0/23 | |
+| Latency mean / p90 | 6.8 / 12.9 s | 6.9 / 10.2 s | 7.9 / 10.5 s | 9.0 / 13.1 s | |
+| Cost per draft | $0.0153 | $0.0149 | $0.0176 | $0.0177 | < $0.02 PASS |
+
+**Coverage is below its bar.** It only drives the inbox badge; the draft text and `missing_info` don't depend on it.
+- **On dev, every miss is one step lower than the label.** `high` comes back `partial`, and one `partial` row comes back `none` through the model's own coverage. The model is cautious there and never overclaims. Six `high` rows came back `partial` in all three v3 runs. Hand review of them against the guides kept the labels.
+- **On test, 8 of the 12 misses are one step lower:**
+  - 6 are `high` rows that came back `partial`.
+  - 2 are `partial` rows stopped at the gate: the false abstentions, at 0.428 and 0.471.
+- **On test, 4 misses go higher than the label:**
+  - draft-023, draft-026 and draft-036 are out-of-KB rows the gate let through: two at 0.503 and 0.506, plus a `none` risk row. The model labelled them `partial`.
+  - draft-029 is a `partial` row labelled `high`.
+- **No cutoff separates the test rows on either side of the gate.** It was not retuned.
+
+**Coverage in two classes: extra information added after seeing these results, not a bar.** This scores only "the guides help" (`high` or `partial`) against "they don't" (`none`): dev offline 29/30 = 96.7%, dev live 29/30 = 96.7%, test draft-v3 23/28 = 82.1%, test draft-v2 23/28 = 82.1%.
+
+**Grounded failures by category.** Dev, last run: an assumption about the follower's setup, causes ranked by likelihood, and general advice. Test draft-v3: a general claim, a definition, a timing, general advice, and reassurance; two of these are rows no guide covers (expected `none`) that the gate let through.
+
+**Live vs offline (dev).** Retrieval matches: 29 of 30 rows got the same passages in the same order. Every grounded or coverage verdict that changed between the offline and live runs is on a row with identical passages, so the differences (coverage +3 rows, grounded -2 rows) are drafter and judge run-to-run noise, since neither runs with a temperature. They don't come from the search.
 
 ## Models
 
