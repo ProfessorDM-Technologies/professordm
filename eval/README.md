@@ -1,6 +1,6 @@
 # eval: triage and knowledge base evaluation
 
-This folder measures how well `services/ai_worker` triage labels DMs, using a golden set of labeled synthetic DMs, and how well knowledge base search finds the right guide (see [Knowledge base retrieval eval](#knowledge-base-retrieval-eval)).
+This folder measures how well `services/ai_worker` triage labels DMs, using a golden set of labeled synthetic DMs, how well knowledge base search finds the right guide (see [Knowledge base retrieval eval](#knowledge-base-retrieval-eval)), and how well drafts stay grounded in the guides (see [Draft eval](#draft-eval)).
 
 | File | What |
 |---|---|
@@ -10,6 +10,7 @@ This folder measures how well `services/ai_worker` triage labels DMs, using a go
 | `triage_test_meta.json` | How the test split was made: models, seed, cost, script hash, review decisions |
 | `check_providers.py` | One tiny call per model with its real settings, to confirm each works under `data_collection: deny` |
 | `eval_retrieval.py` | Knowledge base retrieval eval: guide-level hit@3, hit@5 and MRR, offline or live |
+| `eval_draft.py` | Draft eval: automatic checks, coverage, abstention, an LLM judge for grounding, cost and latency; also tunes the draft gate |
 | `generate_kb_eval.py` | Generates, validates and freezes the question sets for the knowledge base evals |
 | `kb_eval_common.py` | Shared by the knowledge base evals: offline search, split rule, metrics, query embedding cache |
 | `results/` | One JSON file per eval run (git-ignored) |
@@ -180,7 +181,110 @@ The retrieval set was generated on 2026-10-30 for $0.107: 21 written, 15 kept, n
 | messy | test | 12 | 100.0% | 100.0% | 1.000 | 100.0% | 100.0% | 1.000 |
 | **variant + messy** | **test** | 59 | 93.2% | **96.6%** | 0.826 | 93.2% | **96.6%** | 0.818 |
 
-Passes the bar in both modes. The cards add a little MRR (0.826 vs 0.818) and no hits; held-out variants are never on a card, so this measures the cards' summary and keywords, not leaked questions. Two test misses, the same in both modes. Nothing was tuned: the chunking constants are unchanged since the chunk review. Arun's group and the `--live` hybrid run come after the staging load.
+Passes the bar in both modes. The cards add a little MRR (0.826 vs 0.818) and no hits; held-out variants are never on a card, so this measures the cards' summary and keywords, not leaked questions. Two test misses, the same in both modes. Nothing was tuned: the chunking constants are unchanged since the chunk review. Arun's group comes later (SCRUM-91).
+
+**Live (2026-10-30, `match_knowledge` on staging, hybrid):** variant dev 92.3% / 100% / 0.891, variant test 97.9% / 97.9% / 0.797, messy dev and test 100% / 100% / 1.000, **variant + messy test 98.3% / 98.3% / 0.839** (hit@3 / hit@5 / MRR). It passes the bar and matches offline within a few points on hit@5 (+1.7). The keyword half lifts test hit@3 by 5 points and fixes both offline misses, and it costs one dev row at hit@3 (100% to 92.3% of 13). One live test miss: `HPA-TROUBLE-0005:v3`.
+
+## Draft eval
+
+Checks `draft()` end to end: the real search, the real draft models and checkpoint 2, on synthetic paid questions (spec `docs/plans/kb-draft-implementation-spec.md`, sections 9.2, 14.4 and 14.7 Q5). The questions are derived from the guides, so they live in `private/`.
+
+| File | What |
+|---|---|
+| `eval_draft.py` | Runs `draft()` on every row, checks, judges and reports per split; `--gate-sweep` tunes the gate |
+| `private/draft_golden.jsonl` | The frozen rows: 40 from `generate_kb_eval.py --set draft` plus 5 dev rows added later (below) |
+| `private/kb_candidates_draft*.jsonl` | The generator candidates and their `.meta.json` (model, seed, cost, filter stats) |
+| `results/draft-<timestamp>.json` | One file per run: settings, metrics per split, and per row the labels, outcome, passage ids and similarities, checks, judge verdict, latency and cost. The judge's `unsupported_claims` are kept only here; no question, passage or answer text |
+| `results/draft-sweep-<timestamp>.json` | One file per gate sweep: each row's best similarity and the table |
+
+### Rows
+
+```json
+{"id": "draft-007", "split": "test", "kind": "plain", "channel": "instagram", "question_text": "...",
+ "safety_flagged": false, "expected_hpa_ids": ["HPA-FUND-0003"], "expected_coverage": "high", "notes": "..."}
+```
+
+| Field | Meaning |
+|---|---|
+| `id`, `split` | `draft-NNN` with `split = split_for(id)` (the same 30/70 hash as retrieval), or `draft-dev-NN` with `split: "dev"` set by hand |
+| `kind` | `plain`, `clarified` (vague first message plus 1 or 2 rounds), `out_of_kb` (no guide covers it) or `risk` (touches a profile risk topic) |
+| `channel` | `instagram` (1000-byte limit) or `knowledge_app` (4000) |
+| `question_text` | The paid question; for `clarified`, the original and the replies joined with `\n`, like triage |
+| `original_text`, `rounds` | `clarified` only: the first DM and `[{"round", "prompt", "reply"}]` |
+| `safety_flagged`, `flagged_topics` | `risk` rows: `true` and the checkpoint-1 topics |
+| `expected_hpa_ids` | The guides that answer it (empty for `none`) |
+| `expected_coverage` | `high`, `partial` or `none`, set by hand review |
+| `origin` | `dev_added` on the 5 rows added after the freeze |
+
+**Mix after review:** 45 rows, 17 dev and 28 test. Of the 40 generated rows, review relabelled 5 `out_of_kb` rows as `plain` / `partial`, because a guide partly covers them, and relabelled 4 risk rows as `high` or `partial`. That leaves only 5 `out_of_kb` rows among the 40, and the hash put all of them in test.
+
+**Dev out-of-KB rows added after the freeze.** With no `out_of_kb` (or `none`) rows in dev, the gate could not be tuned, so 5 were added the same way triage's dev rows `syn-NN` were written. `generate_kb_eval.py generate --set draft --kinds out_of_kb=8 --out private/kb_candidates_draft_dev.jsonl --avoid "<topics already used>"` wrote 8 candidates ($0.062), kept away from the existing out-of-KB topics, from topics a guide partly covers, and within 0.8 of any existing row or guide question variant. Hand review deleted 3. `freeze --set draft --dev-added --out ...` appended the other 5 as `draft-dev-01..05` (`split: "dev"`, `origin: "dev_added"`), without touching or renumbering the frozen rows.
+
+### Search
+
+`--offline` (default) runs `kb_eval_common.offline_search` over `rows.jsonl` (cosine only). `--live` runs `knowledge.search` against `match_knowledge` on staging (needs `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`). Both use `draft()`'s own settings (`k=8`, `sources=["doc"]`) and `knowledge.search`'s defaults (`candidates=20`, `per_doc=3`). Both are wrapped, so the eval sees the passages that were sent. `--exclude-tags review:pending` previews production; the default excludes nothing, as on staging.
+
+### Metrics and bars (per split)
+
+| Metric | How | Bar |
+|---|---|---|
+| Automatic checks | Every drafted answer passes `draft.py`'s own validators (`draft._check` on the rebuilt reply), fits the channel's byte limit, and cites only passages that were sent | 100% |
+| `invalid_output`, `safety_blocked` | Counts | |
+| Coverage accuracy | The decision's `knowledge_coverage` (`none` for any `no_draft`) equals `expected_coverage`; automatic, no judge. The report also prints the 3x3 confusion | ≥ 80% |
+| Abstention | `out_of_kb` rows that come back `no_draft` | |
+| False abstention | `high` / `partial` rows that come back `no_draft`, split into stopped by the gate (no model call) and by the model | |
+| Grounded | The judge, over drafted rows | ≥ 90% |
+| Uses clarification | The judge, over drafted `clarified` rows | |
+| Retrieval hit | Any `expected_hpa_ids` among the passages' hpa ids | |
+| Fallback share | Drafts the fallback wrote | |
+| Latency | Mean and p90 of `draft()` wall time, drafted rows | |
+| Cost | Mean draft-model cost per draft (judge reported separately) | < $0.02 |
+
+### Judge
+
+The judge is `openai/gpt-6.1-sol` (no `temperature`, strict schema), a different family from the Sonnet drafter. When a draft came from the `openai/` Terra fallback, the judge is `google/gemini-2.5-pro` at `temperature: 0`, so no model grades its own family. Both send `provider: {"data_collection": "deny", "require_parameters": true}`. The judge sees the question, the original and rounds, the creator rules, **every passage sent** with its ref, the answer and its `used_sources`, and returns `{"grounded", "unsupported_claims", "uses_clarification"}`:
+- **grounded** is true only if every care claim (cause, step, number, timing, product type) is supported by at least one passage sent. Plain connecting words and cautions that match the creator rules count as supported.
+- **uses_clarification** is true if the answer uses at least one specific detail from the follower's replies.
+
+### Gate tuning
+
+`eval_draft.py --gate-sweep` (dev only; it refuses another split) runs `draft()` with the gate above any similarity, so each row costs one search and no model call. It prints each row's best similarity, the should-stop rows against the lowest answerable one, and a table for cutoffs 0.20 to 0.50 in steps of 0.025. The pick is the cutoff that stops the most `none` rows while wrongly stopping at most 1 answerable dev row, with ties going to the lowest cutoff.
+
+On 2026-10-30 (offline) the 5 dev out-of-KB rows scored 0.425 to 0.465 and the 12 answerable dev rows 0.515 to 0.656. **0.475** stops 5/5 and wrongly stops 0/12 (0.450 stops 2/5; 0.500 ties). It's frozen in `draft.DRAFT_MIN_SIMILARITY`. The margin is small (0.040 below the lowest answerable dev row, on 12 rows).
+
+### Running it
+
+```bash
+set -a; source .env; set +a
+uv run --python 3.11 python eval/eval_draft.py --split dev                 # offline, real models, about $0.25
+uv run --python 3.11 python eval/eval_draft.py --split test                # once per prompt version
+uv run --python 3.11 python eval/eval_draft.py --live --split dev          # staging match_knowledge
+uv run --python 3.11 python eval/eval_draft.py --gate-sweep                # dev, no drafting
+uv run --python 3.11 python eval/eval_draft.py --split dev --limit 3 --no-judge --gate 0.45   # quick try, gate for this run only
+```
+
+Other flags: `--rows FILE` (rows.jsonl, also the default creator), `--golden FILE`, `--creator-id`, `--workers N` (default 4). Transient API errors are retried in the eval (production raises them). Drafts and judge scores run without temperature, so expect a row or two of noise between runs.
+
+### Results (2026-10-30, `draft-v2+sweetlife-v2`, gate 0.475)
+
+`draft-v1` on dev scored 27.3% grounded and 58.8% coverage. Most unsupported claims were follow-up timings ("check again in a few days") prompted by a creator rule, plus small extrapolations. `draft-v2` was tuned on dev in three runs (grounded 63.6%, 45.5%, 72.7%; coverage 64.7%, 70.6%, 76.5%) and the last, best version ran on test once.
+
+| Metric | dev offline (17) | dev live (17) | test offline (28) | Bar |
+|---|---|---|---|---|
+| Drafted / no_draft | 11 / 6 | 11 / 6 | 23 / 5 | |
+| Automatic checks | 11/11 = 100% | 11/11 = 100% | 23/23 = 100% | 100% PASS |
+| `invalid_output` / `safety_blocked` | 0 / 0 | 0 / 0 | 0 / 0 | |
+| Coverage accuracy | 13/17 = 76.5% | 12/17 = 70.6% | 13/28 = 46.4% | ≥ 80% FAIL |
+| Abstention (`out_of_kb`) | 5/5 | 5/5 | 3/5 | |
+| False abstention (gate / model) | 1/12 (0 / 1) | 1/12 (0 / 1) | 2/22 (2 / 0) | |
+| Grounded | 8/11 = 72.7% | 8/11 = 72.7% | 16/23 = 69.6% | ≥ 90% FAIL |
+| Uses clarification | 3/3 | 3/3 | 7/7 | |
+| Retrieval hit | 12/12 | 12/12 | 21/22 | |
+| Fallback drafts | 0/11 | 0/11 | 0/23 | |
+| Latency mean / p90 | 9.3 / 14.3 s | 8.5 / 14.9 s | 9.0 / 13.1 s | |
+| Cost per draft | $0.0175 | $0.0164 | $0.0177 | < $0.02 PASS |
+
+On test, coverage is mostly one step lower than the review label: 9 of 14 `high` rows came back `partial`, 2 `partial` rows stopped at the gate, and 3 `none` rows came back `partial`. Two of the 5 out-of-KB test rows scored 0.503 and 0.506, above the gate, and two answerable rows scored 0.428 and 0.471, below it. No cutoff separates them on test. The gate was not retuned. Only 5 `out_of_kb` rows exist per split, so abstention rests on a small sample.
 
 ## Models
 
