@@ -143,7 +143,7 @@ set -a; source .env; set +a
 uv run --python 3.11 python eval/eval_retrieval.py                 # offline, vector only (default)
 uv run --python 3.11 python eval/eval_retrieval.py --no-cards      # without the doc cards (kind:card)
 uv run --python 3.11 python eval/eval_retrieval.py --split dev --origin variant
-uv run --python 3.11 python eval/eval_retrieval.py --live          # staging, after the load (needs knowledge.py, PR B)
+uv run --python 3.11 python eval/eval_retrieval.py --live          # staging match_knowledge (hybrid)
 ```
 
 | Mode | What it searches |
@@ -165,7 +165,7 @@ uv run --python 3.11 python eval/generate_kb_eval.py freeze --set retrieval     
 
 For rows added to dev later: `--kinds KIND=N` (only these kinds and counts), `--out FILE` (a separate candidates file), `--avoid "<topics>"` (kept on the command line), `--covered-risk` (risk questions a guide answers), and `freeze --dev-added --out FILE` (next free `draft-dev-NN`, refuses a file already frozen). See [Draft eval](#draft-eval).
 
-1. **`generate`.** `google/gemini-2.5-pro` (env `KB_EVAL_GEN_MODEL`), never the drafter or the judge, writes questions from each guide's id, title, summary, care topics and H1/H2 headings. It never sees body text. Requests send `provider: {"data_collection": "deny", "require_parameters": true}` and a strict JSON schema whose guide ids are an enum. Each spec names its target guide(s), cycling through the guides. Candidates that mention media, contradict their kind, or sit within 0.8 (difflib ratio) of any guide question variant or of another candidate are dropped. It refuses to overwrite a candidates file unless given `--force`, so a review in progress is safe.
+1. **`generate`.** `google/gemini-2.5-pro` (env `KB_EVAL_GEN_MODEL`), never the drafter or the judge, writes questions from each guide's id, title, summary, care topics and H1/H2 headings. It never sees body text. Requests send `provider: {"data_collection": "deny", "require_parameters": true}` and a strict JSON schema whose guide ids are an enum. Each spec names its target guide(s), cycling through the guides. Candidates that mention media, contradict their kind, or sit within 0.8 (difflib ratio) of any guide question variant, of a row the set already holds (its golden file and every other `kb_candidates_<set>*.jsonl`), or of another candidate are dropped. It refuses to overwrite a candidates file unless given `--force`, so a review in progress is safe.
 2. **Review by hand.** Fix or delete lines in `private/kb_candidates_<set>.jsonl` and check `expected_hpa_ids` (and for drafts `expected_coverage`): the generator only proposes them. Deleting a line shifts the ids assigned at freeze.
 3. **`freeze`.** Validates every row (labels present, guide ids exist, rounds well formed, `flagged_topics` only from the profile's risk topics), assigns `ret-NNN` / `draft-NNN` in file order and `split = split_for(id)`, and appends to `private/retrieval_golden.jsonl` (with `origin: "messy"`) or `private/draft_golden.jsonl`. It refuses if the file already holds that set.
 
@@ -221,8 +221,8 @@ Checks `draft()` end to end: the real search, the real draft models and checkpoi
 **Review of the 40 generated rows.** Review changed labels on 15 rows: 11 coverage or kind changes and 4 added guides. Five of the coverage or kind changes turned `out_of_kb` rows into `plain` / `partial`, because a guide partly covers them. That leaves only 5 `out_of_kb` rows among the 40, and the hash put all of them in test: 12 dev, 28 test.
 
 **Dev rows added after the freeze**, the same way triage's dev rows `syn-NN` were written. They have ids `draft-dev-NN`, `split: "dev"` and `origin: "dev_added"`, and were appended by `freeze --set draft --dev-added --out <file>` without touching or renumbering the frozen rows:
-- **`draft-dev-01..05`, out of the knowledge base.** Dev had no `out_of_kb` (or `none`) rows, so the gate could not be tuned. `generate --set draft --kinds out_of_kb=8 --out private/kb_candidates_draft_dev.jsonl --avoid "<topics already used>"` wrote 8 candidates ($0.062), kept away from the existing out-of-KB topics, from topics a guide partly covers, and within 0.8 of any existing row or guide question variant. Hand review deleted 3.
-- **`draft-dev-06..18`, answerable.** These give the gate and the prompt more answerable rows to tune against: 6 plain, 4 clarified and 3 risk rows the guides do cover. `generate --set draft --kinds plain=6,clarified=4,risk=4 --covered-risk --out private/kb_candidates_draft_dev2.jsonl` wrote 12. A 2-row risk top-up kept 1 ($0.156 in all), because the generator labelled 5 of 9 covered-risk questions `none`. The generator's coverage instruction uses the draft-v3 definition (below). Hand review relabelled 1, deleted 1 and added 1 hand-written risk row.
+- **`draft-dev-01..05`, out of the knowledge base.** Dev had no `out_of_kb` (or `none`) rows, so the gate could not be tuned. `generate --set draft --kinds out_of_kb=8 --out private/kb_candidates_draft_dev.jsonl --avoid "<topics already used>"` wrote 8 candidates ($0.062). They were kept away from the existing out-of-KB topics and from topics a guide partly covers, and the filter dropped anything within 0.8 of an existing row or guide question variant. Hand review deleted 3.
+- **`draft-dev-06..18`, answerable.** These give the gate and the prompt more answerable rows to tune against: 6 plain, 4 clarified and 3 risk rows the guides do cover. `generate --set draft --kinds plain=6,clarified=4,risk=4 --covered-risk --out private/kb_candidates_draft_dev2.jsonl` wrote 12. A 2-row risk top-up kept 1 ($0.156 in all), because 5 of the 9 covered-risk candidates were dropped for contradicting their kind (the filter drops a covered-risk question labelled `none`) and 1 for mentioning media. The generator's coverage instruction uses the draft-v3 definition (below). Hand review relabelled 1, deleted 1 and added 1 hand-written risk row.
 
 The final set has 58 rows: **30 dev** (11 plain, 7 clarified, 7 risk, 5 out_of_kb; 19 `high`, 6 `partial`, 5 `none`) and **28 test** (12 plain, 7 clarified, 4 risk, 5 out_of_kb; 14 `high`, 8 `partial`, 6 `none`). Only 5 `out_of_kb` rows exist per split, so abstention rests on a small sample.
 
@@ -309,9 +309,9 @@ What v3 changed:
   - 6 are `high` rows that came back `partial`.
   - 2 are `partial` rows stopped at the gate: the false abstentions, at 0.428 and 0.471.
 - **On test, 4 misses go higher than the label:**
-  - draft-023, draft-026 and draft-036 are out-of-KB rows the gate let through: two at 0.503 and 0.506, plus a `none` risk row. The model labelled them `partial`.
+  - draft-023, draft-026 and draft-036 are rows no guide covers that the gate let through: the two `out_of_kb` rows at 0.506 and 0.503, plus a `none` risk row at 0.480. The model labelled them `partial`.
   - draft-029 is a `partial` row labelled `high`.
-- **No cutoff separates the test rows on either side of the gate.** It was not retuned.
+- **No single cutoff separates these test rows from the answerable ones** (two answerable rows sit at 0.428 and 0.471). The gate was not retuned.
 
 **Coverage in two classes: extra information added after seeing these results, not a bar.** This scores only "the guides help" (`high` or `partial`) against "they don't" (`none`): dev offline 29/30 = 96.7%, dev live 29/30 = 96.7%, test draft-v3 23/28 = 82.1%, test draft-v2 23/28 = 82.1%.
 
@@ -328,7 +328,7 @@ set -a; source .env; set +a
 uv run --python 3.11 python eval/check_providers.py
 ```
 
-Last checked 2026-10-30, all 9 checks passed.
+Last checked 2026-10-30, all 9 checks passed. The Gemini row is two checks, without and with `temperature: 0`.
 
 | Check | Model id | Settings that work |
 |---|---|---|
@@ -340,5 +340,7 @@ Last checked 2026-10-30, all 9 checks passed.
 | KB eval question generator, judge (Terra drafts) | `google/gemini-2.5-pro` | strict schema, with or without `temperature: 0` (use `0` for judging) |
 | Embeddings | `text-embedding-3-small` (OpenAI) | 1536 dimensions |
 | Triage moderation | `omni-moderation-latest` (OpenAI) | returns `results[0].categories` |
+
+Decided by Chinmay (2026-10-30): `anthropic/claude-sonnet-5.5` is the draft model; same price as the tech matrix's Sonnet 5.
 
 Sonnet 5.5 and GPT-6.1-sol reject `temperature` under `require_parameters`, so drafts and judge scores aren't fully deterministic. Expect small run-to-run differences in draft eval numbers; a gate or prompt change must beat the baseline by more than that noise.

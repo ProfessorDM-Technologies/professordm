@@ -69,7 +69,7 @@ DM text (+ recent DMs from the same follower)
 | `OPENAI_API_KEY` | yes | Moderation (`omni-moderation-latest`, free) and query embeddings (`text-embedding-3-small`) |
 | `OPENROUTER_API_KEY` | yes | Classification, clarification text and drafts |
 | `TRIAGE_MODEL` | no | Classifier override; defaults to `google/gemini-3.1-flash-lite` |
-| `DRAFT_MODEL` | no | Draft primary override; defaults to `anthropic/claude-sonnet-5.5` |
+| `DRAFT_MODEL` | no | Draft primary override; defaults to `anthropic/claude-sonnet-5.5` (decided, see [Limitations](#limitations)) |
 | `DRAFT_FALLBACK_MODEL` | no | Draft fallback override; defaults to `openai/gpt-5.6-terra` |
 | `SUPABASE_URL` | draft | The project URL, for the `match_knowledge` RPC |
 | `SUPABASE_SERVICE_ROLE_KEY` | draft | Service-role key for that RPC (the function is granted to `service_role` only) |
@@ -301,8 +301,8 @@ Use the same follower's `inbound_messages.text` with `received_at` in the 30 min
 | `question` | New `questions` row: `creator_id`, `source='instagram'`, `follower_id`, `origin_message_id` = the message, `question_text`, `status='pending_payment'`, `safety_flagged`, `ask_token` (yours) |
 | `clarification` | New `clarification_rounds` row: `message_id` = the original, `round`, `prompt`, `reply` null |
 | `outbound` | New `outbound_messages` row: `type` (`clarification` or `decline`), `text`, `status='pending'`, `attempts=0`, `delivery_mode='standard'`, `inbound_message_id` = the original, `follower_id`, `creator_id` |
-| `safety_flags` | One `safety_flags` row each: `target_type='message'`, `target_id` = the original, `checkpoint='1'`, `layer`, `category` (`status` defaults to `open`). `detail` has no column and isn't stored |
-| `reason`, `model`, `service_kind` | **No columns yet** (requested from Karthik). Until then, log `model` and `service_kind`; keep `reason` out of logs because it summarizes the DM |
+| `safety_flags` | One `safety_flags` row each: `target_type='message'`, `target_id` = the original, `checkpoint='1'`, `layer`, `category` (`status` defaults to `open`), `detail` (the risk topic for `policy` / `risk_topic` flags, otherwise null; never DM text) |
+| `reason`, `model`, `service_kind` | `inbound_messages` (added by migration 009). Log `model` and `service_kind`; keep `reason` out of logs because it summarizes the DM |
 
 ### 6. Pending outbound rows need a sender
 
@@ -320,7 +320,7 @@ Suppose the follower already has a `pending_payment` question created in the las
 
 - **`llm.LLMError`:** set the status back (null for `triage`, `awaiting_clarification` for `reassess`) and retry later with backoff. A saved clarification reply makes the retry safe.
 - **No automatic decision on outages:** triage raises instead of returning a fallback, so an outage is never stored as a real result.
-- **Retry limit:** once an `attempts` column exists, stop after about 3 failures and set `creator_decision`.
+- **Retry limit:** increment `inbound_messages.triage_attempts` (migration 009) on each `LLMError`; after about 3 failures, stop retrying and set `creator_decision`.
 - **`RuntimeError`:** a key is missing, so fix the config.
 - **`ValueError` from `reassess`:** there are no rounds, so call `triage`.
 - **Timeouts:** each model call times out at 10 s. A typical decision takes 1.5 to 2.6 s; the worst case with retries is about 50 s. Give the Lambda a timeout of at least 60 s.
@@ -366,7 +366,7 @@ Log status, category, `service_kind`, confidence, `prompt_version`, `model` and 
 
 A question with `safety_flagged = true` must be reviewed in Moderation before it's answered.
 
-**`reason`** is one sentence written for the creator, for example "Asks whether a golden pothos is safe around a cat." It doesn't quote the DM. Show it next to the category once it has a column.
+**`reason`** is one sentence written for the creator, for example "Asks whether a golden pothos is safe around a cat." It doesn't quote the DM. Show it next to the category (`inbound_messages.reason`).
 
 **`override_category`** is the creator's correction. The UI already prefers `override_category ?? category`. Its rate is our real accuracy metric, so please keep it easy to use.
 
@@ -394,11 +394,10 @@ A question with `safety_flagged = true` must be reviewed in Moderation before it
   - records the before and after numbers in the PR
 
   Tuning on test examples isn't allowed (see [Changing the prompt safely](#changing-the-prompt-safely)).
-- **Schema additions requested** (all on `inbound_messages` unless you prefer elsewhere):
-  - `reason text`: the creator-facing explanation
-  - `model text`: which model decided
-  - `service_kind text`: platform, business or out_of_domain
-  - `triage_attempts int`: so the backend can stop retrying after repeated `LLMError`s and hand the message to the creator
+- **Schema additions** (migration 009, applied on staging 2026-10-30):
+  - `inbound_messages`: `reason text` (the creator-facing explanation), `model text` (which model decided), `service_kind text` (platform, business or out_of_domain) and `triage_attempts int` (so the backend can stop retrying after repeated `LLMError`s and hand the message to the creator)
+  - `drafts`: `knowledge_coverage`, `missing_info`, `reason`
+  - `safety_flags`: `detail`
 - **CODEOWNERS:** it lists `/services/ai-worker/`, but the folder is `services/ai_worker`, because Python modules can't contain hyphens. The rule doesn't match today.
 - **Moderation thresholds:** `MILD_FLAG_THRESHOLD` and `SEVERE_FLAG_THRESHOLD` (both 0.5) and the flag-only `illicit/violent` rule were calibrated on synthetic data only. `omni-moderation-latest` can change under us, so re-run eval if flags shift.
 
@@ -522,7 +521,7 @@ The target is under $0.02 per draft. Gate stops cost only the query embedding. N
 1. **Job:** `{v: 1, type: "draft", id: "draft:<questionId>", creatorId, traceId, createdAt, payload: {questionId}}` on the ai-jobs queue, as its own job (never chained inside a triage run).
 2. **Trigger:** when a question becomes `paid`. While payment is stubbed, the worker sets `pending_payment -> paid` right after creating the question and queues the draft job.
 3. **Claim:** `PATCH questions?id=eq.<id>&status=eq.paid` -> `{"status": "drafting"}`. No row returned = someone else has it or it is done; acknowledge the job.
-4. **Load** the inputs from the argument table in [Drafting](#drafting) and call `draft()`. Pass `time_left` (seconds left in the Lambda) and, once 009 is applied, `flagged_topics` = the `detail` values of the origin message's checkpoint-1 `policy/risk_topic` flags.
+4. **Load** the inputs from the argument table in [Drafting](#drafting) and call `draft()`. Pass `time_left` (seconds left in the Lambda) and `flagged_topics` = the `detail` values of the origin message's checkpoint-1 `policy/risk_topic` flags.
 5. **Write, always one `drafts` row** (so Kristin sees why when there is no draft, and flags have a target):
    - `question_id`, `ai_text` (null for `no_draft`), `citations` (`[]` for `no_draft`), `used_web_search=false`, `model_used`, `prompt_version`, `status` (`ready` or `no_draft`), `knowledge_coverage`, `missing_info`, `reason`.
    - Before inserting, skip if a `drafts` row for this question with status `ready` or `no_draft` already exists (retry safety).
@@ -576,7 +575,7 @@ The same rules as [triage](#changing-the-prompt-safely), with `DRAFT_VERSION`:
 - **Draft quality bars not met yet.** On test, `draft-v3` drafts pass every automatic check but score 78.3% grounded (bar 90%; draft-v2 scored 69.6%). Coverage accuracy is 57.1% (bar 80%; draft-v2 scored 46.4%). The remaining unsupported claims are mostly small general claims, definitions or reassurance. The creator always edits the draft before sending.
 - **Coverage is cautious, and only drives the inbox badge.** On dev every coverage miss is one step lower than the label: the model never overclaims. On test, 8 of 12 misses are one step lower. The other 4 go higher: 3 rows no guide covers got past the gate and were labelled `partial`, and 1 `partial` row came back `high`. Scored only as "the guides help" vs "they don't", coverage is 82.1% on test. That split was added after seeing the results and isn't a bar.
 - **Placeholder voice and rules.** `answer_voice` and `answer_rules` were written from the Academy guides' style and are placeholders until Kristin signs off.
-- **Model version.** The drafter is Sonnet 5.5 (`anthropic/claude-sonnet-5.5`), not the tech matrix's Sonnet 5. It's the same price; record it in Nova's decision log.
+- **Draft model.** Decided by Chinmay (2026-10-30): `anthropic/claude-sonnet-5.5` is the draft model; same price as the tech matrix's Sonnet 5.
 - **Arun's retrieval queries are pending** (SCRUM-91). The retrieval eval accepts them with no code change.
 - **Production must exclude unreviewed guides.** Set `KB_EXCLUDE_TAGS=review:pending` there. Staging drafts from draft guides on purpose.
 - **No web search.** `used_web_search` is always false; gaps go to the creator through `missing_info`.
@@ -596,15 +595,12 @@ The same rules as [triage](#changing-the-prompt-safely), with `DRAFT_VERSION`:
 | A sender for `pending` clarification, decline and crisis rows | Akshay |
 | The `ask_link` DM and `ask_token` | Akshay |
 | Split-message duplicates (append to a `pending_payment` question within 30 minutes) | Akshay |
-| Where `reason`, `model` and `service_kind` live until columns exist | Akshay, Karthik |
 | A clarification reply shown twice in the thread | Ritvik, Akshay |
-| Schema columns: `reason`, `model`, `service_kind`, `triage_attempts` | Karthik |
 | The CODEOWNERS path (`ai-worker` vs `ai_worker`) | Karthik |
 | Re-calibrating the moderation thresholds and the confidence cutoff on real DMs | Karthik, Chinmay |
 | Sign-off on `answer_voice` and `answer_rules` (placeholders) | Kristin |
-| Sonnet 5.5 instead of the tech matrix's Sonnet 5 (same price), for the decision log | Nova, Chinmay |
 | Arun's 10 retrieval queries (SCRUM-91) | Arun, Karthik |
 | `KB_EXCLUDE_TAGS=review:pending` in production | Karthik |
 | Draft Lambda timeout 120 s, queue visibility timeout 720 s | Karthik, Akshay |
 | Grounded (78.3% on test, bar 90%) and coverage (57.1%, bar 80%) below their bars: recheck on real paid questions | Chinmay, Karthik |
-| Rechecking `DRAFT_MIN_SIMILARITY` on real paid questions | Chinmay |
+| `DRAFT_MIN_SIMILARITY` (0.475): after about 50 real paid questions, check `no_coverage` drafts the creator answered from the guides (gate too strict) and low-similarity drafts that came back coverage `none` (gate could be stricter). `best_similarity` is in the draft logs | Chinmay |
