@@ -512,6 +512,21 @@ def p90(values):
     return ordered[math.ceil(0.9 * len(ordered)) - 1] if ordered else None
 
 
+def stopped_by_gate(result):
+    """Say whether a row was stopped by the similarity gate, before any model call.
+
+    Args:
+        result (dict): One score() output.
+
+    Returns:
+        bool: True for no_draft / no_coverage with no model, which only the
+        gate produces (the model's own coverage "none" carries its model id).
+
+    Side effects: none.
+    """
+    return result["status"] == "no_draft" and result["reason"] == "no_coverage" and result["model"] is None
+
+
 def summarize(results):
     """Compute every reported metric for one group of scored rows.
 
@@ -524,8 +539,9 @@ def summarize(results):
     Returns:
         dict: n, errors, drafted, no_draft {reason: count}, checks (pass,
         validators, bytes, refs, n, rate), coverage (correct, n, rate,
-        confusion {expected: {got: count}}), abstention and false_abstention
-        (hits, n, rate), grounded and uses_clarification (hits, n, rate,
+        confusion {expected: {got: count}}), abstention, false_abstention
+        and its split false_abstention_gate / false_abstention_model (hits,
+        n, rate), grounded and uses_clarification (hits, n, rate,
         judge_errors), retrieval_hit (hits, n, rate), fallback (hits, n,
         rate), latency_ms (mean, p90 over drafted rows), cost (mean per
         draft, total for drafts, judge total).
@@ -560,6 +576,12 @@ def summarize(results):
                                        for g in COVERAGES} for e in COVERAGES}},
         "abstention": group(sum(r["status"] == "no_draft" for r in out_kb), len(out_kb)),
         "false_abstention": group(sum(r["status"] == "no_draft" for r in answerable), len(answerable)),
+        # The same rows split by who stopped them: the gate (no model call,
+        # so model is None) or the model (coverage "none", invalid output or
+        # a safety block). Gate stops show whether the cutoff is too tight.
+        "false_abstention_gate": group(sum(stopped_by_gate(r) for r in answerable), len(answerable)),
+        "false_abstention_model": group(sum(r["status"] == "no_draft" and not stopped_by_gate(r) for r in answerable),
+                                        len(answerable)),
         "grounded": {**group(sum(r["judge"]["grounded"] for r in judged), len(judged)),
                      "judge_errors": sum(bool(r["judge"] and r["judge"]["error"]) for r in drafted)},
         "uses_clarification": group(sum(r["judge"]["uses_clarification"] for r in clarified), len(clarified)),
@@ -644,7 +666,8 @@ def report(split, results, s):
     for e in COVERAGES:
         print(f"  {e:<16}" + "".join(f"{cov['confusion'][e][g]:>9}" for g in COVERAGES))
     print(f"Abstention (out_of_kb -> no_draft): {_ratio(s['abstention'])}")
-    print(f"False abstention (high/partial -> no_draft): {_ratio(s['false_abstention'])}")
+    print(f"False abstention (high/partial -> no_draft): {_ratio(s['false_abstention'])}   "
+          f"[by gate {s['false_abstention_gate']['hits']}, by model {s['false_abstention_model']['hits']}]")
     g = s["grounded"]
     print(f"Grounded (judged drafts): {_ratio(g)}{_bar(g['rate'], BAR_GROUNDED)}   judge errors {g['judge_errors']}")
     print(f"Uses clarification (clarified drafts): {_ratio(s['uses_clarification'])}")
