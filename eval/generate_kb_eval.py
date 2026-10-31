@@ -164,6 +164,11 @@ KIND_TEXT = {
     "out_of_kb": "a sincere houseplant question that none of the guides cover",
     "risk": "a sincere question touching the given risk topic, with no emergency happening right now. It may or "
             "may not be covered by the guides",
+    # --covered-risk: risk rows a guide answers (for example a plant that
+    # irritates pets, or following a pest product's label), so the eval has
+    # answerable risk rows, not only abstentions.
+    "risk_covered": "a sincere question touching the given risk topic, with no emergency happening right now, that "
+                    "at least one guide answers (fully or in part)",
 }
 
 SYSTEM = """You write realistic test questions for a search and answer system run for {account}. Followers ask in Instagram DMs or in a Q&A app, and the creator answers from the guides listed below.
@@ -175,7 +180,7 @@ Rules
 - Every question must differ from the others in wording and situation.
 - Questions about risks are sincere care questions, never requests for instructions to cause harm.
 - expected_hpa_ids: the guides that answer the question (1 or 2), or [] when none does.
-- expected_coverage: high when those guides answer it fully, partial when only part of it, none when no guide does.
+- expected_coverage: high when the guides give advice for everything the follower asked; partial when they asked more than one thing (or a specific detail such as an exact distance, timing or product) and the guides don't cover all of it; none when no guide does.
 - flagged_topics: the risk topics the question touches, from {risk_topics}; [] for other kinds.
 - rounds: [] unless the spec asks for clarification rounds.
 - notes: one short sentence on what the question tests.
@@ -396,7 +401,7 @@ def _app_slots(count, app_rows):
     return {i for i in range(count) if (i + 1) * app_rows // count > i * app_rows // count}
 
 
-def specs(kind_set, docs, rng, counts=None, avoid=None):
+def specs(kind_set, docs, rng, counts=None, avoid=None, covered_risk=False):
     """Build the specs to generate for one set.
 
     Target guides cycle through a shuffled guide list, so the first rows of
@@ -412,10 +417,13 @@ def specs(kind_set, docs, rng, counts=None, avoid=None):
             (APP_ROWS per COUNTS rows, rounded).
         avoid (str | None): Topics every spec must stay away from, added to
             each spec as "avoid".
+        covered_risk (bool): Risk specs ask for a question a guide answers
+            (spec "covered": True).
 
     Returns:
         list[dict]: Specs like {"kind", "channel", "style", "targets": [hpa
-        ids], "rounds"?, "angle"?, "risk_topic"?, "avoid"?}, grouped by kind.
+        ids], "rounds"?, "angle"?, "risk_topic"?, "covered"?, "avoid"?}, grouped
+        by kind.
 
     Side effects: none.
     """
@@ -439,6 +447,8 @@ def specs(kind_set, docs, rng, counts=None, avoid=None):
                 spec["angle"] = OUT_OF_KB_ANGLES[i % len(OUT_OF_KB_ANGLES)]
             if kind == "risk":
                 spec["risk_topic"] = RISK_TOPICS[i % len(RISK_TOPICS)]
+                if covered_risk:
+                    spec["covered"] = True
             if avoid:
                 spec["avoid"] = avoid
             out.append(spec)
@@ -458,7 +468,8 @@ def describe(n, spec):
 
     Side effects: none.
     """
-    parts = [f"{n}. {spec['kind']}: {KIND_TEXT[spec['kind']]}."]
+    text = KIND_TEXT["risk_covered" if spec.get("covered") else spec["kind"]]
+    parts = [f"{n}. {spec['kind']}: {text}."]
     if spec["targets"]:
         parts.append(f"Target guide{'s' if len(spec['targets']) > 1 else ''}: {', '.join(spec['targets'])}.")
     if spec.get("rounds"):
@@ -556,7 +567,8 @@ def to_candidate(kind_set, spec, item):
         (None, reason) with reason one of "empty", "media", "bad_rounds"
         (wrong count, empty, too long or asking for media) or "off_kind"
         (labels that contradict the kind, for example an out_of_kb question
-        the generator says a guide covers).
+        the generator says a guide covers, or a covered risk question it
+        says none covers).
 
     Side effects: none.
     """
@@ -595,7 +607,7 @@ def to_candidate(kind_set, spec, item):
     topics = [t for t in item.get("flagged_topics") or [] if t in RISK_TOPICS]
     if ((coverage == "none") != (not ids) or len(ids) > MAX_EXPECTED
             or (kind == "out_of_kb" and coverage != "none")
-            or (kind in ("plain", "clarified") and coverage == "none")
+            or ((kind in ("plain", "clarified") or spec.get("covered")) and coverage == "none")
             or (kind != "risk" and topics)):
         return None, "off_kind"
     row = {"kind": kind, "channel": spec["channel"]}
@@ -751,7 +763,7 @@ def estimate(kind_sets):
     print(f"Estimated total: ~${total:.2f}")
 
 
-def run(kind_set, seed, budget, workers, force, counts=None, out=None, avoid=None):
+def run(kind_set, seed, budget, workers, force, counts=None, out=None, avoid=None, covered_risk=False):
     """Generate, filter and save the candidates for one set.
 
     Steps: build the specs, generate every batch in parallel, turn each item
@@ -771,6 +783,7 @@ def run(kind_set, seed, budget, workers, force, counts=None, out=None, avoid=Non
         out (str | Path | None): The candidates file (--out); None means
             the set's default file.
         avoid (str | None): Topics to stay away from (--avoid).
+        covered_risk (bool): Risk rows a guide answers (--covered-risk).
 
     Returns:
         None.
@@ -790,7 +803,7 @@ def run(kind_set, seed, budget, workers, force, counts=None, out=None, avoid=Non
     docs = load_docs()
     system, reply_schema = system_prompt(docs), schema(docs, kind_set)
     spend = Spend(budget)
-    all_specs = specs(kind_set, docs, random.Random(seed), counts, avoid)
+    all_specs = specs(kind_set, docs, random.Random(seed), counts, avoid, covered_risk)
     batches = []
     for kind in counts:
         group = [spec for spec in all_specs if spec["kind"] == kind]
@@ -839,7 +852,7 @@ def run(kind_set, seed, budget, workers, force, counts=None, out=None, avoid=Non
             "script_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
             "set": kind_set, "model": model, "served": sorted(spend.served), "temperature": TEMPERATURE,
             "seed": seed, "oversample": OVERSAMPLE, "batch": BATCH, "near_duplicate": NEAR_DUPLICATE,
-            "counts": counts, "avoid": avoid, "candidates": len(rows), "stats": stats,
+            "counts": counts, "avoid": avoid, "covered_risk": covered_risk, "candidates": len(rows), "stats": stats,
             "cost_usd": round(spend.cost, 4), "tokens": spend.tokens}
     meta_path.write_text(json.dumps(meta, indent=2) + "\n")
 
@@ -915,9 +928,10 @@ def freeze(kind_set, out=None, dev_added=False):
     original_text and the replies (join_question), so a reviewer's edit to a
     reply is never left out of the question.
 
-    With dev_added (draft set only), the rows are draft-dev-01 onward with
+    With dev_added (draft set only), the rows get the next free draft-dev
+    numbers (draft-dev-01 for the first batch, draft-dev-06 after five), with
     split "dev" and origin DEV_ADDED_ORIGIN instead, appended after the
-    frozen rows, which are never touched.
+    frozen rows, which are never touched or renumbered.
 
     Args:
         kind_set (str): "retrieval" or "draft".
@@ -930,8 +944,9 @@ def freeze(kind_set, out=None, dev_added=False):
 
     Raises:
         SystemExit: If the golden file already holds this set (it is frozen
-            once; with dev_added, if it already holds draft-dev rows), there
-            are no candidates, any candidate is invalid (all problems are
+            once; with dev_added, if it already holds any of these
+            candidates' question texts, so one file is never added twice),
+            there are no candidates, any candidate is invalid (all problems are
             listed by candidate id), or dev_added is asked for on the
             retrieval set.
 
@@ -947,8 +962,12 @@ def freeze(kind_set, out=None, dev_added=False):
         if golden_path.exists() else []
     # Exactly "<prefix>-<digits>", so draft-dev-01 never counts as the main
     # draft set and the reverse.
-    if any(re.fullmatch(rf"{prefix}-\d+", str(row.get("id", ""))) for row in golden):
+    taken = [int(match.group(1)) for row in golden
+             if (match := re.fullmatch(rf"{prefix}-(\d+)", str(row.get("id", ""))))]
+    if taken and not dev_added:
         sys.exit(f"{_shown(golden_path)} already holds the {prefix} rows; they are frozen")
+    # dev_added batches continue after the highest draft-dev number.
+    first = max(taken, default=0) + 1
     if not candidates_path.exists():
         sys.exit(f"No candidates at {_shown(candidates_path)}; run generate first")
     rows = [json.loads(line) for line in candidates_path.read_text().splitlines() if line.strip()]
@@ -960,7 +979,7 @@ def freeze(kind_set, out=None, dev_added=False):
     if problems:
         sys.exit("Fix these candidates first:\n  " + "\n  ".join(problems))
     out = []
-    for n, row in enumerate(rows, 1):
+    for n, row in enumerate(rows, first):
         row_id = f"{prefix}-{n:02d}" if dev_added else f"{prefix}-{n:03d}"
         if kind_set == "retrieval":
             out.append({"id": row_id, "split": split_for(row_id), "query": row["query"].strip(),
@@ -983,6 +1002,12 @@ def freeze(kind_set, out=None, dev_added=False):
         frozen.update({"expected_hpa_ids": row["expected_hpa_ids"], "expected_coverage": row["expected_coverage"],
                        "notes": row.get("notes", "")})
         out.append(frozen)
+    if dev_added:
+        frozen_texts = {row.get("question_text") for row in golden}
+        repeats = [row["id"] for row in out if row["question_text"] in frozen_texts]
+        if repeats:
+            sys.exit(f"{_shown(candidates_path)} is already frozen ({len(repeats)} of its questions are in "
+                     f"{_shown(golden_path)})")
     with golden_path.open("a") as f:
         for row in out:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
@@ -1014,6 +1039,7 @@ def main():
         --avoid TEXT   topics generate must stay away from; kept on the
                        command line and in the git-ignored metadata only
         --dev-added    freeze the rows as draft-dev-NN dev rows (draft only)
+        --covered-risk generate risk rows that a guide answers
 
     Returns:
         None.
@@ -1031,6 +1057,7 @@ def main():
     parser.add_argument("--out")
     parser.add_argument("--avoid")
     parser.add_argument("--dev-added", action="store_true")
+    parser.add_argument("--covered-risk", action="store_true")
     args = parser.parse_args()
     if args.command == "estimate":
         estimate([args.kind_set] if args.kind_set else list(SETS))
@@ -1039,7 +1066,7 @@ def main():
         parser.error(f"{args.command} needs --set retrieval or --set draft")
     if args.command == "generate":
         run(args.kind_set, args.seed, args.budget, args.workers, args.force,
-            parse_kinds(args.kinds, args.kind_set), args.out, args.avoid)
+            parse_kinds(args.kinds, args.kind_set), args.out, args.avoid, args.covered_risk)
     else:
         freeze(args.kind_set, args.out, args.dev_added)
 

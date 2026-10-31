@@ -38,13 +38,13 @@ def drafted(answer=ANSWER, cited=("entry-1",), coverage="high", model="anthropic
             "draft": {"ai_text": answer, "used_web_search": False,
                       "citations": [{"kind": "knowledge", "ref": e, "title": "T", "hpa_id": "HPA-TEST-0001",
                                      "supports": "light"} for e in cited]},
-            "safety_flags": list(flags), "model": model, "prompt_version": "draft-v2+test", "retrieved": []}
+            "safety_flags": list(flags), "model": model, "prompt_version": "draft-v3+test", "retrieved": []}
 
 
 def no_draft(reason, coverage="none"):
     """Build a no_draft decision."""
     return {"status": "no_draft", "reason": reason, "knowledge_coverage": coverage, "missing_info": [],
-            "draft": None, "safety_flags": [], "model": None, "prompt_version": "draft-v2+test", "retrieved": []}
+            "draft": None, "safety_flags": [], "model": None, "prompt_version": "draft-v3+test", "retrieved": []}
 
 
 def golden(row_id="draft-001", kind="plain", coverage="high", expected=("HPA-TEST-0001",), channel="instagram",

@@ -127,7 +127,7 @@ def run(fake, question=QUESTION, *, search=None, clock=None, **kwargs):
 def decision(**fields):
     """Build the expected decision: no_draft defaults with the given fields replaced."""
     return {"status": "no_draft", "reason": None, "draft": None, "knowledge_coverage": "none", "missing_info": [],
-            "safety_flags": [], "model": None, "prompt_version": "draft-v2+sweetlife-v2", "retrieved": [], **fields}
+            "safety_flags": [], "model": None, "prompt_version": "draft-v3+sweetlife-v2", "retrieved": [], **fields}
 
 
 RETRIEVED = [{"entry_id": "entry-1", "title": "Test Guide > Section 1", "similarity": 0.62},
@@ -159,12 +159,15 @@ class PromptTests(unittest.TestCase):
         self.assertEqual(len(SWEETLIFE_FLORA["answer_rules"]), 4)
 
     def test_grounding_rules(self):
-        """v2: rules never add facts, time frames only from a passage, and the coverage definition."""
+        """Rules never add facts, time frames only from a passage, care sentences need a passage, and the v3 coverage definition."""
         rendered = draft_prompt(SWEETLIFE_FLORA, "instagram")
         self.assertIn("shape what you say, not the facts", rendered)
         self.assertIn("Give a time frame only if a passage gives one.", rendered)
         self.assertIn("claim nothing about that one", rendered)
-        self.assertIn("When unsure between high and partial, choose partial.", rendered)
+        self.assertIn("must come from a passage; if it doesn't, leave it out.", rendered)
+        self.assertIn("Prefer fewer, well-supported points over covering everything.", rendered)
+        self.assertIn('"high" if the passages give advice for everything the follower asked', rendered)
+        self.assertNotIn("When unsure between high and partial", rendered)
 
     def test_length_target_per_channel(self):
         """The target is 90% of the byte limit in characters, and that number // 6 in words."""
@@ -178,8 +181,8 @@ class PromptTests(unittest.TestCase):
             draft_prompt(SWEETLIFE_FLORA, "email")
 
     def test_prompt_version(self):
-        """Drafts store draft-v2+sweetlife-v2."""
-        self.assertEqual(prompt_version(SWEETLIFE_FLORA, DRAFT_VERSION), "draft-v2+sweetlife-v2")
+        """Drafts store draft-v3+sweetlife-v2."""
+        self.assertEqual(prompt_version(SWEETLIFE_FLORA, DRAFT_VERSION), "draft-v3+sweetlife-v2")
 
 
 class EmptyAndGateTests(unittest.TestCase):

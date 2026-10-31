@@ -303,6 +303,18 @@ class GeneratorTests(unittest.TestCase):
         row, _ = gen.to_candidate("draft", specs[0], item)
         self.assertNotIn("topic one", row["notes"])
 
+    def test_covered_risk_specs_and_filter(self):
+        """--covered-risk asks for a risk question a guide answers and drops one labelled none."""
+        import random
+        specs = gen.specs("draft", DOCS, random.Random(1), {"risk": 4}, covered_risk=True)
+        self.assertTrue(all(s["covered"] for s in specs))
+        self.assertIn("at least one guide answers", gen.describe(1, specs[0]))
+        item = {"message": "is my made-up fern ok near the cat", "rounds": [], "expected_hpa_ids": [],
+                "expected_coverage": "none", "flagged_topics": [], "notes": ""}
+        self.assertEqual(gen.to_candidate("draft", specs[0], item)[1], "off_kind")
+        covered = {**item, "expected_hpa_ids": ["HPA-TEST-0001"], "expected_coverage": "partial"}
+        self.assertIsNone(gen.to_candidate("draft", specs[0], covered)[1])
+
     def test_existing_texts_reads_golden_and_other_candidate_files(self):
         """The duplicate filter sees frozen rows and earlier candidate files, but not the file being written."""
         with tempfile.TemporaryDirectory() as folder:
@@ -335,7 +347,12 @@ class GeneratorTests(unittest.TestCase):
                 self.assertEqual([r["id"] for r in added], ["draft-dev-01", "draft-dev-02"])
                 self.assertEqual({(r["split"], r["origin"]) for r in added}, {("dev", "dev_added")})
                 with self.assertRaises(SystemExit):
-                    gen.freeze("draft", out, dev_added=True)
+                    gen.freeze("draft", out, dev_added=True)  # the same file twice
+                self.assertEqual(len(golden.read_text().splitlines()), 3)
+                second = private / "kb_candidates_draft_dev2.jsonl"
+                second.write_text(json.dumps({**row, "question_text": "another made-up question?"}) + "\n")
+                gen.freeze("draft", second, dev_added=True)
+                self.assertEqual(json.loads(golden.read_text().splitlines()[-1])["id"], "draft-dev-03")
                 with self.assertRaises(SystemExit):
                     gen.freeze("draft")  # the main set is still frozen
                 with self.assertRaises(SystemExit):
