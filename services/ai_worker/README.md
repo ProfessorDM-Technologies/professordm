@@ -136,7 +136,7 @@ Both functions return a dict with exactly these keys. Fields that don't apply ar
     "service_kind": None,
     "confidence": 0.95,
     "reason": "Asks a specific care question about water quality for a named plant",
-    "prompt_version": "triage-v4+sweetlife-v1",
+    "prompt_version": "triage-v4+sweetlife-v2",
     "model": "google/gemini-3.1-flash-lite",
     "safety_flags": [{"layer": "policy", "category": "risk_topic", "detail": "pesticides or chemical use"}],
     "question": {"question_text": "...", "safety_flagged": True},
@@ -152,7 +152,7 @@ Both functions return a dict with exactly these keys. Fields that don't apply ar
 | `service_kind` | `str \| None` | For `service_request` only: `platform`, `business` or `out_of_domain` |
 | `confidence` | `float \| None` | The classifier's confidence, 0 to 1. `None` when no model decided (empty text, blocked, model failure) |
 | `reason` | `str \| None` | One sentence explaining the label, for the creator. The prompt forbids quoting the DM or naming people |
-| `prompt_version` | `str` | For example `triage-v4+sweetlife-v1`, or `triage-v4+clarify-v4+sweetlife-v1` when the model wrote a clarification |
+| `prompt_version` | `str` | For example `triage-v4+sweetlife-v2`, or `triage-v4+clarify-v4+sweetlife-v2` when the model wrote a clarification |
 | `model` | `str \| None` | The classifier id, `omni-moderation-latest` for a moderation block, `None` for a blocked term or empty text |
 | `safety_flags` | `list[dict]` | `{"layer", "category", "detail"}`. `layer` is `moderation`, `rules` or `policy`. `detail` is `None` or one of the profile's risk topics, **never DM text** |
 | `question` | `dict \| None` | With `ready_for_question` only: `{"question_text", "safety_flagged"}`. `question_text` joins the recent messages and the DM (or the original and every reply). `safety_flagged` is true if any flag exists |
