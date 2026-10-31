@@ -100,8 +100,13 @@ BATCH = 8
 # guide question variant or to another candidate (A4 prompt). The same value
 # normalize.py uses to drop near-duplicate variants (spec 14.10).
 NEAR_DUPLICATE = 0.8
-# Most expected guides per row: one issue, or two issues in one message.
+# Most expected guides the generator may propose: one issue, or two issues
+# in one message.
 MAX_EXPECTED = 2
+# Most expected guides a reviewed row may name. Review can add a guide that
+# also answers the question (a plant guide next to a symptom guide), so freeze
+# allows one more than the generator proposes.
+MAX_REVIEWED_EXPECTED = 3
 # Rounds a clarified row can have; triage asks at most two clarifications.
 MAX_ROUNDS = 2
 # Final rows per kind. retrieval has one kind; draft adds up to 40.
@@ -759,8 +764,8 @@ def validate(kind_set, row, guide_ids):
     """
     problems = []
     ids = row.get("expected_hpa_ids")
-    if not isinstance(ids, list) or len(ids) > MAX_EXPECTED or not all(isinstance(i, str) for i in ids):
-        return [f"expected_hpa_ids must be a list of at most {MAX_EXPECTED} ids"]
+    if not isinstance(ids, list) or len(ids) > MAX_REVIEWED_EXPECTED or not all(isinstance(i, str) for i in ids):
+        return [f"expected_hpa_ids must be a list of at most {MAX_REVIEWED_EXPECTED} ids"]
     unknown = [hpa_id for hpa_id in ids if hpa_id not in guide_ids]
     if unknown:
         problems.append("unknown hpa ids " + ", ".join(unknown))
