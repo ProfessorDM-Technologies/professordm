@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from db import Db, DbError  # noqa: E402  (needs the sys.path line above)
 import llm  # noqa: E402
+import handler  # noqa: E402
 import worker  # noqa: E402
 
 
@@ -251,8 +252,9 @@ class WorkerCase(unittest.TestCase):
         self.logs = []
         handler = logging.Handler(level=logging.DEBUG)
         handler.emit = lambda record: self.logs.append(record.getMessage())
-        logging.getLogger("worker").addHandler(handler)
-        self.addCleanup(logging.getLogger("worker").removeHandler, handler)
+        for name in ("worker", "handler"):
+            logging.getLogger(name).addHandler(handler)
+            self.addCleanup(logging.getLogger(name).removeHandler, handler)
 
     def tearDown(self):
         self.assertTrue(self.logs, "a job always logs")
@@ -829,6 +831,96 @@ class DbClientTests(unittest.TestCase):
         self.db.request = MagicMock(side_effect=DbError(409, "23503"))
         with self.assertRaises(DbError):
             self.db.insert_outbound({"client_request_id": "x"})
+
+
+def sqs_record(body, receive_count=1):
+    return {"messageId": "sqs-1", "receiptHandle": "handle-1", "body": body,
+            "attributes": {"ApproximateReceiveCount": str(receive_count)}}
+
+
+class HandlerTests(WorkerCase):
+    def setUp(self):
+        super().setUp()
+        self.sqs = MagicMock()
+        self._patch("handler._load_secrets")
+        self._patch("handler._db", return_value=self.db)
+        self._patch("handler._sqs", return_value=self.sqs)
+        self.context = MagicMock()
+        self.context.get_remaining_time_in_millis.return_value = 100000
+
+    def handle(self, body, receive_count=1):
+        return handler.lambda_handler({"Records": [sqs_record(body, receive_count)]}, self.context)
+
+    def test_done_job_is_acknowledged(self):
+        self.db.add_message()
+        self.assertEqual(self.handle(json.dumps(triage_job())), {"batchItemFailures": []})
+        self.assertEqual(self.message()["status"], "ready_for_question")
+        kwargs = self.sqs.send_message.call_args.kwargs
+        self.assertEqual(kwargs["QueueUrl"], AI_QUEUE)
+        self.assertEqual(json.loads(kwargs["MessageBody"])["type"], "draft")
+        self.sqs.change_message_visibility.assert_not_called()
+
+    def test_18_invalid_job_is_acknowledged_without_writes(self):
+        for body in ("not json", json.dumps({**triage_job(), "type": "embed"})):
+            self.assertEqual(self.handle(body), {"batchItemFailures": []})
+        self.assertEqual(self.db.writes, [])
+
+    def test_retry_is_reported_with_backoff(self):
+        self.db.add_message()
+        self.triage.side_effect = llm.LLMError("openrouter", 503, "unavailable")
+        self.assertEqual(self.handle(json.dumps(triage_job()), receive_count=2),
+                         {"batchItemFailures": [{"itemIdentifier": "sqs-1"}]})
+        self.sqs.change_message_visibility.assert_called_once_with(
+            QueueUrl=AI_QUEUE, ReceiptHandle="handle-1", VisibilityTimeout=120)
+
+    def test_backoff_failure_never_stops_the_retry(self):
+        self.db.add_message()
+        self.triage.side_effect = llm.LLMError("openrouter", 503, "unavailable")
+        self.sqs.change_message_visibility.side_effect = OSError("sqs down")
+        self.assertEqual(self.handle(json.dumps(triage_job()))["batchItemFailures"], [{"itemIdentifier": "sqs-1"}])
+
+    def test_secrets_failure_retries(self):
+        self.db.add_message()
+        handler._load_secrets.side_effect = RuntimeError("No value for SSM_OPENAI_KEY")
+        self.assertEqual(self.handle(json.dumps(triage_job()))["batchItemFailures"], [{"itemIdentifier": "sqs-1"}])
+
+    def test_time_left_comes_from_the_context(self):
+        question_id = self.claimed_question()
+        self.db.add_message(status="ready_for_question")
+        self.handle(json.dumps(draft_job(question_id)))
+        self.assertEqual(self.draft.call_args.kwargs["time_left"], 85)
+
+
+class LoadSecretsTests(unittest.TestCase):
+    NAMES = {"SSM_SUPABASE_URL": "/p/url", "SSM_SUPABASE_KEY": "/p/key", "SSM_OPENAI_KEY": "/p/openai",
+             "SSM_OPENROUTER_KEY": "/p/openrouter"}
+
+    def setUp(self):
+        handler._load_secrets.cache_clear()
+        self.addCleanup(handler._load_secrets.cache_clear)
+
+    def load(self, ssm):
+        fake_boto3 = MagicMock()
+        fake_boto3.client.return_value = ssm
+        with patch.dict(sys.modules, {"boto3": fake_boto3}), patch.dict(os.environ, self.NAMES):
+            handler._load_secrets()
+            handler._load_secrets()
+            return {variable: os.environ[variable] for variable, _ in handler.SECRETS}
+
+    def test_copies_each_parameter_once_with_decryption(self):
+        ssm = MagicMock()
+        ssm.get_parameter.side_effect = lambda Name, WithDecryption: {"Parameter": {"Value": f"value{Name}"}}
+        self.assertEqual(self.load(ssm), {"SUPABASE_URL": "value/p/url", "SUPABASE_SERVICE_ROLE_KEY": "value/p/key",
+                                          "OPENAI_API_KEY": "value/p/openai",
+                                          "OPENROUTER_API_KEY": "value/p/openrouter"})
+        self.assertEqual(ssm.get_parameter.call_count, 4)
+        self.assertTrue(all(call.kwargs["WithDecryption"] for call in ssm.get_parameter.call_args_list))
+
+    def test_missing_value_is_a_runtime_error(self):
+        ssm = MagicMock()
+        ssm.get_parameter.return_value = {"Parameter": {}}
+        with self.assertRaises(RuntimeError):
+            self.load(ssm)
 
 
 if __name__ == "__main__":
