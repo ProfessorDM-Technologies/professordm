@@ -50,7 +50,9 @@ Every message carries: `{ v: 1, type, id, creatorId, traceId, createdAt }`
 | ai-jobs | embed | questionId | scheduler (hold ended, not refunded) | ai-worker |
 | ai-jobs | kb_safety_review | creatorId | scheduler (weekly) | ai-worker |
 | ai-jobs | ingest | docId | api | ai-worker |
-| outbound | ask_link, clarification, confirmation, answer, followup, rating_prompt, survey, decline, status | recipientFollowerId, draftId?, text | ai-worker, api | sender |
+| outbound | ask_link, clarification, confirmation, answer, followup, rating_prompt, survey, decline, status | outboundMessageId | ai-worker, api | sender |
+
+The ai-worker also accepts `triage` jobs for clarification replies and runs reassess itself; the webhook does not need to send `reassess`.
 
 Every consumer is idempotent on `id`. After 3 failed attempts a job goes to the DLQ and an alert fires.
 
