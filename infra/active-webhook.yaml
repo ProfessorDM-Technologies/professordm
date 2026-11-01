@@ -55,7 +55,7 @@ Resources:
           - DeadLetterQueue
           - Arn
         maxReceiveCount: 3
-      VisibilityTimeout: 60
+      VisibilityTimeout: 720
     Metadata:
       SamResourceId: InboundQueue
   DeadLetterQueue:
