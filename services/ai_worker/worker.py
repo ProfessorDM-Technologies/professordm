@@ -174,9 +174,11 @@ class _TriageRun:
 def _open_clarification(run):
     """Say whether this message replies to an open clarification (spec 5.2).
 
-    A redelivery also matches an original left in reassessing, and a round
-    that already holds this reply. An earlier attempt that died mid-reassess
-    leaves exactly that, and the redelivered job has to finish it.
+    A redelivery also matches an original left in reassessing, even when the
+    reply is already saved: an attempt that died mid-reassess leaves exactly
+    that, and only the redelivered job can finish it. Saving the reply again
+    is harmless because that write needs reply to be null. A failed attempt
+    that reset the original can also leave this reply saved in the round.
 
     Args:
         run (_TriageRun): The job.
@@ -197,7 +199,7 @@ def _open_clarification(run):
     if not rounds:
         return None, []
     reply = rounds[-1]["reply"]
-    if reply is None or (redelivered and reply == message["text"]):
+    if reply is None or (redelivered and (original["status"] == "reassessing" or reply == message["text"])):
         return original, rounds
     return None, []
 
@@ -218,6 +220,11 @@ def _claim_original(run, original, rounds):
     return True
 
 
+def _utc_z(moment):
+    """Format a datetime as UTC with a Z suffix, for PostgREST filter values."""
+    return moment.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
 def _recent(run, message):
     """Build recent_messages for a message (spec 5.3 step 2).
 
@@ -233,9 +240,9 @@ def _recent(run, message):
 
     Side effects: one read.
     """
-    received_at = message["received_at"]
-    since = (datetime.fromisoformat(received_at) - RECENT_WINDOW).isoformat()
-    rows = run.db.recent_messages(run.message["follower_id"], message["id"], since, received_at)
+    received_at = datetime.fromisoformat(message["received_at"])
+    rows = run.db.recent_messages(run.message["follower_id"], message["id"], _utc_z(received_at - RECENT_WINDOW),
+                                  _utc_z(received_at))
     return [row["text"] for row in rows
             if isinstance(row.get("text"), str) and row["text"].strip() and row.get("status") not in RECENT_SKIP_STATUSES]
 
@@ -440,8 +447,9 @@ def _draft_row(question_id, decision):
 def _write_draft(db, question_id, decision):
     """Save a draft() decision and hand the question to the creator (spec 6 steps 4 to 6).
 
-    An existing drafts row is reused, but its flags are still written: a job
-    that died right after the insert must not lose its checkpoint-2 flags.
+    A redelivery runs the model again, so an existing drafts row is overwritten
+    with this decision, then its flags are written. A job that died right after
+    the insert keeps no checkpoint-2 flags that describe different text.
 
     Args:
         db (Db): The database client.
@@ -453,9 +461,13 @@ def _write_draft(db, question_id, decision):
 
     Side effects: database writes.
     """
-    row = db.find_draft(question_id) or db.insert_draft(_draft_row(question_id, decision))
+    row = _draft_row(question_id, decision)
+    existing = db.find_draft(question_id)
+    if existing:
+        db.update_draft(existing["id"], row)
+    draft_id = existing["id"] if existing else db.insert_draft(row)["id"]
     if decision["safety_flags"]:
-        _insert_missing_flags(db, decision["safety_flags"], "draft", row["id"], "2")
+        _insert_missing_flags(db, decision["safety_flags"], "draft", draft_id, "2")
         db.flag_question(question_id)
     db.update_question(question_id, "drafting", "awaiting_creator")
 

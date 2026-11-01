@@ -79,6 +79,11 @@ def _matches(row, column, operator, value):
     return left < right if operator == "lt" else left >= right
 
 
+def dict_pairs(params):
+    """Return query parameters as pairs, from a dict or a list of pairs."""
+    return list(params.items()) if isinstance(params, dict) else list(params or [])
+
+
 def _logic(row, text, combine):
     """Apply an or=(...) or and=(...) filter. Values here never hold a comma."""
     tests = []
@@ -115,7 +120,7 @@ class FakeDb(Db):
 
     def _filtered(self, table, params):
         rows = self.tables[table]
-        for key, value in (params or {}).items():
+        for key, value in dict_pairs(params):
             if key in ("select", "order", "limit"):
                 continue
             if key == "or":
@@ -129,14 +134,14 @@ class FakeDb(Db):
 
     @staticmethod
     def _shaped(rows, params):
-        rows = list(rows)
-        if "order" in (params or {}):
-            column, _, direction = params["order"].partition(".")
+        rows, options = list(rows), dict(dict_pairs(params))
+        if "order" in options:
+            column, _, direction = options["order"].partition(".")
             rows.sort(key=lambda row: row[column], reverse=direction == "desc")
-        if "limit" in (params or {}):
-            rows = rows[:int(params["limit"])]
-        if "select" in (params or {}):
-            columns = params["select"].split(",")
+        if "limit" in options:
+            rows = rows[:int(options["limit"])]
+        if "select" in options:
+            columns = options["select"].split(",")
             return [{column: row.get(column) for column in columns} for row in rows]
         return [dict(row) for row in rows]
 
@@ -610,6 +615,33 @@ class ReassessTests(WorkerCase):
         self.assertEqual(self.message(REPLY)["status"], "closed_no_action")
         self.question()
 
+    def test_redelivery_finishes_a_reassessing_original_whose_saved_reply_differs(self):
+        self.message()["status"] = "reassessing"
+        self.message(REPLY)["status"] = "triaging"
+        self.round["reply"] = "PRIVATE-EARLIER reply saved before the crash"
+        self.assertEqual(self.run_job(self.job(), receive_count=2), "done")
+        self.assertEqual(self.triage.call_count, 0)
+        self.assertEqual(self.reassess.call_count, 1)
+        self.assertEqual(self.message()["status"], "ready_for_question")
+        self.assertEqual(self.message(REPLY)["status"], "closed_no_action")
+        self.assertEqual(self.round["reply"], "PRIVATE-EARLIER reply saved before the crash")
+
+    def test_redelivery_does_not_take_a_round_answered_by_another_message(self):
+        self.round["reply"] = "an earlier reply"
+        self.assertEqual(self.run_job(self.job(), receive_count=2), "done")
+        self.assertEqual(self.reassess.call_count, 0)
+        self.assertEqual(self.triage.call_count, 1)
+
+    def test_retry_after_db_error_with_the_reply_saved_finishes_the_reassess(self):
+        self.db.fail_on = ("POST", "questions")
+        self.assertEqual(self.run_job(self.job()), "retry")
+        self.assertEqual(self.round["reply"], REPLY_TEXT)
+        self.assertEqual(self.message()["status"], "awaiting_clarification")
+        self.db.fail_on = None
+        self.assertEqual(self.run_job(self.job(), receive_count=2), "done")
+        self.assertEqual(self.triage.call_count, 0)
+        self.assertEqual(self.message()["status"], "ready_for_question")
+
     def test_first_delivery_never_takes_an_original_in_reassessing(self):
         self.message()["status"] = "reassessing"
         self.assertEqual(self.run_job(self.job()), "done")
@@ -730,21 +762,44 @@ class DraftTests(WorkerCase):
         self.assertEqual(self.question()["status"], "delivered")
         self.assertEqual(self.draft.call_count, 0)
 
-    def test_crash_after_draft_insert_still_writes_flags(self):
+    def test_crash_after_draft_insert_keeps_text_and_flags_from_one_run(self):
         question_id = self.claimed_question()
-        flags = [{"layer": "policy", "category": "risk_topic", "detail": "pesticides or chemical use"}]
-        self.draft.return_value = drafted(safety_flags=flags)
+        first_flags = [{"layer": "policy", "category": "risk_topic", "detail": "first run topic"}]
+        self.draft.return_value = drafted(safety_flags=first_flags)
         self.db.crash_on = ("POST", "safety_flags")
         with self.assertRaises(Crash):
             self.run_job(draft_job(question_id))
         self.assertEqual(self.question()["status"], "drafting")
+        self.assertEqual(self.drafts()[0]["ai_text"], ANSWER_TEXT)
+        self.assertEqual(self.db.tables["safety_flags"], [])
+
         self.db.crash_on = None
+        second_flags = [{"layer": "policy", "category": "risk_topic", "detail": "second run topic"}]
+        answer = {"ai_text": "PRIVATE-SECOND answer", "citations": [{"ref": "k2"}], "used_web_search": False}
+        self.draft.return_value = drafted(safety_flags=second_flags, draft=answer, knowledge_coverage="partial",
+                                          missing_info=["soil mix"], model="fallback-model")
         self.assertEqual(self.run_job(draft_job(question_id), receive_count=2), "done")
+
         self.assertEqual(len(self.drafts()), 1)
-        flag = self.db.tables["safety_flags"][0]
-        self.assertEqual((flag["target_id"], flag["checkpoint"]), (self.drafts()[0]["id"], "2"))
+        row = self.drafts()[0]
+        self.assertEqual((row["status"], row["ai_text"], row["citations"], row["knowledge_coverage"],
+                          row["missing_info"], row["reason"], row["model_used"]),
+                         ("ready", "PRIVATE-SECOND answer", [{"ref": "k2"}], "partial", ["soil mix"], None,
+                          "fallback-model"))
+        self.assertEqual([(flag["detail"], flag["target_id"], flag["checkpoint"])
+                          for flag in self.db.tables["safety_flags"]], [("second run topic", row["id"], "2")])
         self.assertTrue(self.question()["safety_flagged"])
         self.assertEqual(self.question()["status"], "awaiting_creator")
+
+    def test_existing_draft_becomes_no_draft_when_the_rerun_has_none(self):
+        question_id = self.claimed_question(status="drafting")
+        self.db.tables["drafts"].append({"id": "old", "question_id": question_id, "status": "ready",
+                                         "ai_text": ANSWER_TEXT, "citations": [{"ref": "k1"}], "reason": None})
+        self.draft.return_value = no_draft()
+        self.assertEqual(self.run_job(draft_job(question_id), receive_count=2), "done")
+        row = self.drafts()[0]
+        self.assertEqual((row["status"], row["ai_text"], row["citations"], row["reason"]),
+                         ("no_draft", None, [], "no_coverage"))
 
 
 class ParseJobTests(unittest.TestCase):
@@ -818,6 +873,25 @@ class DbClientTests(unittest.TestCase):
         with patch("db.urlopen", return_value=FakeResponse(b"<html>")):
             with self.assertRaises(DbError):
                 self.db.request("GET", "questions")
+
+    def test_recent_messages_exact_query_string(self):
+        with patch("db.urlopen", return_value=FakeResponse(b"[]")) as urlopen:
+            run = MagicMock(db=self.db, message={"follower_id": FOLLOWER})
+            worker._recent(run, {"id": MESSAGE, "received_at": "2026-11-01T12:00:00.123456+00:00"})
+        self.assertEqual(urlopen.call_args.args[0].full_url,
+                         "https://project.supabase.test/rest/v1/inbound_messages"
+                         f"?follower_id=eq.{FOLLOWER}&id=neq.{MESSAGE}"
+                         "&received_at=gte.2026-11-01T11%3A30%3A00.123456Z"
+                         "&received_at=lt.2026-11-01T12%3A00%3A00.123456Z"
+                         "&select=text%2Cstatus&order=received_at.asc")
+
+    def test_recent_window_converts_other_offsets_to_utc(self):
+        with patch("db.urlopen", return_value=FakeResponse(b"[]")) as urlopen:
+            run = MagicMock(db=self.db, message={"follower_id": FOLLOWER})
+            worker._recent(run, {"id": MESSAGE, "received_at": "2026-11-01T07:00:00-05:00"})
+        url = urlopen.call_args.args[0].full_url
+        self.assertIn("received_at=gte.2026-11-01T11%3A30%3A00Z&received_at=lt.2026-11-01T12%3A00%3A00Z", url)
+        self.assertNotIn("2B00", url)
 
     def test_claim_filters(self):
         self.db.request = MagicMock(return_value=[])

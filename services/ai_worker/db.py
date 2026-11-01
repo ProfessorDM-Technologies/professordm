@@ -95,7 +95,8 @@ class Db:
         Args:
             method (str): The HTTP method.
             path (str): The table, for example "inbound_messages".
-            params (dict[str, str] | None): Query parameters, encoded here.
+            params (dict[str, str] | list[tuple[str, str]] | None): Query
+                parameters, encoded here.
             body (Any): The JSON body, if any.
             prefer (str | None): The Prefer header, if any.
 
@@ -152,7 +153,7 @@ class Db:
         status = (f"eq.{statuses[0]}" if len(statuses) == 1 else f"in.({','.join(statuses)})")
         return _one(self.request("GET", "inbound_messages", params={
             "follower_id": f"eq.{follower_id}", "status": status, "id": f"neq.{message_id}",
-            "received_at": f"lt.{received_at}", "select": "id,text,received_at,triage_attempts",
+            "received_at": f"lt.{received_at}", "select": "id,text,status,received_at,triage_attempts",
             "order": "received_at.desc", "limit": "1"}))
 
     def claim_message(self, message_id, statuses):
@@ -169,11 +170,15 @@ class Db:
             "id": f"eq.{message_id}", **_status_filter(statuses)}, body=values, prefer=_REPRESENTATION))
 
     def recent_messages(self, follower_id, message_id, since, until):
-        """Load the follower's other messages in [since, until), oldest first (spec 5.3 step 2)."""
-        return self.request("GET", "inbound_messages", params={
-            "follower_id": f"eq.{follower_id}", "id": f"neq.{message_id}",
-            "and": f"(received_at.gte.{since},received_at.lt.{until})",
-            "select": "text,status", "order": "received_at.asc"}) or []
+        """Load the follower's other messages in [since, until), oldest first (spec 14).
+
+        A list of pairs, because received_at is filtered twice. Plain filters
+        avoid and=(...), whose values PostgREST parses as a logic tree.
+        """
+        return self.request("GET", "inbound_messages", params=[
+            ("follower_id", f"eq.{follower_id}"), ("id", f"neq.{message_id}"),
+            ("received_at", f"gte.{since}"), ("received_at", f"lt.{until}"),
+            ("select", "text,status"), ("order", "received_at.asc")]) or []
 
     def get_message_text(self, message_id):
         """Load one message's text (spec 6 step 2)."""
@@ -287,3 +292,7 @@ class Db:
     def insert_draft(self, row):
         """Insert one draft row and return it."""
         return self._insert("drafts", row)
+
+    def update_draft(self, draft_id, values):
+        """Overwrite a draft row with a newer run's result."""
+        self.request("PATCH", "drafts", params={"id": f"eq.{draft_id}"}, body=values)
