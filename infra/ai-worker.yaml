@@ -1,0 +1,187 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: ProfessorDM - AI worker and outbound sender (staging)
+
+Parameters:
+  AlarmEmail:
+    Type: String
+    Description: Receives DLQ and Lambda error alarms
+  PaymentStub:
+    Type: String
+    AllowedValues: ['true', 'false']
+    Default: 'false'
+  KbExcludeTags:
+    Type: String
+    Default: ''
+
+Resources:
+  AiWorkerFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      FunctionName: professordm-ai-worker
+      CodeUri: ../services/ai_worker/
+      Handler: handler.lambda_handler
+      Runtime: python3.11
+      Timeout: 120
+      MemorySize: 256
+      Environment:
+        Variables:
+          SSM_SUPABASE_URL: /professordm/staging/supabase-url
+          SSM_SUPABASE_KEY: /professordm/staging/supabase-service-role-key
+          SSM_OPENAI_KEY: /professordm/staging/openai-api-key
+          SSM_OPENROUTER_KEY: /professordm/staging/openrouter-api-key
+          AI_JOBS_QUEUE_URL: !Sub https://sqs.${AWS::Region}.amazonaws.com/${AWS::AccountId}/professordm-inbound
+          OUTBOUND_QUEUE_URL: !Ref OutboundQueue
+          PAYMENT_STUB: !Ref PaymentStub
+          KB_EXCLUDE_TAGS: !Ref KbExcludeTags
+      Policies:
+        - SSMParameterReadPolicy: {ParameterName: professordm/staging/supabase-url}
+        - SSMParameterReadPolicy: {ParameterName: professordm/staging/supabase-service-role-key}
+        - SSMParameterReadPolicy: {ParameterName: professordm/staging/openai-api-key}
+        - SSMParameterReadPolicy: {ParameterName: professordm/staging/openrouter-api-key}
+        - SQSPollerPolicy: {QueueName: professordm-inbound}
+        - SQSSendMessagePolicy: {QueueName: professordm-inbound}
+        - SQSSendMessagePolicy: {QueueName: !GetAtt OutboundQueue.QueueName}
+      Events:
+        AiJobs:
+          Type: SQS
+          Properties:
+            Queue: !Sub arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:professordm-inbound
+            BatchSize: 1
+            FunctionResponseTypes: [ReportBatchItemFailures]
+            ScalingConfig:
+              MaximumConcurrency: 2
+
+  AiWorkerLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/professordm-ai-worker
+      RetentionInDays: 30
+
+  OutboundDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: professordm-outbound-dlq
+      MessageRetentionPeriod: 1209600
+      SqsManagedSseEnabled: true
+
+  OutboundQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: professordm-outbound
+      VisibilityTimeout: 180
+      MessageRetentionPeriod: 345600
+      SqsManagedSseEnabled: true
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt OutboundDeadLetterQueue.Arn
+        maxReceiveCount: 3
+
+  OutboundSenderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: professordm-outbound-sender
+      CodeUri: ../services/instagram_backend/
+      Handler: outbound_handler.lambda_handler
+      Runtime: python3.11
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          SSM_SUPABASE_URL: /professordm/staging/supabase-url
+          SSM_SUPABASE_KEY: /professordm/staging/supabase-service-role-key
+          SSM_INSTAGRAM_PROFILE_TOKEN_PREFIX: /professordm/staging/instagram-profile-tokens
+          META_GRAPH_API_VERSION: v26.0
+      Policies:
+        - SSMParameterReadPolicy: {ParameterName: professordm/staging/supabase-url}
+        - SSMParameterReadPolicy: {ParameterName: professordm/staging/supabase-service-role-key}
+        - SSMParameterReadPolicy: {ParameterName: professordm/staging/instagram-profile-tokens/*}
+        - SQSPollerPolicy: {QueueName: !GetAtt OutboundQueue.QueueName}
+      Events:
+        Outbound:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt OutboundQueue.Arn
+            BatchSize: 1
+            FunctionResponseTypes: [ReportBatchItemFailures]
+            ScalingConfig:
+              MaximumConcurrency: 2
+
+  OutboundSenderLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/professordm-outbound-sender
+      RetentionInDays: 30
+
+  AlarmTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: professordm-alarms
+      Subscription:
+        - Protocol: email
+          Endpoint: !Ref AlarmEmail
+
+  AiJobsDlqAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: professordm-ai-jobs-dlq-not-empty
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions: [{Name: QueueName, Value: professordm-inbound-dlq}]
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlarmTopic]
+
+  OutboundDlqAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: professordm-outbound-dlq-not-empty
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions: [{Name: QueueName, Value: !GetAtt OutboundDeadLetterQueue.QueueName}]
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlarmTopic]
+
+  AiWorkerErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: professordm-ai-worker-errors
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions: [{Name: FunctionName, Value: !Ref AiWorkerFunction}]
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlarmTopic]
+
+  OutboundSenderErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: professordm-outbound-sender-errors
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions: [{Name: FunctionName, Value: !Ref OutboundSenderFunction}]
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlarmTopic]
+
+Outputs:
+  OutboundQueueUrl:
+    Value: !Ref OutboundQueue
