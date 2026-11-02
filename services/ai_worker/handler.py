@@ -19,6 +19,7 @@ from functools import lru_cache
 import json
 import logging
 import os
+from urllib.parse import urlsplit
 
 from db import Db
 import worker
@@ -69,6 +70,11 @@ def _load_secrets():
         value = ssm.get_parameter(Name=name, WithDecryption=True).get("Parameter", {}).get("Value")
         if not value:
             raise RuntimeError(f"No value for {name_variable}")
+        if variable == "SUPABASE_URL":
+            # The SSM value ends in /rest/v1/, and knowledge.py appends the
+            # whole RPC path, so only the scheme and host are kept here.
+            parts = urlsplit(value)
+            value = f"{parts.scheme}://{parts.netloc}"
         os.environ[variable] = value
 
 
