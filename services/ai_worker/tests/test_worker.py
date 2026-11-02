@@ -24,6 +24,7 @@ import uuid
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from db import Db, DbError  # noqa: E402  (needs the sys.path line above)
+import knowledge  # noqa: E402
 import llm  # noqa: E402
 import handler  # noqa: E402
 import worker  # noqa: E402
@@ -983,12 +984,39 @@ class LoadSecretsTests(unittest.TestCase):
 
     def test_copies_each_parameter_once_with_decryption(self):
         ssm = MagicMock()
-        ssm.get_parameter.side_effect = lambda Name, WithDecryption: {"Parameter": {"Value": f"value{Name}"}}
-        self.assertEqual(self.load(ssm), {"SUPABASE_URL": "value/p/url", "SUPABASE_SERVICE_ROLE_KEY": "value/p/key",
+        values = {"/p/url": "https://host.supabase.test"}
+        ssm.get_parameter.side_effect = lambda Name, WithDecryption: {
+            "Parameter": {"Value": values.get(Name, f"value{Name}")}}
+        self.assertEqual(self.load(ssm), {"SUPABASE_URL": "https://host.supabase.test",
+                                          "SUPABASE_SERVICE_ROLE_KEY": "value/p/key",
                                           "OPENAI_API_KEY": "value/p/openai",
                                           "OPENROUTER_API_KEY": "value/p/openrouter"})
         self.assertEqual(ssm.get_parameter.call_count, 4)
         self.assertTrue(all(call.kwargs["WithDecryption"] for call in ssm.get_parameter.call_args_list))
+
+    def supabase_url(self, value):
+        ssm = MagicMock()
+        ssm.get_parameter.return_value = {"Parameter": {"Value": value}}
+        return self.load(ssm)["SUPABASE_URL"]
+
+    def test_supabase_url_ending_in_rest_v1_keeps_only_scheme_and_host(self):
+        self.assertEqual(self.supabase_url("https://host.supabase.test/rest/v1/"), "https://host.supabase.test")
+
+    def test_supabase_url_without_a_path_is_unchanged(self):
+        for value in ("https://host.supabase.test", "https://host.supabase.test/"):
+            handler._load_secrets.cache_clear()
+            self.assertEqual(self.supabase_url(value), "https://host.supabase.test")
+
+    def test_knowledge_and_db_build_correct_urls_from_the_stored_value(self):
+        url = self.supabase_url("https://host.supabase.test/rest/v1/")
+        with patch.dict(os.environ, {"SUPABASE_URL": url, "SUPABASE_SERVICE_ROLE_KEY": "key"}):
+            with patch("knowledge.urlopen", return_value=FakeResponse(b"[]")) as urlopen:
+                knowledge._supabase_rpc()({})
+        self.assertEqual(urlopen.call_args.args[0].full_url,
+                         "https://host.supabase.test/rest/v1/rpc/match_knowledge")
+        with patch("db.urlopen", return_value=FakeResponse(b"[]")) as urlopen:
+            Db(url, "key").request("GET", "questions")
+        self.assertEqual(urlopen.call_args.args[0].full_url, "https://host.supabase.test/rest/v1/questions")
 
     def test_missing_value_is_a_runtime_error(self):
         ssm = MagicMock()
