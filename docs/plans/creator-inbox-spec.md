@@ -119,7 +119,7 @@ in section 6 except "flagged question"; scenario 6 in section 10 creates one.
 | `src/lib/inbox/questions.ts` | `server-only` reads: `listQuestions(queue)`, `getQuestion(id)`, `queueCounts()`, `listOpenFlags()`, `listDecisionMessages()` (section 5) |
 | `src/lib/inbox/question-state.ts` | Pure: `cardState(question, draft, lastSend)` → label, tone, action (section 6). No Supabase |
 | `src/lib/inbox/question-state.test.ts` | Every state in section 6 |
-| `src/lib/inbox/answer.ts` | Pure: `normalizeAnswer`, `changeRatio(aiText, text)`, `parseTags(input)`, `checkSendGate(...)`, `parseAnswer(formFields)` (section 7) |
+| `src/lib/inbox/answer.ts` | Pure: `normalizeAnswer`, `changeRatio(aiText, text)`, `parseTags(input)`, `checkSendGate(...)`, `parseAnswer(formFields)` (section 7), `nextRequestId(outcome)` (section 8.3) |
 | `src/lib/inbox/answer.test.ts` | Gate, tags, byte limit, change ratio |
 | `src/lib/inbox/send-api.ts` | `server-only`: `postToSendApi(body)`, the fetch + session + error mapping now inside `sendReply`, shared by both actions |
 | `src/components/inbox/question-card.tsx` | One queue card (section 8.1) |
@@ -362,7 +362,13 @@ in this order: question, flags, composer, sources, conversation.
   "Instagram didn't accept the message. Your answer is saved. Try again in a minute." · 401 → existing session
   message. Text she typed is never cleared on error.
 - **Unsaved changes:** a `beforeunload` warning while the text differs from what was loaded and not yet sent.
-- One `client_request_id` per send press, regenerated only after success (same pattern as `ReplyBox`).
+- **Request id** (pure helper `nextRequestId(outcome)` in `answer.ts`):
+  - **New `client_request_id`** after any response proving nothing was delivered: success, 400, 401, 403, 404, 409,
+    422, and 502 `delivery_failed` (Instagram refused). This is what makes "Try again" work, because the send API
+    returns the existing row for an id it has already seen, so retrying with the old id would never reach Instagram.
+  - **Same `client_request_id`** when we don't know what happened: network error, timeout, 500, 503, or a 200 with
+    status `pending`. The first attempt may already have reached Instagram, and the same id makes the retry return
+    that row instead of sending a second DM.
 
 ### 8.4 Sent (`/sent`)
 
@@ -405,7 +411,8 @@ layout works at 390 px wide with no horizontal scroll.
 `question-state.test.ts`: every row of section 6, including "flag beats draft ready" and "failed send beats draft".
 `answer.test.ts`: `normalizeAnswer` (spaces, line breaks), `changeRatio` (0 for identical, 1 for all new, a middle
 case), `parseTags` (trim, lower-case, dedupe, max 5, max 40), gate (each rule alone, all passing, no-draft case skips
-the edit rule), byte limit with emoji and accented text.
+the edit rule), byte limit with emoji and accented text, `nextRequestId` (new id for success, every 4xx and 502; same
+id for network error, timeout, 500, 503 and pending).
 `actions.test.ts`: `approveAnswer` posts `question_id`, `tags`, `reviewed_flag_ids` with the session token; maps
 422/409/502/401 to the sentences in 8.3; `sendReply` tests unchanged and passing.
 No test calls real Supabase, the send API or Instagram.
