@@ -31,6 +31,7 @@ export type QueueQuestion = {
   id: string;
   status: string;
   questionText: string;
+  source: string;
   paidAt: string | null;
   deliveredAt: string | null;
   priceCents: number | null;
@@ -42,7 +43,11 @@ export type QueueQuestion = {
   tags: string[];
 };
 
-export type QueueResult = { questions: QueueQuestion[]; error: boolean };
+/**
+ * `flagsError`: the questions loaded but their open flags didn't, so flagged cards can't be marked.
+ * `loadedAt`: when the rows were read (ms), the reference point for wait times.
+ */
+export type QueueResult = { questions: QueueQuestion[]; error: boolean; flagsError: boolean; loadedAt: number };
 
 type OutboundRow = { status: string | null; created_at: string };
 
@@ -62,6 +67,7 @@ type QuestionRow = {
   id: string;
   status: string;
   question_text: string;
+  source: string;
   paid_at: string | null;
   delivered_at: string | null;
   price_cents: number | null;
@@ -83,7 +89,7 @@ type FlagRow = {
 };
 
 const QUEUE_SELECT =
-  "id, status, question_text, paid_at, delivered_at, price_cents, origin_message_id, " +
+  "id, status, question_text, source, paid_at, delivered_at, price_cents, origin_message_id, " +
   "follower:ig_followers(id, username), " +
   "drafts(id, followup_id, status, knowledge_coverage, reason, ai_text, final_text, citations, outbound_messages(status, created_at)), " +
   "question_tags(tags(name))";
@@ -132,6 +138,7 @@ function toQueueQuestion(row: QuestionRow, openFlags: FlagRow[]): QueueQuestion 
     id: row.id,
     status: row.status,
     questionText: row.question_text,
+    source: row.source,
     paidAt: row.paid_at,
     deliveredAt: row.delivered_at,
     priceCents: row.price_cents,
@@ -175,7 +182,7 @@ export async function listQuestions(queue: "inbox" | "sent"): Promise<QueueResul
 
   if (error) {
     console.error("listQuestions failed", { queue, code: error.code });
-    return { questions: [], error: true };
+    return { questions: [], error: true, flagsError: false, loadedAt: Date.now() };
   }
 
   const questions = (data ?? []).map((row) => toQueueQuestion(row, flagsRes.flags));
@@ -184,7 +191,9 @@ export async function listQuestions(queue: "inbox" | "sent"): Promise<QueueResul
     questions: inbox
       ? questions.toSorted((a, b) => Number(b.openFlagIds.length > 0) - Number(a.openFlagIds.length > 0))
       : questions,
-    error: flagsRes.error,
+    error: false,
+    flagsError: flagsRes.error,
+    loadedAt: Date.now(),
   };
 }
 
@@ -237,7 +246,6 @@ export type QuestionResult = { question: QuestionDetail; error: boolean };
 
 type DetailRow = Omit<QuestionRow, "drafts" | "question_tags"> & {
   safety_flagged: boolean;
-  source: string;
   drafts: (Omit<DraftRow, "outbound_messages"> & { missing_info: unknown; approved_at: string | null })[];
 };
 

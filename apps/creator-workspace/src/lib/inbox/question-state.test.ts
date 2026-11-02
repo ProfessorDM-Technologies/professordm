@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cardState, type CardDraft } from "./question-state";
+import { cardState, waitLabel, type CardDraft } from "./question-state";
 
 const question = (status: string, openFlagIds: string[] = []) => ({ status, openFlagIds });
 const ready: CardDraft = { status: "ready", coverage: "partial", reason: null };
@@ -107,5 +107,26 @@ describe("cardState", () => {
       hint: "Open it to write your answer.",
       action: "Answer",
     });
+  });
+});
+
+describe("waitLabel", () => {
+  const now = Date.parse("2026-11-02T12:00:00Z");
+  const ago = (ms: number) => new Date(now - ms).toISOString();
+
+  it("uses human units", () => {
+    expect(waitLabel(ago(30_000), now)).toBe("just now");
+    expect(waitLabel(ago(5 * 60_000), now)).toBe("waiting 5 min");
+    expect(waitLabel(ago(2 * 3_600_000 + 10 * 60_000), now)).toBe("waiting 2 h");
+    expect(waitLabel(ago(3 * 86_400_000), now)).toBe("waiting 3 d");
+  });
+
+  it("treats a time in the future as just now", () => {
+    expect(waitLabel(new Date(now + 60_000).toISOString(), now)).toBe("just now");
+  });
+
+  it("returns null without a valid time", () => {
+    expect(waitLabel(null, now)).toBeNull();
+    expect(waitLabel("not a date", now)).toBeNull();
   });
 });
