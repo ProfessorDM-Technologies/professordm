@@ -4,6 +4,9 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   // contracts ships TypeScript source (main: src/index.ts), so Next compiles it
   transpilePackages: ["@professordm/contracts"],
+  experimental: {
+    agentUpgrade: "security",
+  },
 };
 
 export default nextConfig;

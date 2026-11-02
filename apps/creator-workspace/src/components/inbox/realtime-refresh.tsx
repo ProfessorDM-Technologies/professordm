@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-// Re-read server-rendered rows when RLS-visible message changes arrive.
+// Re-read server-rendered rows when RLS-visible message, question or draft changes arrive.
 export function RealtimeRefresh() {
   const router = useRouter();
 
@@ -14,6 +14,8 @@ export function RealtimeRefresh() {
       .channel("creator-workspace-messages")
       .on("postgres_changes", { event: "*", schema: "public", table: "inbound_messages" }, () => router.refresh())
       .on("postgres_changes", { event: "*", schema: "public", table: "outbound_messages" }, () => router.refresh())
+      .on("postgres_changes", { event: "*", schema: "public", table: "questions" }, () => router.refresh())
+      .on("postgres_changes", { event: "*", schema: "public", table: "drafts" }, () => router.refresh())
       .subscribe();
     return () => { void supabase.removeChannel(channel); };
   }, [router]);
