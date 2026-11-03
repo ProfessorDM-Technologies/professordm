@@ -23,6 +23,18 @@ function toTime(value: string | null) {
   return Number.isNaN(time) ? null : time;
 }
 
+function outboundItem(send: ThreadOutbound): ThreadItem {
+  return {
+    key: `out-${send.id}`,
+    direction: "out",
+    kind: "outbound",
+    text: send.text,
+    time: send.sentAt,
+    outboundType: send.type,
+    status: send.status,
+  };
+}
+
 /**
  * Inbound messages in time order, each followed by its clarification prompt(s) and the follower's reply.
  * Outbound sends sit at their sent time. Anything without a time goes last.
@@ -44,6 +56,17 @@ export function buildThread({
     roundsByMessage.set(round.messageId, list);
   }
 
+  // A clarification is saved as the round's prompt and again as the DM that sent it. Show it once: the send,
+  // in the prompt's place, because it has the time and status. Each send stands in for at most one prompt.
+  const unpairedSends = outbound
+    .filter((send) => send.type === "clarification")
+    .toSorted((a, b) => (toTime(a.sentAt) ?? Infinity) - (toTime(b.sentAt) ?? Infinity));
+  const takeSend = (prompt: string) => {
+    const index = unpairedSends.findIndex((send) => send.text === prompt);
+    return index === -1 ? null : unpairedSends.splice(index, 1)[0];
+  };
+  const pairedSendIds = new Set<string>();
+
   const blocks: Block[] = [];
 
   for (const message of inbound) {
@@ -52,7 +75,11 @@ export function buildThread({
     ];
     const rounds = (roundsByMessage.get(message.id) ?? []).toSorted((a, b) => a.round - b.round);
     for (const round of rounds) {
-      if (round.prompt) {
+      const send = round.prompt ? takeSend(round.prompt) : null;
+      if (send) {
+        pairedSendIds.add(send.id);
+        items.push(outboundItem(send));
+      } else if (round.prompt) {
         items.push({ key: `cp-${round.id}`, direction: "out", kind: "clarification_prompt", text: round.prompt, time: null });
       }
       if (round.reply) {
@@ -63,21 +90,8 @@ export function buildThread({
   }
 
   for (const send of outbound) {
-    blocks.push({
-      sortTime: toTime(send.sentAt),
-      order: 1,
-      items: [
-        {
-          key: `out-${send.id}`,
-          direction: "out",
-          kind: "outbound",
-          text: send.text,
-          time: send.sentAt,
-          outboundType: send.type,
-          status: send.status,
-        },
-      ],
-    });
+    if (pairedSendIds.has(send.id)) continue;
+    blocks.push({ sortTime: toTime(send.sentAt), order: 1, items: [outboundItem(send)] });
   }
 
   return blocks
