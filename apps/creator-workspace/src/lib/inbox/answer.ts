@@ -142,7 +142,7 @@ export function parseAnswer(fields: {
   tags: readonly unknown[];
   reviewedFlagIds: readonly unknown[];
 }): ParsedAnswer {
-  const text = typeof fields.text === "string" ? fields.text.trim() : "";
+  const text = typeof fields.text === "string" ? fields.text.replace(/\r\n?/g, "\n").trim() : "";
   if (!text) {
     return { ok: false, error: { code: "text_required", message: "Write your answer before sending." } };
   }
