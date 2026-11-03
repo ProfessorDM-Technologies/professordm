@@ -170,6 +170,13 @@ describe("parseAnswer", () => {
     });
   });
 
+  it("counts browser \\r\\n line breaks as one character at the limit", () => {
+    const text = ["a".repeat(498), "b".repeat(499)].join("\r\n\r\n");
+    const result = parseAnswer(fields({ text }));
+    expect(result.ok && result.answer.text).toBe(`${"a".repeat(498)}\n\n${"b".repeat(499)}`);
+    expect(parseAnswer(fields({ text: `${text}b` })).ok).toBe(false);
+  });
+
   it("returns typed errors", () => {
     const code = (overrides: Partial<Parameters<typeof parseAnswer>[0]>) => {
       const result = parseAnswer(fields(overrides));

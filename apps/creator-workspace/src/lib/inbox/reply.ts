@@ -11,7 +11,7 @@ export type ReplyInput = { text: string; inboundMessageId: string; clientRequest
 export type ParsedReply = { ok: true; reply: ReplyInput } | { ok: false; error: string };
 
 export function parseReply(fields: { text: unknown; inboundMessageId: unknown; clientRequestId: unknown }): ParsedReply {
-  const text = typeof fields.text === "string" ? fields.text.trim() : "";
+  const text = typeof fields.text === "string" ? fields.text.replace(/\r\n?/g, "\n").trim() : "";
   if (!text) {
     return { ok: false, error: "Write a reply before sending." };
   }

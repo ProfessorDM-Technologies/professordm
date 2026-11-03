@@ -25,6 +25,13 @@ describe("parseReply", () => {
     expect(parseReply(fields("a".repeat(MAX_REPLY_LENGTH + 1))).ok).toBe(false);
   });
 
+  it("counts browser \\r\\n line breaks as one character at the limit", () => {
+    const text = ["a".repeat(498), "b".repeat(499)].join("\r\n\r\n");
+    const result = parseReply(fields(text));
+    expect(result.ok && result.reply.text).toBe(`${"a".repeat(498)}\n\n${"b".repeat(499)}`);
+    expect(parseReply(fields(`${text}b`)).ok).toBe(false);
+  });
+
   it("enforces the UTF-8 byte limit for emoji and other multibyte text", () => {
     expect(parseReply(fields("🌱".repeat(250))).ok).toBe(true);
     expect(parseReply(fields("🌱".repeat(251))).ok).toBe(false);
