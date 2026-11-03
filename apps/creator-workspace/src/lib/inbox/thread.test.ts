@@ -79,6 +79,27 @@ describe("buildThread", () => {
     expect(keys(items)).toEqual(["in-m1", "cp-r1", "out-c1"]);
   });
 
+  it("shows a clarification reply once, as the follower's message at its own time", () => {
+    const sent: ThreadOutbound = { ...outbound("c1", "2026-10-01T00:01:00Z", "clarification"), text: "prompt-1" };
+    const items = buildThread({
+      inbound: [inbound("m1", "2026-10-01T00:00:00Z"), inbound("m2", "2026-10-01T00:02:00Z", "reply-1")],
+      clarifications: [round("r1", "m1", 1)],
+      outbound: [sent],
+    });
+
+    expect(keys(items)).toEqual(["in-m1", "out-c1", "in-m2"]);
+  });
+
+  it("keeps the round's reply when no message matches it", () => {
+    const items = buildThread({
+      inbound: [inbound("m1", "2026-10-01T00:00:00Z"), inbound("m2", "2026-10-01T00:02:00Z", "something else")],
+      clarifications: [round("r1", "m1", 1)],
+      outbound: [],
+    });
+
+    expect(keys(items)).toEqual(["in-m1", "cp-r1", "cr-r1", "in-m2"]);
+  });
+
   it("puts sends with no time last", () => {
     const items = buildThread({
       inbound: [inbound("m1", "2026-10-01T00:00:00Z")],

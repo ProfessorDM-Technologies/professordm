@@ -67,6 +67,22 @@ export function buildThread({
   };
   const pairedSendIds = new Set<string>();
 
+  // The follower's reply also arrives as its own inbound message, which has the real time. Show that one,
+  // and keep the round's copy only when no later message matches it. Each message stands in for one reply.
+  const usedReplyIds = new Set<string>();
+  const hasReplyMessage = (reply: string, origin: ThreadInbound) => {
+    const originTime = toTime(origin.receivedAt) ?? -Infinity;
+    const match = inbound.find(
+      (message) =>
+        message.id !== origin.id &&
+        !usedReplyIds.has(message.id) &&
+        message.text === reply &&
+        (toTime(message.receivedAt) ?? Infinity) >= originTime,
+    );
+    if (match) usedReplyIds.add(match.id);
+    return Boolean(match);
+  };
+
   const blocks: Block[] = [];
 
   for (const message of inbound) {
@@ -82,7 +98,7 @@ export function buildThread({
       } else if (round.prompt) {
         items.push({ key: `cp-${round.id}`, direction: "out", kind: "clarification_prompt", text: round.prompt, time: null });
       }
-      if (round.reply) {
+      if (round.reply && !hasReplyMessage(round.reply, message)) {
         items.push({ key: `cr-${round.id}`, direction: "in", kind: "clarification_reply", text: round.reply, time: null });
       }
     }
