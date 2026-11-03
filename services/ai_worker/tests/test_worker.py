@@ -105,9 +105,10 @@ class FakeDb(Db):
         self.crash_on = None      # (method, table) raises Crash before that write
         self.fail_on = None       # (method, table) raises DbError before that write
 
-    def add_message(self, message_id=MESSAGE, *, text=DM_TEXT, status=None, received_at=NOW, attempts=0):
+    def add_message(self, message_id=MESSAGE, *, text=DM_TEXT, status=None, received_at=NOW, attempts=0,
+                    category=None):
         row = {**COLUMN_DEFAULTS["inbound_messages"], "id": message_id, "follower_id": FOLLOWER, "text": text,
-               "status": status, "received_at": iso(received_at), "triage_attempts": attempts}
+               "status": status, "category": category, "received_at": iso(received_at), "triage_attempts": attempts}
         self.tables["inbound_messages"].append(row)
         return row
 
@@ -484,9 +485,12 @@ class TriageTests(WorkerCase):
         self.db.add_message("m-closed", text="closed one", received_at=minutes(7), status="closed_no_action")
         self.db.add_message("m-empty", text="   ", received_at=minutes(8))
         self.db.add_message("m-none", text=None, received_at=minutes(9))
+        self.db.add_message("m-flagged", text="flagged one", received_at=minutes(10), status="creator_decision",
+                            category="safety_concern")
         self.db.add_message("m-later", text="later", received_at=NOW + timedelta(minutes=1))
         self.run_job()
         self.assertEqual(self.triage.call_args.args[:2], (DM_TEXT, ["first", "second"]))
+        self.assertNotIn("flagged one", self.triage.call_args.args[1])
 
 
 class StubOffTests(WorkerCase):
@@ -884,7 +888,7 @@ class DbClientTests(unittest.TestCase):
                          f"?follower_id=eq.{FOLLOWER}&id=neq.{MESSAGE}"
                          "&received_at=gte.2026-11-01T11%3A30%3A00.123456Z"
                          "&received_at=lt.2026-11-01T12%3A00%3A00.123456Z"
-                         "&select=text%2Cstatus&order=received_at.asc")
+                         "&select=text%2Cstatus%2Ccategory&order=received_at.asc")
 
     def test_recent_window_converts_other_offsets_to_utc(self):
         with patch("db.urlopen", return_value=FakeResponse(b"[]")) as urlopen:

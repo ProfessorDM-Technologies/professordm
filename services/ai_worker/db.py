@@ -178,7 +178,7 @@ class Db:
         return self.request("GET", "inbound_messages", params=[
             ("follower_id", f"eq.{follower_id}"), ("id", f"neq.{message_id}"),
             ("received_at", f"gte.{since}"), ("received_at", f"lt.{until}"),
-            ("select", "text,status"), ("order", "received_at.asc")]) or []
+            ("select", "text,status,category"), ("order", "received_at.asc")]) or []
 
     def get_message_text(self, message_id):
         """Load one message's text (spec 6 step 2)."""

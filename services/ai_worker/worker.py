@@ -235,8 +235,10 @@ def _recent(run, message):
 
     Returns:
         list[str]: The follower's other DMs from the 30 minutes before it,
-        oldest first, without blocked, closed or empty ones. Clarification
-        replies are closed_no_action, so they are left out too.
+        oldest first, without blocked, closed, flagged or empty ones.
+        Clarification replies are closed_no_action, so they are left out too.
+        Flagged (safety_concern) messages are still held for the creator, but
+        are not used as background for later messages.
 
     Side effects: one read.
     """
@@ -244,7 +246,8 @@ def _recent(run, message):
     rows = run.db.recent_messages(run.message["follower_id"], message["id"], _utc_z(received_at - RECENT_WINDOW),
                                   _utc_z(received_at))
     return [row["text"] for row in rows
-            if isinstance(row.get("text"), str) and row["text"].strip() and row.get("status") not in RECENT_SKIP_STATUSES]
+            if isinstance(row.get("text"), str) and row["text"].strip() and row.get("status") not in RECENT_SKIP_STATUSES
+            and row.get("category") != "safety_concern"]
 
 
 def _write_decision(run, decision, origin, in_progress):
