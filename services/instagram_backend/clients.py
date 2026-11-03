@@ -147,6 +147,63 @@ class SupabaseRepository:
         return row
 
 
+    # Answering a question (POST /api/send with question_id).
+
+    def get_question(self, question_id):
+        return _one(self.rest.request("GET", "questions", params={
+            "id": f"eq.{question_id}", "select": "id,creator_id,status,origin_message_id,follower_id,source",
+            "limit": "1"}))
+
+    def get_question_draft(self, question_id):
+        return _one(self.rest.request("GET", "drafts", params={
+            "question_id": f"eq.{question_id}", "followup_id": "is.null", "select": "id,ai_text,status",
+            "limit": "1"}))
+
+    def get_open_flag_ids(self, message_id, draft_id):
+        targets = [f"and(target_type.eq.message,target_id.eq.{message_id})"]
+        if draft_id:
+            targets.append(f"and(target_type.eq.draft,target_id.eq.{draft_id})")
+        rows = self.rest.request("GET", "safety_flags", params={
+            "status": "eq.open", "or": f"({','.join(targets)})", "select": "id"})
+        return [row["id"] for row in rows or []]
+
+    def update_question(self, question_id, expected_status, values):
+        return _one(self.rest.request("PATCH", "questions", params={
+            "id": f"eq.{question_id}", "status": f"eq.{expected_status}"},
+            body=values, prefer="return=representation"))
+
+    def update_draft(self, draft_id, values):
+        row = _one(self.rest.request("PATCH", "drafts", params={"id": f"eq.{draft_id}"},
+                                     body=values, prefer="return=representation"))
+        if not row:
+            raise RestError(404, "draft_not_found")
+        return row
+
+    def insert_draft(self, row):
+        return _one(self.rest.request("POST", "drafts", body=row, prefer="return=representation"))
+
+    def mark_flags_reviewed(self, flag_ids, user_id):
+        if not flag_ids:
+            return []
+        return self.rest.request("PATCH", "safety_flags", params={
+            "id": f"in.({','.join(flag_ids)})", "status": "eq.open"},
+            body={"status": "creator_reviewed", "reviewed_by": user_id}, prefer="return=representation") or []
+
+    def find_or_create_tag(self, creator_id, name):
+        tag = _one(self.rest.request("GET", "tags", params={
+            "creator_id": f"eq.{creator_id}", "name": f"eq.{name}", "select": "id", "limit": "1"}))
+        return tag or _one(self.rest.request("POST", "tags", body={"creator_id": creator_id, "name": name},
+                                             prefer="return=representation"))
+
+    def add_question_tags(self, question_id, tag_ids):
+        self.rest.request("POST", "question_tags", params={"on_conflict": "question_id,tag_id"},
+                          body=[{"question_id": question_id, "tag_id": tag_id} for tag_id in tag_ids],
+                          prefer="resolution=ignore-duplicates")
+
+    def insert_audit(self, row):
+        self.rest.request("POST", "audit_log", body=row)
+
+
 class SupabaseAuth:
     def __init__(self, rest):
         self.rest = rest
