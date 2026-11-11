@@ -34,31 +34,25 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
 
       <BrandMist />
 
-      <header className="glass sticky top-0 z-40 border-b">
-        <div className="mx-auto flex h-16 w-full max-w-6xl items-center gap-4 px-4 md:px-8">
-          <Link
-            href="/"
-            aria-label="ProfessorDM Creator Workspace home"
-            className="flex shrink-0 items-center gap-2.5 rounded-lg"
-          >
-            <BrandMark />
-            <span className="hidden font-display text-sm font-semibold text-pdm-heading lg:inline">Creator Workspace</span>
+      {/* Floating glass island (UI v2 spec, requirement 2): centred, sized to its content; full width only on phones. */}
+      <header className="pointer-events-none sticky top-3 z-40 flex justify-center px-3">
+        <div className="glass pointer-events-auto flex w-full items-center justify-between gap-2 rounded-full py-1.5 pr-1.5 pl-2 md:w-auto md:justify-start">
+          <Link href="/" aria-label="ProfessorDM Creator Workspace home" className="shrink-0 rounded-full">
+            <BrandMark size="sm" />
           </Link>
-          <WorkspaceNav variant="top" inboxCount={inboxCount} className="hidden min-w-0 flex-1 md:block" />
-          <div className="ml-auto shrink-0">
-            <AccountMenu displayName={session.displayName} role={session.role} />
-          </div>
+          <WorkspaceNav variant="top" inboxCount={inboxCount} className="hidden md:block" />
+          <AccountMenu displayName={session.displayName} role={session.role} />
         </div>
       </header>
 
-      <main id="main" tabIndex={-1} className="mx-auto w-full max-w-6xl px-4 pb-28 pt-8 md:px-8 md:pb-12">
+      <main id="main" tabIndex={-1} className="mx-auto w-full max-w-6xl px-4 pt-8 pb-32 md:px-8 md:pb-16">
         {children}
       </main>
 
       <WorkspaceNav
         variant="bottom"
         inboxCount={inboxCount}
-        className="glass fixed inset-x-0 bottom-0 z-40 border-t pb-[env(safe-area-inset-bottom)] md:hidden"
+        className="glass fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-40 rounded-full p-1 md:hidden"
       />
     </div>
   );

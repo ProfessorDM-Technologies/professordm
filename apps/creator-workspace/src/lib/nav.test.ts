@@ -15,11 +15,11 @@ describe("isActive", () => {
 
 describe("nav items", () => {
   test("mobile bar keeps the five thumb items in order", () => {
-    expect(mobileNavItems().map((i) => i.label)).toEqual(["Bank", "Incoming", "Inbox", "Moderation", "Profile"]);
+    expect(mobileNavItems().map((i) => i.label)).toEqual(["Bank", "Incoming", "Inbox", "Sent", "Moderation"]);
   });
 
-  test("desktop bar has all seven sections, each with an icon", () => {
-    expect(NAV_ITEMS.map((i) => i.label)).toEqual(["Bank", "Incoming", "Inbox", "Sent", "Moderation", "Knowledge", "Profile"]);
+  test("island has six sections (Profile lives in the avatar menu), each with an icon", () => {
+    expect(NAV_ITEMS.map((i) => i.label)).toEqual(["Bank", "Incoming", "Inbox", "Sent", "Moderation", "Knowledge"]);
     expect(NAV_ITEMS.every((i) => i.icon)).toBe(true);
   });
 });

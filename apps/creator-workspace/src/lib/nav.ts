@@ -6,10 +6,10 @@ export const NAV_ITEMS = [
   { href: "/", label: "Bank", mobile: true, icon: "bank" },
   { href: "/incoming", label: "Incoming", mobile: true, icon: "incoming" },
   { href: "/inbox", label: "Inbox", mobile: true, icon: "inbox" },
-  { href: "/sent", label: "Sent", mobile: false, icon: "sent" },
+  { href: "/sent", label: "Sent", mobile: true, icon: "sent" },
   { href: "/moderation", label: "Moderation", mobile: true, icon: "moderation" },
   { href: "/knowledge", label: "Knowledge", mobile: false, icon: "knowledge" },
-  { href: "/profile", label: "Profile", mobile: true, icon: "profile" },
+  // Profile is reached from the avatar menu (UI v2 spec, requirement 6).
 ] as const satisfies readonly { href: string; label: string; mobile: boolean; icon: NavIconName }[];
 
 export type NavItem = (typeof NAV_ITEMS)[number];

@@ -22,16 +22,16 @@ function InboxBadge({ count, className = "" }: { count: number | null | undefine
   );
 }
 
-// Desktop: pills inside the glass top bar; the active pill is solid white, lifted out of the glass (spec section 4.1).
+// Desktop: pills inside the glass island; the active pill is solid, lifted out of the glass.
 function TopItem({ item, active, inboxCount }: { item: NavItem; active: boolean; inboxCount?: number | null }) {
   return (
     <Link
       href={item.href}
       aria-current={active ? "page" : undefined}
-      className={`flex min-h-10 items-center gap-1.5 whitespace-nowrap rounded-full px-3 font-display text-sm font-semibold motion-safe:transition-colors ${
+      className={`flex min-h-9 items-center gap-1.5 whitespace-nowrap rounded-full px-3 font-display text-sm font-semibold motion-safe:transition-[color,background-color,scale] motion-safe:active:scale-95 ${
         active
           ? "bg-pdm-card text-pdm-primary shadow-sm ring-1 ring-pdm-primary/10"
-          : "text-pdm-muted hover:bg-pdm-card/60 hover:text-pdm-primary"
+          : "text-pdm-muted hover:bg-pdm-card/50 hover:text-pdm-primary"
       }`}
     >
       {item.label}
@@ -40,16 +40,14 @@ function TopItem({ item, active, inboxCount }: { item: NavItem; active: boolean;
   );
 }
 
-// Mobile: icon over label, with a navy indicator above the active item (spec section 4.2).
+// Mobile floating island: icon over label; the active item sits on a solid pill lifted out of the glass (UI v2 spec).
 function BottomItem({ item, active, inboxCount }: { item: NavItem; active: boolean; inboxCount?: number | null }) {
   return (
     <Link
       href={item.href}
       aria-current={active ? "page" : undefined}
-      className={`relative flex min-h-14 flex-col items-center justify-center gap-0.5 px-1 text-xs font-medium motion-safe:transition-colors ${
-        active
-          ? "text-pdm-primary before:absolute before:inset-x-4 before:top-0 before:h-[3px] before:rounded-b-full before:bg-pdm-primary"
-          : "text-pdm-muted hover:text-pdm-primary"
+      className={`relative flex min-h-13 flex-col items-center justify-center gap-0.5 rounded-full px-1 text-[0.6875rem] font-semibold motion-safe:transition-[color,background-color,scale] motion-safe:active:scale-95 ${
+        active ? "bg-pdm-card text-pdm-primary shadow-sm ring-1 ring-pdm-primary/10" : "text-pdm-muted hover:text-pdm-primary"
       }`}
     >
       <span className="relative">
