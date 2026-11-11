@@ -16,3 +16,9 @@ describe("pageWidthClass (UI v2 spec, requirement 5)", () => {
     expect(pageWidthClass("wide")).toContain("w-full");
   });
 });
+
+describe("pageWidthClass full", () => {
+  test("inbox detail views get the widest column for rail + workspace", () => {
+    expect(pageWidthClass("full")).toContain("max-w-7xl");
+  });
+});

@@ -97,7 +97,7 @@ export function AnswerWorkspace({
     });
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+    <div className="grid gap-6 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
       <div className="space-y-6">
         {context}
         <FlagPanel

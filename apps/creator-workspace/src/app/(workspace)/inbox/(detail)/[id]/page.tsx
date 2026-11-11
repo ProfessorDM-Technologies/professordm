@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
+import { MessagePane } from "@/components/inbox/message-pane";
 import { ReplyBox } from "@/components/inbox/reply-box";
 import { RealtimeRefresh } from "@/components/inbox/realtime-refresh";
 import { LocalTime } from "@/components/local-time";
@@ -65,42 +65,52 @@ export default async function ConversationPage({ params }: PageProps<"/inbox/[id
 
   const username = thread.follower.username ? `@${thread.follower.username}` : "Unknown sender";
 
+  // A fixed-height pane: header and reply box stay put, only the messages scroll (UI v2 spec, requirement 4).
+  // Heights subtract the island, page padding and (below lg) the "All chats" button / mobile tab island.
   return (
-    <article className="space-y-6">
+    <article className="flex h-[calc(100dvh-17.25rem)] min-h-[26rem] flex-col overflow-hidden rounded-xl border border-pdm-border bg-pdm-card md:h-[calc(100dvh-13.25rem)] lg:h-[calc(100dvh-10rem)]">
       <RealtimeRefresh />
-      <p>
-        <Link href="/inbox" className="text-sm font-medium text-pdm-primary underline underline-offset-4">
-          Back to inbox
-        </Link>
-      </p>
-
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div className="space-y-1">
-          <h1 className="text-[1.75rem] leading-[2.125rem] font-bold tracking-[-0.01em]">{username}</h1>
-          <p className="text-pdm-muted">Instagram conversation</p>
+      <header className="flex items-center justify-between gap-3 border-b border-pdm-border px-4 py-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span
+            aria-hidden="true"
+            className="flex size-10 shrink-0 items-center justify-center rounded-full bg-pdm-primary-tint font-display font-bold text-pdm-primary"
+          >
+            {(thread.follower.username?.[0] ?? "?").toUpperCase()}
+          </span>
+          <div className="min-w-0">
+            <h1 className="truncate text-lg font-bold">{username}</h1>
+            <p className="text-xs text-pdm-muted">Instagram conversation</p>
+          </div>
         </div>
         <RefreshButton />
-      </div>
+      </header>
 
       {thread.error ? (
-        <p role="alert" className="rounded-xl border border-pdm-danger-border bg-pdm-danger-tint p-4 text-sm font-medium text-pdm-danger-text">
+        <p role="alert" className="border-b border-pdm-danger-border bg-pdm-danger-tint px-4 py-2 text-sm font-medium text-pdm-danger-text">
           Part of this conversation couldn&apos;t be loaded. Try again.
         </p>
       ) : null}
 
-      {thread.items.length === 0 ? (
-        <Placeholder>No messages in this conversation yet.</Placeholder>
-      ) : (
-        <ol aria-label={`Messages with ${username}`} className="space-y-4">
-          {thread.items.map((item) => (
-            <Bubble key={item.key} item={item} />
-          ))}
-        </ol>
-      )}
+      <MessagePane count={thread.items.length}>
+        {thread.items.length === 0 ? (
+          <Placeholder>No messages in this conversation yet.</Placeholder>
+        ) : (
+          <ol aria-label={`Messages with ${username}`} className="space-y-4">
+            {thread.items.map((item) => (
+              <Bubble key={item.key} item={item} />
+            ))}
+          </ol>
+        )}
+      </MessagePane>
 
       {thread.latestInboundId ? (
         <ReplyBox inboundMessageId={thread.latestInboundId} recipient={username} />
-      ) : null}
+      ) : (
+        <p className="border-t border-pdm-border px-4 py-3 text-sm text-pdm-muted">
+          There&apos;s no message from {username} to reply to yet.
+        </p>
+      )}
     </article>
   );
 }

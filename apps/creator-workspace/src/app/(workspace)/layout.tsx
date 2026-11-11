@@ -55,7 +55,7 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
         </div>
       </header>
 
-      <main id="main" tabIndex={-1} className="mx-auto w-full max-w-6xl px-4 pt-8 pb-32 md:px-8 md:pb-16">
+      <main id="main" tabIndex={-1} className="mx-auto w-full max-w-7xl px-4 pt-8 pb-32 md:px-8 md:pb-16">
         {children}
       </main>
 
