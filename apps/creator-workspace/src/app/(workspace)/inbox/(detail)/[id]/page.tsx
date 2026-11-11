@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
+import { LiveItem, LiveList } from "@/components/ui/live-list";
 import { notFound } from "next/navigation";
-import { MessagePane } from "@/components/inbox/message-pane";
+import { ConversationProvider, MessagePane } from "@/components/inbox/message-pane";
 import { ReplyBox } from "@/components/inbox/reply-box";
 import { RealtimeRefresh } from "@/components/inbox/realtime-refresh";
 import { LocalTime } from "@/components/local-time";
@@ -29,7 +30,7 @@ function Bubble({ item }: { item: ThreadItem }) {
   const caption = itemCaption(item);
 
   return (
-    <li className={`flex ${outgoing ? "justify-end" : "justify-start"}`}>
+    <LiveItem className={`flex ${outgoing ? "justify-end" : "justify-start"}`}>
       <div
         className={`flex max-w-[85%] flex-col space-y-1 sm:max-w-[70%] ${outgoing ? "items-end text-right" : "items-start"}`}
       >
@@ -51,7 +52,7 @@ function Bubble({ item }: { item: ThreadItem }) {
           {item.time ? <LocalTime value={item.time} /> : null}
         </p>
       </div>
-    </li>
+    </LiveItem>
   );
 }
 
@@ -70,6 +71,7 @@ export default async function ConversationPage({ params }: PageProps<"/inbox/[id
   return (
     <article className="flex h-[calc(100dvh-17.25rem)] min-h-[26rem] flex-col overflow-hidden rounded-xl border border-pdm-border bg-pdm-card md:h-[calc(100dvh-13.25rem)] lg:h-[calc(100dvh-10rem)]">
       <RealtimeRefresh />
+      <ConversationProvider>
       <header className="flex items-center justify-between gap-3 border-b border-pdm-border px-4 py-3">
         <div className="flex min-w-0 items-center gap-3">
           <span
@@ -96,11 +98,11 @@ export default async function ConversationPage({ params }: PageProps<"/inbox/[id
         {thread.items.length === 0 ? (
           <Placeholder>No messages in this conversation yet.</Placeholder>
         ) : (
-          <ol aria-label={`Messages with ${username}`} className="space-y-4">
+          <LiveList as="ol" aria-label={`Messages with ${username}`} className="space-y-4">
             {thread.items.map((item) => (
               <Bubble key={item.key} item={item} />
             ))}
-          </ol>
+          </LiveList>
         )}
       </MessagePane>
 
@@ -111,6 +113,7 @@ export default async function ConversationPage({ params }: PageProps<"/inbox/[id
           There&apos;s no message from {username} to reply to yet.
         </p>
       )}
+      </ConversationProvider>
     </article>
   );
 }

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { LiveList } from "@/components/ui/live-list";
 import { Page } from "@/components/page";
 import Link from "next/link";
 import { QuestionCard } from "@/components/inbox/question-card";
@@ -49,11 +50,11 @@ export default async function InboxPage() {
                 Safety flags couldn&apos;t be loaded. Open a question to check its flags before answering.
               </p>
             ) : null}
-            <ul className="space-y-3">
+            <LiveList className="space-y-3">
               {questions.map((question) => (
                 <QuestionCard key={question.id} question={question} now={loadedAt} />
               ))}
-            </ul>
+            </LiveList>
           </>
         )}
       </PageSection>

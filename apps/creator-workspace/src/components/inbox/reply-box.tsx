@@ -1,6 +1,8 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useActionState, useState } from "react";
+import { usePendingReply } from "@/components/inbox/message-pane";
 import { buttonClass } from "@/components/ui/button-styles";
 import { sendReply, type SendReplyState } from "@/lib/inbox/actions";
 import { MAX_REPLY_LENGTH } from "@/lib/inbox/reply";
@@ -13,11 +15,18 @@ export function ReplyBox({ inboundMessageId, recipient }: { inboundMessageId: st
   // One id per Send press. A double click submits the same id, so the database keeps only one row.
   const [requestId, setRequestId] = useState(() => crypto.randomUUID());
 
+  const router = useRouter();
+  const pendingReply = usePendingReply();
+
   const [state, formAction, pending] = useActionState(async (prev: SendReplyState, formData: FormData) => {
+    // Optimistic bubble in the pane above while the send runs (UI v2 spec, motion b).
+    pendingReply?.showPending(String(formData.get("text") ?? "").trim() || null);
     const result = await sendReply(prev, formData);
     if (result.status === "sent") {
       setText("");
       setRequestId(crypto.randomUUID());
+      // Refresh inside the action so the optimistic bubble stays until the real message is on screen.
+      router.refresh();
     }
     return result;
   }, INITIAL_STATE);

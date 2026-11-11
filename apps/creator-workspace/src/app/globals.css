@@ -76,6 +76,69 @@
   color-scheme: light;
 }
 
+/* Motion tokens (UI v2 spec, motion). Everything below is switched off under prefers-reduced-motion. */
+@theme {
+  --animate-rise-in: pdm-rise-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+
+  @keyframes pdm-rise-in {
+    from {
+      opacity: 0;
+      translate: 0 6px;
+    }
+  }
+
+  @keyframes pdm-fade-out {
+    to {
+      opacity: 0;
+    }
+  }
+
+  @keyframes pdm-fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+}
+
+/*
+ * Route transitions via React <ViewTransition> (components/page-transition.tsx). The root snapshot is not animated,
+ * so the islands and backdrop stay perfectly still; only the page content and the active nav pill move.
+ */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+
+::view-transition-old(.page-exit) {
+  animation: pdm-fade-out 120ms ease-in both;
+}
+
+::view-transition-new(.page-enter) {
+  animation: pdm-rise-in 240ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+::view-transition-old(.pane-exit) {
+  animation: pdm-fade-out 100ms ease-in both;
+}
+
+::view-transition-new(.pane-enter) {
+  animation: pdm-fade-in 180ms ease-out both;
+}
+
+::view-transition-group(nav-pill),
+::view-transition-group(nav-pill-mobile) {
+  animation-duration: 320ms;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
 /* Font families come from next/font variables set on <html> in app/layout.tsx. Aptos first, for machines that have it. */
 @theme inline {
   --font-sans: Aptos, var(--font-inter), ui-sans-serif, system-ui, sans-serif;

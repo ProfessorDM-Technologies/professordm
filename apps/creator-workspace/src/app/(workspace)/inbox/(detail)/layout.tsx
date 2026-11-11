@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { ChatRail, type RailQuestion } from "@/components/inbox/chat-rail";
 import { Page } from "@/components/page";
+import { PaneTransition } from "@/components/page-transition";
 import { groupConversations } from "@/lib/inbox/conversations";
 import { listInboundMessages } from "@/lib/inbox/queries";
 import { cardState } from "@/lib/inbox/question-state";
@@ -28,7 +29,7 @@ export default async function InboxDetailLayout({ children }: { children: ReactN
   return (
     <Page width="full" className="lg:grid lg:grid-cols-[18rem_minmax(0,1fr)] lg:items-start lg:gap-6">
       <ChatRail conversations={conversations} questions={questions} />
-      <div className="min-w-0">{children}</div>
+      <PaneTransition>{children}</PaneTransition>
     </Page>
   );
 }

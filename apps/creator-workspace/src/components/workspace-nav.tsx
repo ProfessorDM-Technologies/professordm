@@ -22,20 +22,34 @@ function InboxBadge({ count, className = "" }: { count: number | null | undefine
   );
 }
 
+// The solid pill behind the active item. Its view-transition-name lets it glide to the next item on navigation
+// (UI v2 spec, motion a) while the labels stay crisp.
+function ActivePill({ name }: { name: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      style={{ viewTransitionName: name }}
+      className="absolute inset-0 -z-10 rounded-full bg-pdm-card shadow-sm ring-1 ring-pdm-primary/10"
+    />
+  );
+}
+
 // Desktop: pills inside the glass island; the active pill is solid, lifted out of the glass.
 function TopItem({ item, active, inboxCount }: { item: NavItem; active: boolean; inboxCount?: number | null }) {
   return (
     <Link
       href={item.href}
       aria-current={active ? "page" : undefined}
-      className={`flex min-h-9 items-center gap-1.5 whitespace-nowrap rounded-full px-3 font-display text-sm font-semibold motion-safe:transition-[color,background-color,scale] motion-safe:active:scale-95 ${
-        active
-          ? "bg-pdm-card text-pdm-primary shadow-sm ring-1 ring-pdm-primary/10"
-          : "text-pdm-muted hover:bg-pdm-card/50 hover:text-pdm-primary"
+      className={`relative isolate flex min-h-9 items-center gap-1.5 whitespace-nowrap rounded-full px-3 font-display text-sm font-semibold motion-safe:transition-[color,background-color,scale] motion-safe:active:scale-95 ${
+        active ? "text-pdm-primary" : "text-pdm-muted hover:bg-pdm-card/50 hover:text-pdm-primary"
       }`}
     >
-      {item.label}
-      {item.href === "/inbox" ? <InboxBadge count={inboxCount} /> : null}
+      {active ? <ActivePill name="nav-pill" /> : null}
+      {/* Named so the label paints above the gliding pill during the transition. */}
+      <span style={{ viewTransitionName: `nav-label-${item.icon}` }} className="flex items-center gap-1.5">
+        {item.label}
+        {item.href === "/inbox" ? <InboxBadge count={inboxCount} /> : null}
+      </span>
     </Link>
   );
 }
@@ -46,15 +60,18 @@ function BottomItem({ item, active, inboxCount }: { item: NavItem; active: boole
     <Link
       href={item.href}
       aria-current={active ? "page" : undefined}
-      className={`relative flex min-h-13 flex-col items-center justify-center gap-0.5 rounded-full px-1 text-[0.6875rem] font-semibold motion-safe:transition-[color,background-color,scale] motion-safe:active:scale-95 ${
-        active ? "bg-pdm-card text-pdm-primary shadow-sm ring-1 ring-pdm-primary/10" : "text-pdm-muted hover:text-pdm-primary"
+      className={`relative isolate flex min-h-13 flex-col items-center justify-center gap-0.5 rounded-full px-1 text-[0.6875rem] font-semibold motion-safe:transition-[color,background-color,scale] motion-safe:active:scale-95 ${
+        active ? "text-pdm-primary" : "text-pdm-muted hover:text-pdm-primary"
       }`}
     >
-      <span className="relative">
-        <NavIcon name={item.icon} />
-        {item.href === "/inbox" ? <InboxBadge count={inboxCount} className="absolute -top-1.5 left-3.5" /> : null}
+      {active ? <ActivePill name="nav-pill-mobile" /> : null}
+      <span style={{ viewTransitionName: `nav-mlabel-${item.icon}` }} className="flex flex-col items-center gap-0.5">
+        <span className="relative">
+          <NavIcon name={item.icon} />
+          {item.href === "/inbox" ? <InboxBadge count={inboxCount} className="absolute -top-1.5 left-3.5" /> : null}
+        </span>
+        {item.label}
       </span>
-      {item.label}
     </Link>
   );
 }

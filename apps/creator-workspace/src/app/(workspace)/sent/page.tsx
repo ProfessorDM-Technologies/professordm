@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { cardLinkClass } from "@/components/ui/card-styles";
 import { Page } from "@/components/page";
 import Link from "next/link";
 import { RealtimeRefresh } from "@/components/inbox/realtime-refresh";
@@ -24,7 +25,7 @@ function SentCard({ question }: { question: QueueQuestion }) {
     <li>
       <Link
         href={`/inbox/question/${question.id}`}
-        className="block space-y-2 rounded-xl border border-pdm-border bg-pdm-card p-4 motion-safe:transition-colors hover:border-pdm-primary"
+        className={cardLinkClass()}
       >
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <p className="font-semibold">{username}</p>

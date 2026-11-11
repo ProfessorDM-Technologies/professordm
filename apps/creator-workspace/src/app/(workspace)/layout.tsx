@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { AccountMenu } from "@/components/account-menu";
 import { BrandMark } from "@/components/brand/brand-mark";
 import { BrandMist } from "@/components/brand/brand-mist";
+import { PageTransition } from "@/components/page-transition";
 import { WorkspaceNav } from "@/components/workspace-nav";
 import { getSessionUser, isWorkspaceRole } from "@/lib/auth/session";
 import { queueCounts } from "@/lib/inbox/questions";
@@ -56,7 +57,7 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
       </header>
 
       <main id="main" tabIndex={-1} className="mx-auto w-full max-w-7xl px-4 pt-8 pb-32 md:px-8 md:pb-16">
-        {children}
+        <PageTransition>{children}</PageTransition>
       </main>
 
       <WorkspaceNav

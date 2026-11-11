@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { LiveItem } from "@/components/ui/live-list";
+import { cardLinkClass } from "@/components/ui/card-styles";
 import { LocalTime } from "@/components/local-time";
 import { StatusChip } from "@/components/inbox/status-chip";
 import { buttonClass } from "@/components/ui/button-styles";
@@ -71,17 +73,17 @@ export function QuestionCard({ question, now }: { question: QueueQuestion; now: 
   );
 
   return (
-    <li>
+    <LiveItem>
       {drafting ? (
         <div className="space-y-2 rounded-xl border border-pdm-border bg-pdm-card p-4">{body}</div>
       ) : (
         <Link
           href={`/inbox/question/${question.id}`}
-          className="group/card block space-y-2 rounded-xl border border-pdm-border bg-pdm-card p-4 motion-safe:transition-colors hover:border-pdm-primary"
+          className={cardLinkClass("group/card")}
         >
           {body}
         </Link>
       )}
-    </li>
+    </LiveItem>
   );
 }

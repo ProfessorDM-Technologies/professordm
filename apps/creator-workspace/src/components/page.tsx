@@ -14,6 +14,15 @@ export function pageWidthClass(width: PageWidth): string {
   return `mx-auto w-full ${WIDTHS[width]}`;
 }
 
-export function Page({ width = "narrow", className = "", children }: { width?: PageWidth; className?: string; children: ReactNode }) {
-  return <div className={`${pageWidthClass(width)} ${className}`}>{children}</div>;
+export function Page({
+  width = "narrow",
+  className = "",
+  children,
+  ...rest
+}: { width?: PageWidth; className?: string; children: ReactNode; "aria-busy"?: boolean }) {
+  return (
+    <div className={`${pageWidthClass(width)} ${className}`} {...rest}>
+      {children}
+    </div>
+  );
 }

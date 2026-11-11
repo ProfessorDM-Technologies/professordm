@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { LiveItem } from "@/components/ui/live-list";
+import { cardLinkClass } from "@/components/ui/card-styles";
 import { LocalTime } from "@/components/local-time";
 import { categoryLabel, inboundStatusLabel } from "@/lib/inbox/labels";
 import type { InboxMessage } from "@/lib/inbox/queries";
@@ -16,10 +18,10 @@ export function MessageRow({ message }: { message: InboxMessage }) {
   const badgeStyle = (message.category && CATEGORY_STYLES[message.category]) ?? "bg-pdm-card text-pdm-ink ring-1 ring-pdm-border";
 
   return (
-    <li>
+    <LiveItem>
       <Link
         href={`/inbox/${message.follower.id}`}
-        className="block space-y-2 rounded-xl border border-pdm-border bg-pdm-card p-4 motion-safe:transition-colors hover:border-pdm-primary"
+        className={cardLinkClass()}
       >
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <p className="font-semibold">{username}</p>
@@ -37,6 +39,6 @@ export function MessageRow({ message }: { message: InboxMessage }) {
           {status ? <span className="text-pdm-muted">· {status}</span> : null}
         </div>
       </Link>
-    </li>
+    </LiveItem>
   );
 }
