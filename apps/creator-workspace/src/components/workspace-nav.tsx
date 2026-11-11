@@ -8,13 +8,17 @@ import { NAV_ITEMS, inboxBadgeText, isActive, mobileNavItems, type NavItem } fro
 function InboxBadge({ count, className = "" }: { count: number | null | undefined; className?: string }) {
   const text = inboxBadgeText(count);
   if (!text) return null;
+  // aria-label is ignored on a plain span, so the visual badge is hidden and screen readers get a full phrase instead.
   return (
-    <span
-      aria-label={`${count} unanswered`}
-      className={`inline-flex min-w-5 items-center justify-center rounded-full bg-pdm-primary px-1.5 text-xs font-semibold leading-5 text-white ${className}`}
-    >
-      {text}
-    </span>
+    <>
+      <span
+        aria-hidden="true"
+        className={`inline-flex min-w-5 items-center justify-center rounded-full bg-pdm-primary px-1.5 text-xs font-semibold leading-5 text-white ${className}`}
+      >
+        {text}
+      </span>
+      <span className="sr-only">, {count} unanswered</span>
+    </>
   );
 }
 

@@ -36,15 +36,6 @@
   --color-pdm-danger-text: #B42318;
   --color-pdm-danger-tint: #FEF1F0;
   --color-pdm-danger-border: #F5C2BD;
-
-  /* legacy alias — removed in Task 8 */
-  --color-pdm-accent: var(--color-pdm-primary);
-  /* legacy alias — removed in Task 8 */
-  --color-pdm-accent-strong: var(--color-pdm-primary);
-  /* legacy alias — removed in Task 8 */
-  --color-pdm-tint: var(--color-pdm-primary-tint);
-  /* legacy alias — removed in Task 8 */
-  --color-pdm-surface: var(--color-pdm-canvas);
 }
 
 /* Font families come from next/font variables set on <html> in app/layout.tsx. Aptos first, for machines that have it. */
