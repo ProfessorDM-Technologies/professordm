@@ -28,7 +28,7 @@ export default function BankPage() {
             <li
               key={tile.label}
               // Gold marks money (spec section 3.1): a decorative top rule; text stays navy for contrast.
-              className="relative space-y-1 overflow-hidden rounded-xl border border-pdm-border bg-white p-4 pt-5 before:absolute before:inset-x-0 before:top-0 before:h-[3px] before:bg-pdm-money"
+              className="relative space-y-1 overflow-hidden rounded-xl border border-pdm-border bg-pdm-card p-4 pt-5 before:absolute before:inset-x-0 before:top-0 before:h-[3px] before:bg-pdm-money"
             >
               <p className="text-sm font-medium text-pdm-muted">{tile.label}</p>
               <p className="font-display text-2xl font-bold text-pdm-heading" aria-label={`${tile.label}: not available yet`}>

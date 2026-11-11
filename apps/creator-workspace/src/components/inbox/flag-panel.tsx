@@ -21,7 +21,7 @@ export function FlagPanel({
     <section
       aria-labelledby="flags-heading"
       className={`space-y-3 rounded-xl border p-4 ${
-        open.length ? "border-pdm-danger-border bg-pdm-danger-tint" : "border-pdm-border bg-white"
+        open.length ? "border-pdm-danger-border bg-pdm-danger-tint" : "border-pdm-border bg-pdm-card"
       }`}
     >
       <div className="space-y-1">
@@ -39,7 +39,7 @@ export function FlagPanel({
           const reviewed = flag.status !== "open";
           const where = flag.targetType === "draft" ? "On the AI draft" : "On the message";
           return (
-            <li key={flag.id} className="rounded-lg border border-pdm-border bg-white p-3">
+            <li key={flag.id} className="rounded-lg border border-pdm-border bg-pdm-card p-3">
               <p className="font-medium">{flagLabel(flag)}</p>
               <p className="text-xs text-pdm-muted">{where}</p>
               {reviewed ? (

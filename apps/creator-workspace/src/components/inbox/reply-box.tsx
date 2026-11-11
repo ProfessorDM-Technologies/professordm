@@ -24,7 +24,7 @@ export function ReplyBox({ inboundMessageId, recipient }: { inboundMessageId: st
   const empty = text.trim().length === 0;
 
   return (
-    <form action={formAction} className="space-y-3 rounded-xl border border-pdm-border bg-white p-4">
+    <form action={formAction} className="space-y-3 rounded-xl border border-pdm-border bg-pdm-card p-4">
       <input type="hidden" name="inbound_message_id" value={inboundMessageId} />
       <input type="hidden" name="client_request_id" value={requestId} />
 
@@ -41,7 +41,7 @@ export function ReplyBox({ inboundMessageId, recipient }: { inboundMessageId: st
         maxLength={MAX_REPLY_LENGTH}
         aria-invalid={state.status === "error" ? true : undefined}
         aria-describedby="reply-status"
-        className="block w-full rounded-lg border border-pdm-border-strong bg-white p-3 text-base"
+        className="block w-full rounded-lg border border-pdm-border-strong bg-pdm-card p-3 text-base"
       />
 
       <div className="flex flex-wrap items-center justify-between gap-3">

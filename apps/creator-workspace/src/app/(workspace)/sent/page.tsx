@@ -23,7 +23,7 @@ function SentCard({ question }: { question: QueueQuestion }) {
     <li>
       <Link
         href={`/inbox/question/${question.id}`}
-        className="block space-y-2 rounded-xl border border-pdm-border bg-white p-4 motion-safe:transition-colors hover:border-pdm-primary"
+        className="block space-y-2 rounded-xl border border-pdm-border bg-pdm-card p-4 motion-safe:transition-colors hover:border-pdm-primary"
       >
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <p className="font-semibold">{username}</p>

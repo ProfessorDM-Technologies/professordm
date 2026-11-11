@@ -24,7 +24,7 @@ export default function ProfilePage() {
       <PageHeader title="Profile" description="Your public profile, pricing and payout settings." />
 
       <PageSection id="settings" title="Settings">
-        <ul className="divide-y divide-pdm-border rounded-xl border border-pdm-border bg-white">
+        <ul className="divide-y divide-pdm-border rounded-xl border border-pdm-border bg-pdm-card">
           {SETTINGS.map((setting) => (
             <li key={setting} className="px-4 py-3 text-sm text-pdm-muted">
               {setting}

@@ -13,7 +13,7 @@ function InboxBadge({ count, className = "" }: { count: number | null | undefine
     <>
       <span
         aria-hidden="true"
-        className={`inline-flex min-w-5 items-center justify-center rounded-full bg-pdm-primary px-1.5 text-xs font-semibold leading-5 text-white ${className}`}
+        className={`inline-flex min-w-5 items-center justify-center rounded-full bg-pdm-primary px-1.5 text-xs font-semibold leading-5 text-pdm-on-primary ${className}`}
       >
         {text}
       </span>
@@ -30,8 +30,8 @@ function TopItem({ item, active, inboxCount }: { item: NavItem; active: boolean;
       aria-current={active ? "page" : undefined}
       className={`flex min-h-10 items-center gap-1.5 whitespace-nowrap rounded-full px-3 font-display text-sm font-semibold motion-safe:transition-colors ${
         active
-          ? "bg-white text-pdm-primary shadow-sm ring-1 ring-pdm-primary/10"
-          : "text-pdm-muted hover:bg-white/60 hover:text-pdm-primary"
+          ? "bg-pdm-card text-pdm-primary shadow-sm ring-1 ring-pdm-primary/10"
+          : "text-pdm-muted hover:bg-pdm-card/60 hover:text-pdm-primary"
       }`}
     >
       {item.label}

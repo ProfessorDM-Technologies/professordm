@@ -35,7 +35,7 @@ export function QuestionCard({ question, now }: { question: QueueQuestion; now: 
               {waited}
               <span
                 aria-hidden="true"
-                className="absolute top-full right-0 z-10 mt-1 hidden whitespace-nowrap rounded border border-pdm-border bg-white px-2 py-1 text-pdm-ink group-hover/time:block"
+                className="absolute top-full right-0 z-10 mt-1 hidden whitespace-nowrap rounded border border-pdm-border bg-pdm-card px-2 py-1 text-pdm-ink group-hover/time:block"
               >
                 <LocalTime value={question.paidAt} />
               </span>
@@ -73,11 +73,11 @@ export function QuestionCard({ question, now }: { question: QueueQuestion; now: 
   return (
     <li>
       {drafting ? (
-        <div className="space-y-2 rounded-xl border border-pdm-border bg-white p-4">{body}</div>
+        <div className="space-y-2 rounded-xl border border-pdm-border bg-pdm-card p-4">{body}</div>
       ) : (
         <Link
           href={`/inbox/question/${question.id}`}
-          className="group/card block space-y-2 rounded-xl border border-pdm-border bg-white p-4 motion-safe:transition-colors hover:border-pdm-primary"
+          className="group/card block space-y-2 rounded-xl border border-pdm-border bg-pdm-card p-4 motion-safe:transition-colors hover:border-pdm-primary"
         >
           {body}
         </Link>

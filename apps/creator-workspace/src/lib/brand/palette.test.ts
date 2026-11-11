@@ -17,7 +17,7 @@ function tsxFiles(dir: string): string[] {
 
 // Raw Tailwind palette colours, black, the retired amber-era tokens, and the banned radius.
 const OFF_BRAND =
-  /\b(?:bg|text|border|ring|divide|outline)-(?:stone|red|green|amber|gray|slate)-\d|\bbg-black\b|pdm-(?:accent|tint\b|surface)|rounded-2xl/g;
+  /\b(?:bg|text|border|ring|divide|outline)-(?:stone|red|green|amber|gray|slate)-\d|\bbg-(?:black|white)\b|\btext-white\b|pdm-(?:accent|tint\b|surface)|rounded-2xl/g;
 
 const files = tsxFiles(srcDir);
 

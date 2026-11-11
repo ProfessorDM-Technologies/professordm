@@ -13,13 +13,13 @@ const CATEGORY_STYLES: Record<string, string> = {
 export function MessageRow({ message }: { message: InboxMessage }) {
   const username = message.follower.username ? `@${message.follower.username}` : "Unknown sender";
   const status = inboundStatusLabel(message.status);
-  const badgeStyle = (message.category && CATEGORY_STYLES[message.category]) ?? "bg-white text-pdm-ink ring-1 ring-pdm-border";
+  const badgeStyle = (message.category && CATEGORY_STYLES[message.category]) ?? "bg-pdm-card text-pdm-ink ring-1 ring-pdm-border";
 
   return (
     <li>
       <Link
         href={`/inbox/${message.follower.id}`}
-        className="block space-y-2 rounded-xl border border-pdm-border bg-white p-4 motion-safe:transition-colors hover:border-pdm-primary"
+        className="block space-y-2 rounded-xl border border-pdm-border bg-pdm-card p-4 motion-safe:transition-colors hover:border-pdm-primary"
       >
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <p className="font-semibold">{username}</p>

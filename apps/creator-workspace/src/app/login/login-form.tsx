@@ -24,7 +24,7 @@ export function LoginForm({ next, initialError }: { next: string; initialError: 
           required
           aria-invalid={state.error ? true : undefined}
           aria-describedby={state.error ? "login-error" : undefined}
-          className="block w-full rounded-lg border border-pdm-border-strong bg-white p-3 text-base"
+          className="block w-full rounded-lg border border-pdm-border-strong bg-pdm-card p-3 text-base"
         />
       </div>
 
@@ -40,7 +40,7 @@ export function LoginForm({ next, initialError }: { next: string; initialError: 
           required
           aria-invalid={state.error ? true : undefined}
           aria-describedby={state.error ? "login-error" : undefined}
-          className="block w-full rounded-lg border border-pdm-border-strong bg-white p-3 text-base"
+          className="block w-full rounded-lg border border-pdm-border-strong bg-pdm-card p-3 text-base"
         />
       </div>
 

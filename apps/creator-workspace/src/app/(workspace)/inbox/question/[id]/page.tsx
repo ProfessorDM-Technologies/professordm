@@ -26,7 +26,7 @@ function SmallBubble({ outgoing, label, text }: { outgoing: boolean; label: stri
       <div className={`flex max-w-[85%] flex-col space-y-1 ${outgoing ? "items-end text-right" : "items-start"}`}>
         <div
           className={`whitespace-pre-wrap rounded-xl px-4 py-2 text-left text-sm text-pdm-ink ${
-            outgoing ? "bg-pdm-ai-tint ring-1 ring-pdm-ai/20" : "border border-pdm-border bg-white"
+            outgoing ? "bg-pdm-ai-tint ring-1 ring-pdm-ai/20" : "border border-pdm-border bg-pdm-card"
           }`}
         >
           {text}
@@ -102,7 +102,7 @@ export default async function AnswerQuestionPage({ params }: PageProps<"/inbox/q
         nextQuestionId={nextQuestion?.id ?? null}
         context={
           <>
-            <section aria-labelledby="question-heading" className="space-y-3 rounded-xl border border-pdm-border bg-white p-4">
+            <section aria-labelledby="question-heading" className="space-y-3 rounded-xl border border-pdm-border bg-pdm-card p-4">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <h2 id="question-heading" className="font-semibold">
                   The question
@@ -114,7 +114,7 @@ export default async function AnswerQuestionPage({ params }: PageProps<"/inbox/q
                 <div className="flex flex-wrap items-center gap-2 text-xs">
                   <span
                     className={`rounded-full px-2 py-0.5 font-semibold ${
-                      (origin.category && CATEGORY_STYLES[origin.category]) ?? "bg-white text-pdm-ink ring-1 ring-pdm-border"
+                      (origin.category && CATEGORY_STYLES[origin.category]) ?? "bg-pdm-card text-pdm-ink ring-1 ring-pdm-border"
                     }`}
                   >
                     {categoryLabel(origin.category)}

@@ -5,7 +5,7 @@ describe("buttonClass", () => {
   test("defaults to a navy primary button with a 44px target", () => {
     const classes = buttonClass();
     expect(classes).toContain("bg-pdm-primary");
-    expect(classes).toContain("text-white");
+    expect(classes).toContain("text-pdm-on-primary");
     expect(classes).toContain("min-h-11");
   });
 

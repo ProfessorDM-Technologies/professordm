@@ -4,7 +4,7 @@ import type { Citation } from "@/lib/inbox/questions";
 const COVERAGE_STYLES: Record<string, string> = {
   high: "bg-pdm-success-tint text-pdm-success-text",
   partial: "bg-pdm-primary-tint text-pdm-primary",
-  none: "bg-white text-pdm-muted ring-1 ring-pdm-border",
+  none: "bg-pdm-card text-pdm-muted ring-1 ring-pdm-border",
 };
 
 // "Guide > Section > Subsection" as a breadcrumb with the last part bold.
@@ -40,7 +40,7 @@ export function SourceList({
   const badge = coverageLabel(coverage);
 
   return (
-    <section aria-labelledby="sources-heading" className="space-y-3 rounded-xl border border-pdm-border bg-white p-4">
+    <section aria-labelledby="sources-heading" className="space-y-3 rounded-xl border border-pdm-border bg-pdm-card p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 id="sources-heading" className="font-semibold">
           Sources

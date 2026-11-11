@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Montserrat } from "next/font/google";
 import type { ReactNode } from "react";
+import { themeBootScript } from "@/lib/theme";
 import "./globals.css";
 
 // Brand type (spec section 3.2): Montserrat for headings and nav, Aptos then Inter for body. Self-hosted by next/font.
@@ -20,7 +21,11 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={`${montserrat.variable} ${inter.variable}`}>
+    // suppressHydrationWarning: the boot script sets data-theme on <html> before React hydrates.
+    <html lang="en" className={`${montserrat.variable} ${inter.variable}`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
+      </head>
       <body className="bg-pdm-canvas font-sans text-pdm-ink antialiased">{children}</body>
     </html>
   );

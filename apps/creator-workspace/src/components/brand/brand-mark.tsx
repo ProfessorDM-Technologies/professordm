@@ -14,7 +14,7 @@ const TILE_SIZES = { sm: "size-8", md: "size-9" } as const;
 export function BrandMark({ size = "md" }: { size?: keyof typeof TILE_SIZES }) {
   return (
     <span
-      className={`inline-flex shrink-0 items-center justify-center rounded-lg border border-pdm-border bg-white p-1 ${TILE_SIZES[size]}`}
+      className={`inline-flex shrink-0 items-center justify-center rounded-lg border border-pdm-border bg-pdm-logo-bg p-1 ${TILE_SIZES[size]}`}
     >
       <Image src={ICON.src} width={ICON.width} height={ICON.height} alt="" className="h-auto w-full" preload />
     </span>
@@ -25,7 +25,7 @@ export function BrandMark({ size = "md" }: { size?: keyof typeof TILE_SIZES }) {
 export function BrandLogo({ width }: { width: number }) {
   const height = Math.round((width * LOGO.height) / LOGO.width);
   return (
-    <span className="inline-flex rounded-xl border border-pdm-border bg-white p-3">
+    <span className="inline-flex rounded-xl border border-pdm-border bg-pdm-logo-bg p-3">
       <Image src={LOGO.src} width={width} height={height} alt="ProfessorDM" preload />
     </span>
   );

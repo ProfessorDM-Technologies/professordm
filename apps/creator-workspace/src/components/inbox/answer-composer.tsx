@@ -152,7 +152,7 @@ export function AnswerWorkspace({
             error={state.status === "error" ? state.message : null}
           />
         ) : (
-          <p className="rounded-xl border border-pdm-border bg-white p-4 text-sm text-pdm-muted">{blocked}</p>
+          <p className="rounded-xl border border-pdm-border bg-pdm-card p-4 text-sm text-pdm-muted">{blocked}</p>
         )}
         {sources}
       </div>
@@ -276,7 +276,7 @@ function AnswerForm({
     <form
       action={formAction}
       onSubmit={() => dialogRef.current?.close()}
-      className="space-y-4 rounded-xl border border-pdm-border bg-white p-4"
+      className="space-y-4 rounded-xl border border-pdm-border bg-pdm-card p-4"
     >
       <input type="hidden" name="question_id" value={question.id} />
       <input type="hidden" name="inbound_message_id" value={question.originMessageId ?? ""} />
@@ -309,7 +309,7 @@ function AnswerForm({
           aria-invalid={error ? true : undefined}
           // Untouched AI draft = cyan; once the creator edits it, their voice = sage (spec section 6). The status line names the state too.
           className={`block min-h-48 w-full rounded-lg border border-pdm-border-strong p-3 text-base field-sizing-content motion-safe:transition-colors ${
-            aiText === null ? "bg-white" : edited ? "bg-pdm-human" : "bg-pdm-ai-tint"
+            aiText === null ? "bg-pdm-card" : edited ? "bg-pdm-human" : "bg-pdm-ai-tint"
           }`}
         />
         <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
@@ -358,7 +358,7 @@ function AnswerForm({
         <p id="answer-tags-help" className="text-sm text-pdm-muted">
           Tags help you find this answer later. Press Enter or a comma to add one.
         </p>
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-pdm-border-strong bg-white p-2">
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-pdm-border-strong bg-pdm-card p-2">
           {tags.map((tag) => (
             <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-pdm-primary-tint py-1 pr-1 pl-3 text-sm font-medium text-pdm-primary">
               {tag}
@@ -367,7 +367,7 @@ function AnswerForm({
                 onClick={() => setTags(tags.filter((current) => current !== tag))}
                 disabled={pending}
                 aria-label={`Remove tag ${tag}`}
-                className="relative grid size-6 place-items-center rounded-full hover:bg-white after:absolute after:-inset-2.5 after:content-['']"
+                className="relative grid size-6 place-items-center rounded-full hover:bg-pdm-card after:absolute after:-inset-2.5 after:content-['']"
               >
                 <svg aria-hidden="true" viewBox="0 0 12 12" className="size-3" fill="none" stroke="currentColor" strokeWidth="1.75">
                   <path d="M3 3l6 6M9 3l-6 6" />
@@ -425,7 +425,7 @@ function AnswerForm({
         ref={dialogRef}
         aria-labelledby="confirm-heading"
         onClose={() => triggerRef.current?.focus()}
-        className="m-auto w-[min(36rem,calc(100vw-2rem))] rounded-xl border border-pdm-border bg-white p-0 text-pdm-ink shadow-[0_8px_24px_-12px_rgb(4_59_101/0.25)] backdrop:bg-pdm-ink/40 backdrop:backdrop-blur-sm"
+        className="m-auto w-[min(36rem,calc(100vw-2rem))] rounded-xl border border-pdm-border bg-pdm-card p-0 text-pdm-ink shadow-[0_8px_24px_-12px_rgb(4_59_101/0.25)] backdrop:bg-pdm-ink/40 backdrop:backdrop-blur-sm"
       >
         <div className="space-y-4 p-5">
           <h2 id="confirm-heading" className="text-lg font-semibold">

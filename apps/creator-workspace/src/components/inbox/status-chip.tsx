@@ -7,7 +7,7 @@ const TONE_STYLES: Record<CardTone, { chip: string; dot: string }> = {
   accent: { chip: "bg-pdm-primary-tint text-pdm-primary", dot: "bg-pdm-primary" },
   success: { chip: "bg-pdm-success-tint text-pdm-success-text", dot: "bg-pdm-success" },
   danger: { chip: "bg-pdm-danger-tint text-pdm-danger-text", dot: "bg-pdm-danger-text" },
-  neutral: { chip: "bg-white text-pdm-muted ring-1 ring-pdm-border", dot: "bg-pdm-muted" },
+  neutral: { chip: "bg-pdm-card text-pdm-muted ring-1 ring-pdm-border", dot: "bg-pdm-muted" },
 };
 
 // The label is always text, so colour is never the only signal. The dot pulses only when motion is allowed.

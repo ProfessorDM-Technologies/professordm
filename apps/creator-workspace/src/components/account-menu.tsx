@@ -46,11 +46,11 @@ export function AccountMenu({ displayName, role }: { displayName: string | null;
       <summary
         ref={summaryRef}
         aria-label="Account menu"
-        className="flex size-10 cursor-pointer list-none items-center justify-center rounded-full bg-pdm-primary-tint font-display text-sm font-bold text-pdm-primary ring-1 ring-pdm-primary/10 hover:bg-white [&::-webkit-details-marker]:hidden"
+        className="flex size-10 cursor-pointer list-none items-center justify-center rounded-full bg-pdm-primary-tint font-display text-sm font-bold text-pdm-primary ring-1 ring-pdm-primary/10 hover:bg-pdm-card [&::-webkit-details-marker]:hidden"
       >
         {initials(displayName)}
       </summary>
-      <div className="absolute right-0 z-50 mt-2 w-64 space-y-3 rounded-xl border border-pdm-border bg-white p-4 shadow-[0_8px_24px_-12px_rgb(4_59_101/0.25)]">
+      <div className="absolute right-0 z-50 mt-2 w-64 space-y-3 rounded-xl border border-pdm-border bg-pdm-card p-4 shadow-[0_8px_24px_-12px_rgb(4_59_101/0.25)]">
         <div className="min-w-0 space-y-1">
           <p className="truncate text-sm font-semibold">{displayName ?? "Signed in"}</p>
           <span className="inline-block rounded-full bg-pdm-primary-tint px-2 py-0.5 text-xs font-semibold text-pdm-primary">

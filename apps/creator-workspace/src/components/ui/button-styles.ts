@@ -8,10 +8,10 @@ const BASE =
   "inline-flex items-center justify-center gap-2 rounded-lg font-semibold motion-safe:transition-colors disabled:cursor-not-allowed disabled:opacity-60";
 
 const VARIANTS: Record<ButtonVariant, string> = {
-  primary: "bg-pdm-primary text-white hover:bg-pdm-primary-hover",
-  secondary: "border border-pdm-border-strong bg-white text-pdm-ink hover:bg-pdm-canvas",
+  primary: "bg-pdm-primary text-pdm-on-primary hover:bg-pdm-primary-hover",
+  secondary: "border border-pdm-border-strong bg-pdm-card text-pdm-ink hover:bg-pdm-canvas",
   ghost: "text-pdm-primary hover:bg-pdm-primary-tint",
-  danger: "bg-pdm-danger-text text-white hover:opacity-90",
+  danger: "bg-pdm-danger-text text-pdm-on-primary hover:opacity-90",
 };
 
 const SIZES: Record<ButtonSize, string> = {
