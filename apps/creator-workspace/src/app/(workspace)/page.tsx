@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { PageHeader, PageSection } from "@/components/page-section";
 import { Placeholder } from "@/components/placeholder";
+import { buttonClass } from "@/components/ui/button-styles";
 
 export const metadata: Metadata = {
   title: "ProfessorDM Bank",
@@ -24,9 +25,13 @@ export default function BankPage() {
       <PageSection id="balance" title="Balance">
         <ul className="grid gap-3 sm:grid-cols-3">
           {BALANCE_TILES.map((tile) => (
-            <li key={tile.label} className="space-y-1 rounded-lg border border-pdm-border bg-white p-4">
+            <li
+              key={tile.label}
+              // Gold marks money (spec section 3.1): a decorative top rule; text stays navy for contrast.
+              className="relative space-y-1 overflow-hidden rounded-xl border border-pdm-border bg-white p-4 pt-5 before:absolute before:inset-x-0 before:top-0 before:h-[3px] before:bg-pdm-money"
+            >
               <p className="text-sm font-medium text-pdm-muted">{tile.label}</p>
-              <p className="text-2xl font-semibold" aria-label={`${tile.label}: not available yet`}>
+              <p className="font-display text-2xl font-bold text-pdm-heading" aria-label={`${tile.label}: not available yet`}>
                 —
               </p>
               <p className="text-xs text-pdm-muted">{tile.note}</p>
@@ -47,7 +52,7 @@ export default function BankPage() {
           type="button"
           disabled
           aria-describedby="withdraw-note"
-          className="rounded-lg bg-pdm-accent px-4 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+          className={buttonClass()}
         >
           Withdraw Available Balance
         </button>

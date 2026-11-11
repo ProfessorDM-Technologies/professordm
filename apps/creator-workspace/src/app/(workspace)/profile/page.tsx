@@ -24,7 +24,7 @@ export default function ProfilePage() {
       <PageHeader title="Profile" description="Your public profile, pricing and payout settings." />
 
       <PageSection id="settings" title="Settings">
-        <ul className="divide-y divide-pdm-border rounded-lg border border-pdm-border bg-white">
+        <ul className="divide-y divide-pdm-border rounded-xl border border-pdm-border bg-white">
           {SETTINGS.map((setting) => (
             <li key={setting} className="px-4 py-3 text-sm text-pdm-muted">
               {setting}
@@ -35,7 +35,7 @@ export default function ProfilePage() {
       </PageSection>
 
       <PageSection id="knowledge" title="Knowledge Database">
-        <Link href="/knowledge" className="inline-block font-semibold text-pdm-accent-strong underline underline-offset-4">
+        <Link href="/knowledge" className="inline-block font-semibold text-pdm-primary underline underline-offset-4">
           Manage your Knowledge Database
         </Link>
       </PageSection>

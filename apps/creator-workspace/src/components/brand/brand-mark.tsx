@@ -21,8 +21,12 @@ export function BrandMark({ size = "md" }: { size?: keyof typeof TILE_SIZES }) {
   );
 }
 
-/** Full stacked logo with wordmark, for login and 404. */
+/** Full stacked logo with wordmark, for login and 404. Framed on white so its opaque background never meets the canvas. */
 export function BrandLogo({ width }: { width: number }) {
   const height = Math.round((width * LOGO.height) / LOGO.width);
-  return <Image src={LOGO.src} width={width} height={height} alt="ProfessorDM" preload />;
+  return (
+    <span className="inline-flex rounded-xl border border-pdm-border bg-white p-3">
+      <Image src={LOGO.src} width={width} height={height} alt="ProfessorDM" preload />
+    </span>
+  );
 }
