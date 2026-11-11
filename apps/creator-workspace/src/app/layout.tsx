@@ -1,6 +1,11 @@
 import type { Metadata, Viewport } from "next";
+import { Inter, Montserrat } from "next/font/google";
 import type { ReactNode } from "react";
 import "./globals.css";
+
+// Brand type (spec section 3.2): Montserrat for headings and nav, Aptos then Inter for body. Self-hosted by next/font.
+const montserrat = Montserrat({ subsets: ["latin"], weight: ["600", "700"], variable: "--font-montserrat", display: "swap" });
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 
 export const metadata: Metadata = {
   title: { template: "%s | ProfessorDM Creator Workspace", default: "ProfessorDM Creator Workspace" },
@@ -15,8 +20,8 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
-      <body className="bg-pdm-surface font-sans text-pdm-ink antialiased">{children}</body>
+    <html lang="en" className={`${montserrat.variable} ${inter.variable}`}>
+      <body className="bg-pdm-canvas font-sans text-pdm-ink antialiased">{children}</body>
     </html>
   );
 }

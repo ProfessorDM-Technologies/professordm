@@ -1,26 +1,78 @@
 @import "tailwindcss";
 
+/*
+ * ProfessorDM brand tokens (docs/plans/creator-brand-refresh-spec.md, section 3).
+ * Named for their role, not their hue. Components use these classes only; brand hex values live here.
+ * Raw success/ai/money colours fail AA as text: use them for fills, dots and icons; use the -text shades for text.
+ * contrast.test.ts checks every text/background pair below.
+ */
 @theme {
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --color-pdm-canvas: #F5F8FA;
+  --color-pdm-card: #FFFFFF;
+  --color-pdm-ink: #12232E;
+  --color-pdm-heading: #043B65;
+  --color-pdm-muted: #4A5B6A;
+  --color-pdm-border: #DCE4EB;
+  --color-pdm-border-strong: #788A99;
 
-  --color-pdm-ink: #1c1917;
-  --color-pdm-muted: #57534e;
-  --color-pdm-accent: #b45309;
-  --color-pdm-accent-strong: #92400e;
-  --color-pdm-surface: #fffbeb;
-  --color-pdm-tint: #fef3c7;
-  --color-pdm-border: #e7e5e4;
+  --color-pdm-primary: #043B65;
+  --color-pdm-primary-hover: #032B4A;
+  --color-pdm-primary-tint: #E8EEF4;
+
+  --color-pdm-success: #17A770;
+  --color-pdm-success-text: #0E7A51;
+  --color-pdm-success-tint: #E4F4EC;
+
+  --color-pdm-ai: #0DBED6;
+  --color-pdm-ai-text: #08707F;
+  --color-pdm-ai-tint: #E0F5F8;
+
+  --color-pdm-money: #DB8424;
+  --color-pdm-money-text: #8F530F;
+  --color-pdm-money-tint: #FBEFDF;
+
+  --color-pdm-human: #EEF4E6;
+
+  --color-pdm-danger-text: #B42318;
+  --color-pdm-danger-tint: #FEF1F0;
+  --color-pdm-danger-border: #F5C2BD;
+
+  /* legacy alias — removed in Task 8 */
+  --color-pdm-accent: var(--color-pdm-primary);
+  /* legacy alias — removed in Task 8 */
+  --color-pdm-accent-strong: var(--color-pdm-primary);
+  /* legacy alias — removed in Task 8 */
+  --color-pdm-tint: var(--color-pdm-primary-tint);
+  /* legacy alias — removed in Task 8 */
+  --color-pdm-surface: var(--color-pdm-canvas);
 }
 
-html {
-  -webkit-text-size-adjust: 100%;
+/* Font families come from next/font variables set on <html> in app/layout.tsx. Aptos first, for machines that have it. */
+@theme inline {
+  --font-sans: Aptos, var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-montserrat), ui-sans-serif, system-ui, sans-serif;
 }
 
-body {
-  min-height: 100dvh;
-}
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    /* Keeps anchor targets (skip link, #main) clear of the sticky glass top bar. */
+    scroll-padding-top: 5rem;
+  }
 
-:focus-visible {
-  outline: 2px solid currentColor;
-  outline-offset: 2px;
+  body {
+    min-height: 100dvh;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    color: var(--color-pdm-heading);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-pdm-primary);
+    outline-offset: 2px;
+  }
 }
