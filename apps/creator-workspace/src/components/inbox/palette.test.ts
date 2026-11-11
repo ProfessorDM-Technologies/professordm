@@ -15,6 +15,8 @@ const MIGRATED = [
   "app/(workspace)/inbox/[id]/page.tsx",
   "app/(workspace)/sent/page.tsx",
   "app/(workspace)/moderation/page.tsx",
+  "components/inbox/answer-composer.tsx",
+  "app/(workspace)/inbox/question/[id]/page.tsx",
 ];
 
 const LEGACY = /\b(?:bg|text|border|ring|divide)-(?:stone|red|green|amber)-\d|pdm-(?:accent|tint\b|surface)|rounded-2xl/g;

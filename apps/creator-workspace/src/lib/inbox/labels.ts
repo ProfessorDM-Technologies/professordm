@@ -106,6 +106,14 @@ export function inboundStatusLabel(value: string | null): string | null {
   return isInboundStatus(value) ? INBOUND_STATUS_LABELS[value] : null;
 }
 
+// Outbound types the creator writes. Everything else (clarifications, declines, ask links, prompts) is automated.
+const CREATOR_AUTHORED_TYPES: readonly string[] = ["answer", "followup"];
+
+/** True when an outbound message is the creator's own words, shown on Soft Sage in threads (brand spec section 3.1). */
+export function isCreatorAuthored(outboundType: string | null | undefined): boolean {
+  return typeof outboundType === "string" && CREATOR_AUTHORED_TYPES.includes(outboundType);
+}
+
 export function outboundTypeLabel(value: string): string {
   return (OUTBOUND_TYPES as readonly string[]).includes(value) ? OUTBOUND_TYPE_LABELS[value as OutboundType] : value;
 }

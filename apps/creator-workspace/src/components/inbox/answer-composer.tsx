@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useActionState, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { FlagPanel } from "@/components/inbox/flag-panel";
 import { StatusChip } from "@/components/inbox/status-chip";
+import { buttonClass } from "@/components/ui/button-styles";
 import { approveAnswer, type ApproveAnswerState } from "@/lib/inbox/actions";
 import { MAX_TAGS, answerBytes, changeRatio, checkSendGate, normalizeAnswer, parseTags } from "@/lib/inbox/answer";
 import type { QuestionFlag } from "@/lib/inbox/questions";
@@ -36,7 +37,7 @@ function notAnswerableReason(question: ComposerQuestion): ReactNode | null {
     return (
       <>
         This question has been answered.{" "}
-        <Link href="/sent" className="font-medium text-pdm-accent-strong underline underline-offset-4">
+        <Link href="/sent" className="font-medium text-pdm-primary underline underline-offset-4">
           See it in Sent
         </Link>
       </>
@@ -113,9 +114,9 @@ export function AnswerWorkspace({
             ref={(element) => element?.focus()}
             tabIndex={-1}
             role="status"
-            className="space-y-3 rounded-lg border border-green-200 bg-green-50 p-4"
+            className="space-y-3 rounded-xl border border-pdm-success/30 bg-pdm-success-tint p-4"
           >
-            <p className="font-semibold text-green-800">
+            <p className="font-semibold text-pdm-success-text">
               {state.status === "sent"
                 ? `Answer sent to ${username} on Instagram`
                 : `Your answer to ${username} is on its way to Instagram. This page updates when it's delivered.`}
@@ -124,14 +125,14 @@ export function AnswerWorkspace({
               {nextQuestionId ? (
                 <Link
                   href={`/inbox/question/${nextQuestionId}`}
-                  className="inline-flex min-h-11 items-center rounded-lg bg-pdm-accent px-5 font-semibold text-white hover:bg-pdm-accent-strong"
+                  className={buttonClass("primary", "md", "px-5")}
                 >
                   Next question →
                 </Link>
               ) : null}
               <Link
                 href="/inbox"
-                className="inline-flex min-h-11 items-center rounded-lg border border-pdm-border bg-white px-5 font-medium hover:bg-pdm-surface"
+                className={buttonClass("secondary", "md", "px-5")}
               >
                 Back to inbox
               </Link>
@@ -151,7 +152,7 @@ export function AnswerWorkspace({
             error={state.status === "error" ? state.message : null}
           />
         ) : (
-          <p className="rounded-lg border border-pdm-border bg-white p-4 text-sm text-pdm-muted">{blocked}</p>
+          <p className="rounded-xl border border-pdm-border bg-white p-4 text-sm text-pdm-muted">{blocked}</p>
         )}
         {sources}
       </div>
@@ -269,13 +270,13 @@ function AnswerForm({
       : "No AI draft · write your answer";
 
   const counterStyle =
-    bytes > MAX_REPLY_BYTES ? "font-semibold text-red-700" : bytes >= 900 ? "font-semibold text-pdm-accent-strong" : "text-pdm-muted";
+    bytes > MAX_REPLY_BYTES ? "font-semibold text-pdm-danger-text" : bytes >= 900 ? "font-semibold text-pdm-primary" : "text-pdm-muted";
 
   return (
     <form
       action={formAction}
       onSubmit={() => dialogRef.current?.close()}
-      className="space-y-4 rounded-lg border border-pdm-border bg-white p-4"
+      className="space-y-4 rounded-xl border border-pdm-border bg-white p-4"
     >
       <input type="hidden" name="question_id" value={question.id} />
       <input type="hidden" name="inbound_message_id" value={question.originMessageId ?? ""} />
@@ -306,7 +307,10 @@ function AnswerForm({
           maxLength={MAX_REPLY_LENGTH}
           aria-describedby="answer-gate answer-counter"
           aria-invalid={error ? true : undefined}
-          className="block min-h-48 w-full rounded-lg border border-pdm-border bg-white p-3 text-base field-sizing-content"
+          // Untouched AI draft = cyan; once the creator edits it, their voice = sage (spec section 6). The status line names the state too.
+          className={`block min-h-48 w-full rounded-lg border border-pdm-border-strong p-3 text-base field-sizing-content motion-safe:transition-colors ${
+            aiText === null ? "bg-white" : edited ? "bg-pdm-human" : "bg-pdm-ai-tint"
+          }`}
         />
         <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
           <div className="flex flex-wrap items-center gap-3">
@@ -315,7 +319,7 @@ function AnswerForm({
                 type="button"
                 onClick={resetToDraft}
                 disabled={pending}
-                className="min-h-11 font-medium text-pdm-accent-strong underline underline-offset-4"
+                className="min-h-11 font-medium text-pdm-primary underline underline-offset-4"
               >
                 Reset to AI draft
               </button>
@@ -324,7 +328,7 @@ function AnswerForm({
               <button
                 type="button"
                 onClick={undoReset}
-                className="min-h-11 font-medium text-pdm-accent-strong underline underline-offset-4"
+                className="min-h-11 font-medium text-pdm-primary underline underline-offset-4"
               >
                 Undo
               </button>
@@ -338,8 +342,8 @@ function AnswerForm({
 
       {aiText !== null ? (
         <div className="space-y-1">
-          <div aria-hidden="true" className="h-1.5 overflow-hidden rounded-full bg-stone-200">
-            <div className="h-full rounded-full bg-pdm-accent" style={{ width: `${Math.round(ratio * 100)}%` }} />
+          <div aria-hidden="true" className="h-1.5 overflow-hidden rounded-full bg-pdm-border/60">
+            <div className="h-full rounded-full bg-pdm-success" style={{ width: `${Math.round(ratio * 100)}%` }} />
           </div>
           <p aria-live="polite" className="text-sm text-pdm-muted">
             {ratio === 0 ? "Not edited yet" : `You changed ${Math.round(ratio * 100)}% of the draft`}
@@ -354,9 +358,9 @@ function AnswerForm({
         <p id="answer-tags-help" className="text-sm text-pdm-muted">
           Tags help you find this answer later. Press Enter or a comma to add one.
         </p>
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-pdm-border bg-white p-2">
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-pdm-border-strong bg-white p-2">
           {tags.map((tag) => (
-            <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-pdm-tint py-1 pr-1 pl-3 text-sm font-medium text-pdm-accent-strong">
+            <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-pdm-primary-tint py-1 pr-1 pl-3 text-sm font-medium text-pdm-primary">
               {tag}
               <button
                 type="button"
@@ -388,7 +392,7 @@ function AnswerForm({
             className="min-h-11 min-w-32 flex-1 bg-transparent px-1 text-base outline-offset-2"
           />
         </div>
-        <p id="answer-tags-error" aria-live="polite" className="text-sm font-medium text-red-700">
+        <p id="answer-tags-error" aria-live="polite" className="text-sm font-medium text-pdm-danger-text">
           {tagError}
         </p>
       </div>
@@ -396,7 +400,7 @@ function AnswerForm({
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-pdm-border pt-4">
         <div id="answer-gate" aria-live="polite" className="text-sm">
           {error ? (
-            <p role="alert" className="font-medium text-red-700">
+            <p role="alert" className="font-medium text-pdm-danger-text">
               {error}
             </p>
           ) : null}
@@ -411,7 +415,7 @@ function AnswerForm({
           type="button"
           onClick={openConfirm}
           disabled={!gate.ok || pending}
-          className="min-h-11 rounded-lg bg-pdm-accent px-5 font-semibold text-white hover:bg-pdm-accent-strong disabled:opacity-60"
+          className={buttonClass("primary", "md", "px-5")}
         >
           {pending ? "Sending…" : "Review & send"}
         </button>
@@ -421,14 +425,14 @@ function AnswerForm({
         ref={dialogRef}
         aria-labelledby="confirm-heading"
         onClose={() => triggerRef.current?.focus()}
-        className="m-auto w-[min(36rem,calc(100vw-2rem))] rounded-lg border border-pdm-border bg-white p-0 text-pdm-ink shadow-xl backdrop:bg-black/40"
+        className="m-auto w-[min(36rem,calc(100vw-2rem))] rounded-xl border border-pdm-border bg-white p-0 text-pdm-ink shadow-[0_8px_24px_-12px_rgb(4_59_101/0.25)] backdrop:bg-pdm-ink/40 backdrop:backdrop-blur-sm"
       >
         <div className="space-y-4 p-5">
           <h2 id="confirm-heading" className="text-lg font-semibold">
             Send this answer to {username}?
           </h2>
-          <p className="font-medium text-red-800">This sends a DM on Instagram now.</p>
-          <div className="max-h-[50vh] overflow-y-auto whitespace-pre-wrap rounded-lg border border-pdm-border bg-pdm-surface p-3 text-sm">
+          <p className="font-medium text-pdm-danger-text">This sends a DM on Instagram now.</p>
+          <div className="max-h-[50vh] overflow-y-auto whitespace-pre-wrap rounded-lg border border-pdm-border bg-pdm-human p-3 text-sm">
             {text.trim()}
           </div>
           <p className="text-sm text-pdm-muted">Tags: {tags.join(", ")}</p>
@@ -436,14 +440,14 @@ function AnswerForm({
             <button
               type="button"
               onClick={() => dialogRef.current?.close()}
-              className="min-h-11 rounded-lg border border-pdm-border bg-white px-5 font-medium hover:bg-pdm-surface"
+              className={buttonClass("secondary", "md", "px-5")}
             >
               Keep editing
             </button>
             <button
               type="submit"
               disabled={pending || !gate.ok}
-              className="min-h-11 rounded-lg bg-pdm-accent px-5 font-semibold text-white hover:bg-pdm-accent-strong disabled:opacity-60"
+              className={buttonClass("primary", "md", "px-5")}
             >
               Send answer
             </button>
