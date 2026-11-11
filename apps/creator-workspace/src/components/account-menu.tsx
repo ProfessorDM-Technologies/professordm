@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, type KeyboardEvent } from "react";
+import { buttonClass } from "@/components/ui/button-styles";
 import { signOut } from "@/lib/auth/actions";
 import type { WorkspaceRole } from "@/lib/auth/session";
 
@@ -63,10 +64,7 @@ export function AccountMenu({ displayName, role }: { displayName: string | null;
           Knowledge
         </Link>
         <form action={signOut}>
-          <button
-            type="submit"
-            className="min-h-11 w-full rounded-lg border border-pdm-border-strong bg-white px-3 text-sm font-semibold text-pdm-ink hover:bg-pdm-canvas"
-          >
+          <button type="submit" className={buttonClass("secondary", "md", "w-full")}>
             Sign out
           </button>
         </form>

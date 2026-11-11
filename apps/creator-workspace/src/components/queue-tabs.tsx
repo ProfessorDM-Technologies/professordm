@@ -23,15 +23,15 @@ export async function QueueTabs({ current }: { current: QueueHref }) {
               <Link
                 href={tab.href}
                 aria-current={active ? "page" : undefined}
-                className={`-mb-px flex min-h-11 items-center border-b-2 px-4 text-sm font-medium ${
-                  active ? "border-pdm-accent text-pdm-accent-strong" : "border-transparent text-pdm-muted hover:text-pdm-ink"
+                className={`-mb-px flex min-h-11 items-center border-b-2 px-4 font-display text-sm font-semibold motion-safe:transition-colors ${
+                  active ? "border-pdm-primary text-pdm-primary" : "border-transparent text-pdm-muted hover:text-pdm-primary"
                 }`}
               >
                 {tab.label}
                 {counts[tab.count] !== null ? (
                   <span
                     className={`ml-2 rounded-full px-2 py-0.5 text-xs font-semibold ${
-                      active ? "bg-pdm-tint text-pdm-accent-strong" : "bg-stone-100 text-pdm-muted"
+                      active ? "bg-pdm-primary-tint text-pdm-primary" : "bg-pdm-canvas text-pdm-muted"
                     }`}
                   >
                     {counts[tab.count]}

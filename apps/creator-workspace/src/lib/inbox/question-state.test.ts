@@ -17,6 +17,17 @@ describe("cardState", () => {
     }
   });
 
+  it("shows Sent with the success tone once the answer is delivered", () => {
+    for (const status of ["delivered", "accepted", "closed"]) {
+      expect(cardState(question(status), ready, { status: "sent" })).toEqual({
+        label: "Sent",
+        tone: "success",
+        hint: "Delivered to Instagram.",
+        action: "View",
+      });
+    }
+  });
+
   it("shows Sending for approved and delivering", () => {
     for (const status of ["approved", "delivering"]) {
       expect(cardState(question(status), ready, { status: "pending" })).toEqual({
