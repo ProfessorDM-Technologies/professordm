@@ -37,6 +37,12 @@
   --color-pdm-danger-tint: #FEF1F0;
   --color-pdm-danger-border: #F5C2BD;
 
+  /* Chat: the message area and its bubbles (follower = in, automated = ai, the creator's own words = human). */
+  --color-pdm-pane: #F7F9FB;
+  --color-pdm-bubble-in: #FFFFFF;
+  --color-pdm-bubble-ai: #DDF4F8;
+  --color-pdm-bubble-human: #E9F2DF;
+
   /* Text on primary buttons. */
   --color-pdm-on-primary: #FFFFFF;
   /* The logo PNGs have opaque white backgrounds, so their tile and frame stay white in every theme. */
@@ -70,6 +76,11 @@
   --color-pdm-danger-text: #FF8A80;
   --color-pdm-danger-tint: #3A1715;
   --color-pdm-danger-border: #6B2A25;
+  /* Darker message area + lifted bubbles, so messages separate clearly from the background in dark mode. */
+  --color-pdm-pane: #0C1822;
+  --color-pdm-bubble-in: #1E3546;
+  --color-pdm-bubble-ai: #0F4550;
+  --color-pdm-bubble-human: #24432E;
 }
 
 :root[data-theme="light"] {

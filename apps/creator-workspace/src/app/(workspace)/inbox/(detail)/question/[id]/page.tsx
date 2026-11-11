@@ -26,7 +26,7 @@ function SmallBubble({ outgoing, label, text }: { outgoing: boolean; label: stri
       <div className={`flex max-w-[85%] flex-col space-y-1 ${outgoing ? "items-end text-right" : "items-start"}`}>
         <div
           className={`whitespace-pre-wrap rounded-xl px-4 py-2 text-left text-sm text-pdm-ink ${
-            outgoing ? "bg-pdm-ai-tint ring-1 ring-pdm-ai/20" : "border border-pdm-border bg-pdm-card"
+            outgoing ? "bg-pdm-bubble-ai ring-1 ring-pdm-ai/25" : "bg-pdm-bubble-in ring-1 ring-pdm-border"
           }`}
         >
           {text}

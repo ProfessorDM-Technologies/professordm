@@ -74,3 +74,20 @@ describe("dark theme", () => {
     expect(dark["pdm-canvas"]).not.toBe(light["pdm-canvas"]);
   });
 });
+
+describe.each(["light", "dark"] as const)("%s chat bubbles", (mode) => {
+  const t = readThemeTokens(css, mode);
+
+  test.each(["pdm-bubble-in", "pdm-bubble-ai", "pdm-bubble-human"])("message text on %s reads at AAA (7:1)", (bubble) => {
+    expect(t[bubble], bubble).toBeDefined();
+    expect(contrastRatio(t["pdm-ink"], t[bubble])).toBeGreaterThanOrEqual(7);
+  });
+});
+
+describe("dark chat bubbles stand out from the message area", () => {
+  const t = readThemeTokens(css, "dark");
+
+  test.each(["pdm-bubble-in", "pdm-bubble-ai", "pdm-bubble-human"])("%s is clearly lighter than the pane", (bubble) => {
+    expect(contrastRatio(t[bubble], t["pdm-pane"])).toBeGreaterThanOrEqual(1.35);
+  });
+});

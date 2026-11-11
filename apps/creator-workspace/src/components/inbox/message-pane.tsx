@@ -53,14 +53,14 @@ export function MessagePane({ count, children }: { count: number; children: Reac
       // Keyboard users can scroll the history with arrow keys once it has focus.
       tabIndex={0}
       aria-label="Message history"
-      className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 focus-visible:outline-offset-[-2px] [scrollbar-width:thin]"
+      className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain bg-pdm-pane px-4 py-5 focus-visible:outline-offset-[-2px] [scrollbar-width:thin]"
     >
       {children}
       {pending ? (
         <LiveItem as="div" className="mt-4 flex justify-end motion-safe:animate-rise-in">
           <div className="flex max-w-[85%] flex-col items-end space-y-1 sm:max-w-[70%]">
             <p className="sr-only">You are sending:</p>
-            <div className="whitespace-pre-wrap rounded-xl bg-pdm-human px-4 py-2 text-left text-sm text-pdm-ink opacity-80 ring-1 ring-pdm-success/20">
+            <div className="whitespace-pre-wrap rounded-xl bg-pdm-bubble-human px-4 py-2 text-left text-sm text-pdm-ink opacity-80 ring-1 ring-pdm-success/25">
               {pending}
             </div>
             <p className="flex items-center gap-1.5 text-xs text-pdm-muted">

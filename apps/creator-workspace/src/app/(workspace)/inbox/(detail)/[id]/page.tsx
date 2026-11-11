@@ -39,10 +39,10 @@ function Bubble({ item }: { item: ThreadItem }) {
           className={`whitespace-pre-wrap rounded-xl px-4 py-2 text-left text-sm text-pdm-ink ${
             // Spec section 3.1: the creator's own words on Soft Sage, automated messages on AI cyan, the follower's on white.
             !outgoing
-              ? "border border-pdm-border bg-pdm-card"
+              ? "bg-pdm-bubble-in ring-1 ring-pdm-border"
               : isCreatorAuthored(item.outboundType)
-                ? "bg-pdm-human ring-1 ring-pdm-success/20"
-                : "bg-pdm-ai-tint ring-1 ring-pdm-ai/20"
+                ? "bg-pdm-bubble-human ring-1 ring-pdm-success/25"
+                : "bg-pdm-bubble-ai ring-1 ring-pdm-ai/25"
           }`}
         >
           {item.text || "(No text — attachment only)"}
