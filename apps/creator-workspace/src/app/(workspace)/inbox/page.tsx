@@ -21,7 +21,7 @@ export default async function InboxPage() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <PageHeader title="Inbox" description="Questions waiting for your answer, oldest first." />
         <div className="flex items-center gap-4">
-          <Link href="/incoming" className="text-sm font-medium text-pdm-accent-strong underline underline-offset-4">
+          <Link href="/incoming" className="text-sm font-medium text-pdm-primary underline underline-offset-4">
             All messages →
           </Link>
           <RefreshButton />
@@ -31,20 +31,20 @@ export default async function InboxPage() {
 
       <PageSection id="questions" title="Questions">
         {error ? (
-          <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-800">
+          <p role="alert" className="rounded-xl border border-pdm-danger-border bg-pdm-danger-tint p-4 text-sm font-medium text-pdm-danger-text">
             Couldn&apos;t load questions. Try again.
           </p>
         ) : questions.length === 0 ? (
           <Placeholder>
             You&apos;re all caught up. New questions appear here as soon as the AI has drafted them.{" "}
-            <Link href="/incoming" className="font-medium text-pdm-accent-strong underline underline-offset-4">
+            <Link href="/incoming" className="font-medium text-pdm-primary underline underline-offset-4">
               See all messages
             </Link>
           </Placeholder>
         ) : (
           <>
             {flagsError ? (
-              <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-800">
+              <p role="alert" className="rounded-xl border border-pdm-danger-border bg-pdm-danger-tint p-4 text-sm font-medium text-pdm-danger-text">
                 Safety flags couldn&apos;t be loaded. Open a question to check its flags before answering.
               </p>
             ) : null}

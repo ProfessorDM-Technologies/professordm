@@ -5,6 +5,7 @@ import { LocalTime } from "@/components/local-time";
 import { PageHeader, PageSection } from "@/components/page-section";
 import { Placeholder } from "@/components/placeholder";
 import { QueueTabs } from "@/components/queue-tabs";
+import { buttonClass } from "@/components/ui/button-styles";
 import { getSessionUser } from "@/lib/auth/session";
 import { categoryLabel, flagLabel } from "@/lib/inbox/labels";
 import { listDecisionMessages, listOpenFlags } from "@/lib/inbox/questions";
@@ -15,7 +16,7 @@ export const metadata: Metadata = {
 
 function LoadError({ children }: { children: string }) {
   return (
-    <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-800">
+    <p role="alert" className="rounded-xl border border-pdm-danger-border bg-pdm-danger-tint p-4 text-sm font-medium text-pdm-danger-text">
       {children}
     </p>
   );
@@ -42,7 +43,7 @@ export default async function ModerationPage() {
               <li key={question.id}>
                 <Link
                   href={`/inbox/question/${question.id}`}
-                  className="block space-y-2 rounded-lg border border-pdm-border bg-white p-4 hover:border-pdm-accent"
+                  className="group/card block space-y-2 rounded-xl border border-pdm-border bg-white p-4 motion-safe:transition-colors hover:border-pdm-primary"
                 >
                   <p className="font-semibold">
                     {question.follower?.username ? `@${question.follower.username}` : "Unknown sender"}
@@ -51,13 +52,13 @@ export default async function ModerationPage() {
                   <div className="flex flex-wrap items-end justify-between gap-3">
                     <ul aria-label="Safety flags" className="flex flex-wrap gap-2 text-xs">
                       {question.flags.map((flag) => (
-                        <li key={flag.id} className="rounded-full bg-red-100 px-2 py-0.5 font-semibold text-red-800">
+                        <li key={flag.id} className="rounded-full bg-pdm-danger-tint px-2 py-0.5 font-semibold text-pdm-danger-text">
                           {flagLabel(flag)}
                           <span className="font-normal"> · {flag.targetType === "draft" ? "on the AI draft" : "on the message"}</span>
                         </li>
                       ))}
                     </ul>
-                    <span className="inline-flex min-h-11 items-center rounded-lg bg-pdm-accent px-4 text-sm font-semibold text-white">
+                    <span className={buttonClass("primary", "md", "group-hover/card:bg-pdm-primary-hover")}>
                       Review
                     </span>
                   </div>
@@ -79,7 +80,7 @@ export default async function ModerationPage() {
               <li key={message.id}>
                 <Link
                   href={`/inbox/${message.follower.id}`}
-                  className="block space-y-2 rounded-lg border border-pdm-border bg-white p-4 hover:border-pdm-accent"
+                  className="block space-y-2 rounded-xl border border-pdm-border bg-white p-4 motion-safe:transition-colors hover:border-pdm-primary"
                 >
                   <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                     <p className="font-semibold">
@@ -91,7 +92,9 @@ export default async function ModerationPage() {
                   <p className="text-xs">
                     <span
                       className={`rounded-full px-2 py-0.5 font-semibold ${
-                        message.category === "safety_concern" ? "bg-red-100 text-red-800" : "bg-stone-100 text-pdm-ink"
+                        message.category === "safety_concern"
+                          ? "bg-pdm-danger-tint text-pdm-danger-text"
+                          : "bg-white text-pdm-ink ring-1 ring-pdm-border"
                       }`}
                     >
                       {categoryLabel(message.category)}
@@ -103,7 +106,7 @@ export default async function ModerationPage() {
                       {message.reason}
                     </p>
                   ) : null}
-                  <p className="text-sm font-medium text-pdm-accent-strong underline underline-offset-4">
+                  <p className="text-sm font-medium text-pdm-primary underline underline-offset-4">
                     Open the conversation to reply or leave it
                   </p>
                 </Link>

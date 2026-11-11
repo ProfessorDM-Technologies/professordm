@@ -35,8 +35,9 @@ function Bubble({ item }: { item: ThreadItem }) {
       >
         <p className="sr-only">{outgoing ? "You sent:" : "They sent:"}</p>
         <div
-          className={`whitespace-pre-wrap rounded-2xl px-4 py-2 text-left text-sm ${
-            outgoing ? "bg-pdm-accent text-white" : "border border-pdm-border bg-white text-pdm-ink"
+          className={`whitespace-pre-wrap rounded-xl px-4 py-2 text-left text-sm text-pdm-ink ${
+            // The creator's own words sit on Soft Sage (spec section 3.1); the follower's on white.
+            outgoing ? "bg-pdm-human ring-1 ring-pdm-success/20" : "border border-pdm-border bg-white"
           }`}
         >
           {item.text || "(No text — attachment only)"}
@@ -64,21 +65,21 @@ export default async function ConversationPage({ params }: PageProps<"/inbox/[id
     <article className="space-y-6">
       <RealtimeRefresh />
       <p>
-        <Link href="/inbox" className="text-sm font-medium text-pdm-accent-strong underline underline-offset-4">
+        <Link href="/inbox" className="text-sm font-medium text-pdm-primary underline underline-offset-4">
           Back to inbox
         </Link>
       </p>
 
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">{username}</h1>
+          <h1 className="text-[1.75rem] leading-[2.125rem] font-bold tracking-[-0.01em]">{username}</h1>
           <p className="text-pdm-muted">Instagram conversation</p>
         </div>
         <RefreshButton />
       </div>
 
       {thread.error ? (
-        <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-800">
+        <p role="alert" className="rounded-xl border border-pdm-danger-border bg-pdm-danger-tint p-4 text-sm font-medium text-pdm-danger-text">
           Part of this conversation couldn&apos;t be loaded. Try again.
         </p>
       ) : null}

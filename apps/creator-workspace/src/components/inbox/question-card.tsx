@@ -1,17 +1,20 @@
 import Link from "next/link";
 import { LocalTime } from "@/components/local-time";
 import { StatusChip } from "@/components/inbox/status-chip";
+import { buttonClass } from "@/components/ui/button-styles";
 import { cardState, waitLabel } from "@/lib/inbox/question-state";
 import type { QueueQuestion } from "@/lib/inbox/questions";
 
-function footerParts(question: QueueQuestion) {
-  const parts: string[] = [];
+type FooterPart = { text: string; money?: boolean };
+
+function footerParts(question: QueueQuestion): FooterPart[] {
+  const parts: FooterPart[] = [];
   if (question.draft && question.draft.sourceCount > 0) {
-    parts.push(`${question.draft.sourceCount} ${question.draft.sourceCount === 1 ? "source" : "sources"}`);
+    parts.push({ text: `${question.draft.sourceCount} ${question.draft.sourceCount === 1 ? "source" : "sources"}` });
   }
-  parts.push(question.source === "knowledge_app" ? "Knowledge app" : "Instagram");
-  // Payment is stubbed this milestone: no price means a test payment.
-  if (question.priceCents === null) parts.push("Paid (test)");
+  parts.push({ text: question.source === "knowledge_app" ? "Knowledge app" : "Instagram" });
+  // Payment is stubbed this milestone: no price means a test payment. Gold marks money (spec section 3.1).
+  if (question.priceCents === null) parts.push({ text: "Paid (test)", money: true });
   return parts;
 }
 
@@ -44,19 +47,24 @@ export function QuestionCard({ question, now }: { question: QueueQuestion; now: 
 
       {drafting ? (
         <div aria-hidden="true" className="space-y-2 py-1">
-          <div className="h-3 w-11/12 rounded bg-stone-200 motion-safe:animate-pulse" />
-          <div className="h-3 w-2/3 rounded bg-stone-200 motion-safe:animate-pulse" />
+          <div className="h-3 w-11/12 rounded bg-pdm-ai-tint motion-safe:animate-pulse" />
+          <div className="h-3 w-2/3 rounded bg-pdm-ai-tint motion-safe:animate-pulse" />
         </div>
       ) : (
         <p className="line-clamp-2 text-sm text-pdm-ink">{question.questionText}</p>
       )}
 
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <p className="text-xs text-pdm-muted">{[state.hint, ...footerParts(question)].join(" · ")}</p>
+        <p className="text-xs text-pdm-muted">
+          {[{ text: state.hint }, ...footerParts(question)].map((part, index) => (
+            <span key={part.text}>
+              {index > 0 ? " · " : null}
+              <span className={part.money ? "font-semibold text-pdm-money-text" : undefined}>{part.text}</span>
+            </span>
+          ))}
+        </p>
         {state.action ? (
-          <span className="inline-flex min-h-11 items-center rounded-lg bg-pdm-accent px-4 text-sm font-semibold text-white group-hover/card:bg-pdm-accent-strong">
-            {state.action}
-          </span>
+          <span className={buttonClass("primary", "md", "group-hover/card:bg-pdm-primary-hover")}>{state.action}</span>
         ) : null}
       </div>
     </>
@@ -65,11 +73,11 @@ export function QuestionCard({ question, now }: { question: QueueQuestion; now: 
   return (
     <li>
       {drafting ? (
-        <div className="space-y-2 rounded-lg border border-pdm-border bg-white p-4">{body}</div>
+        <div className="space-y-2 rounded-xl border border-pdm-border bg-white p-4">{body}</div>
       ) : (
         <Link
           href={`/inbox/question/${question.id}`}
-          className="group/card block space-y-2 rounded-lg border border-pdm-border bg-white p-4 hover:border-pdm-accent"
+          className="group/card block space-y-2 rounded-xl border border-pdm-border bg-white p-4 motion-safe:transition-colors hover:border-pdm-primary"
         >
           {body}
         </Link>

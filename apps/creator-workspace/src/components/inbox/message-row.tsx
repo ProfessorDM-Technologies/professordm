@@ -3,22 +3,23 @@ import { LocalTime } from "@/components/local-time";
 import { categoryLabel, inboundStatusLabel } from "@/lib/inbox/labels";
 import type { InboxMessage } from "@/lib/inbox/queries";
 
+// AI classification labels: cyan marks questions and AI (spec section 3.1).
 const CATEGORY_STYLES: Record<string, string> = {
-  expert_question: "bg-pdm-tint text-pdm-accent-strong",
-  safety_concern: "bg-red-100 text-red-800",
-  spam_irrelevant: "bg-stone-100 text-stone-600",
+  expert_question: "bg-pdm-ai-tint text-pdm-ai-text",
+  safety_concern: "bg-pdm-danger-tint text-pdm-danger-text",
+  spam_irrelevant: "bg-pdm-canvas text-pdm-muted",
 };
 
 export function MessageRow({ message }: { message: InboxMessage }) {
   const username = message.follower.username ? `@${message.follower.username}` : "Unknown sender";
   const status = inboundStatusLabel(message.status);
-  const badgeStyle = (message.category && CATEGORY_STYLES[message.category]) ?? "bg-stone-100 text-pdm-ink";
+  const badgeStyle = (message.category && CATEGORY_STYLES[message.category]) ?? "bg-white text-pdm-ink ring-1 ring-pdm-border";
 
   return (
     <li>
       <Link
         href={`/inbox/${message.follower.id}`}
-        className="block space-y-2 rounded-lg border border-pdm-border bg-white p-4 hover:border-pdm-accent"
+        className="block space-y-2 rounded-xl border border-pdm-border bg-white p-4 motion-safe:transition-colors hover:border-pdm-primary"
       >
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <p className="font-semibold">{username}</p>
