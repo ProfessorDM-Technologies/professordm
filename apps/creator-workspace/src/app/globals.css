@@ -1,26 +1,227 @@
 @import "tailwindcss";
 
+/*
+ * ProfessorDM brand tokens (docs/plans/creator-brand-refresh-spec.md, section 3).
+ * Named for their role, not their hue. Components use these classes only; brand hex values live here.
+ * Raw success/ai/money colours fail AA as text: use them for fills, dots and icons; use the -text shades for text.
+ * contrast.test.ts checks every text/background pair below.
+ */
 @theme {
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --color-pdm-canvas: #F5F8FA;
+  --color-pdm-card: #FFFFFF;
+  --color-pdm-ink: #12232E;
+  --color-pdm-heading: #043B65;
+  --color-pdm-muted: #4A5B6A;
+  --color-pdm-border: #DCE4EB;
+  --color-pdm-border-strong: #788A99;
 
-  --color-pdm-ink: #1c1917;
-  --color-pdm-muted: #57534e;
-  --color-pdm-accent: #b45309;
-  --color-pdm-accent-strong: #92400e;
-  --color-pdm-surface: #fffbeb;
-  --color-pdm-tint: #fef3c7;
-  --color-pdm-border: #e7e5e4;
+  --color-pdm-primary: #043B65;
+  --color-pdm-primary-hover: #032B4A;
+  --color-pdm-primary-tint: #E8EEF4;
+
+  --color-pdm-success: #17A770;
+  --color-pdm-success-text: #0E7A51;
+  --color-pdm-success-tint: #E4F4EC;
+
+  --color-pdm-ai: #0DBED6;
+  --color-pdm-ai-text: #08707F;
+  --color-pdm-ai-tint: #E0F5F8;
+
+  --color-pdm-money: #DB8424;
+  --color-pdm-money-text: #8F530F;
+  --color-pdm-money-tint: #FBEFDF;
+
+  --color-pdm-human: #EEF4E6;
+
+  --color-pdm-danger-text: #B42318;
+  --color-pdm-danger-tint: #FEF1F0;
+  --color-pdm-danger-border: #F5C2BD;
+
+  /* Chat: the message area and its bubbles (follower = in, automated = ai, the creator's own words = human). */
+  --color-pdm-pane: #F7F9FB;
+  --color-pdm-bubble-in: #FFFFFF;
+  --color-pdm-bubble-ai: #DDF4F8;
+  --color-pdm-bubble-human: #E9F2DF;
+
+  /* Text on primary buttons. */
+  --color-pdm-on-primary: #FFFFFF;
+  /* The logo PNGs have opaque white backgrounds, so their tile and frame stay white in every theme. */
+  --color-pdm-logo-bg: #FFFFFF;
 }
 
-html {
-  -webkit-text-size-adjust: 100%;
+/*
+ * Dark theme (docs/plans/creator-ui-v2-spec.md, dark palette). lib/theme.ts sets data-theme on <html> before paint.
+ * Only role tokens change; brand fills (success / ai / money) keep their hexes. contrast.test.ts checks these too.
+ */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-pdm-canvas: #0B1620;
+  --color-pdm-card: #12232E;
+  --color-pdm-ink: #E6EEF4;
+  --color-pdm-heading: #F2F7FB;
+  --color-pdm-muted: #9DB0C0;
+  --color-pdm-border: #22384A;
+  --color-pdm-border-strong: #6B8396;
+  --color-pdm-primary: #7CB8EA;
+  --color-pdm-primary-hover: #A3CDF1;
+  --color-pdm-primary-tint: #1A3346;
+  --color-pdm-on-primary: #06233B;
+  --color-pdm-success-text: #4FD19F;
+  --color-pdm-success-tint: #0F3326;
+  --color-pdm-ai-text: #5FD6E8;
+  --color-pdm-ai-tint: #0B3038;
+  --color-pdm-money-text: #F0B266;
+  --color-pdm-money-tint: #3A2A14;
+  --color-pdm-human: #1E2A1A;
+  --color-pdm-danger-text: #FF8A80;
+  --color-pdm-danger-tint: #3A1715;
+  --color-pdm-danger-border: #6B2A25;
+  /* Darker message area + lifted bubbles, so messages separate clearly from the background in dark mode. */
+  --color-pdm-pane: #0C1822;
+  --color-pdm-bubble-in: #1E3546;
+  --color-pdm-bubble-ai: #0F4550;
+  --color-pdm-bubble-human: #24432E;
 }
 
-body {
-  min-height: 100dvh;
+:root[data-theme="light"] {
+  color-scheme: light;
 }
 
-:focus-visible {
-  outline: 2px solid currentColor;
-  outline-offset: 2px;
+/* Motion tokens (UI v2 spec, motion). Everything below is switched off under prefers-reduced-motion. */
+@theme {
+  --animate-rise-in: pdm-rise-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+
+  @keyframes pdm-rise-in {
+    from {
+      opacity: 0;
+      translate: 0 6px;
+    }
+  }
+
+  @keyframes pdm-fade-out {
+    to {
+      opacity: 0;
+    }
+  }
+
+  @keyframes pdm-fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+}
+
+/*
+ * Route transitions via React <ViewTransition> (components/page-transition.tsx). The root snapshot is not animated,
+ * so the islands and backdrop stay perfectly still; only the page content and the active nav pill move.
+ */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+
+::view-transition-old(.page-exit) {
+  animation: pdm-fade-out 120ms ease-in both;
+}
+
+::view-transition-new(.page-enter) {
+  animation: pdm-rise-in 240ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+::view-transition-old(.pane-exit) {
+  animation: pdm-fade-out 100ms ease-in both;
+}
+
+::view-transition-new(.pane-enter) {
+  animation: pdm-fade-in 180ms ease-out both;
+}
+
+::view-transition-group(nav-pill),
+::view-transition-group(nav-pill-mobile) {
+  animation-duration: 320ms;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
+/* Font families come from next/font variables set on <html> in app/layout.tsx. Aptos first, for machines that have it. */
+@theme inline {
+  --font-sans: Aptos, var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-montserrat), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Frosted glass for the top bar and mobile tab bar (spec section 4.3). Cards never use this. */
+/*
+ * Translucent glass for the floating islands (UI v2 spec, requirement 2b): half-transparent card colour,
+ * strong blur + saturation so content behind reads as frosted colour, a bright top edge, a hairline and a long soft shadow.
+ */
+:root {
+  --glass-bg: color-mix(in srgb, var(--color-pdm-card) 52%, transparent);
+  --glass-edge: rgb(255 255 255 / 0.55);
+  --glass-highlight: rgb(255 255 255 / 0.85);
+  --glass-hairline: rgb(4 59 101 / 0.08);
+  --glass-shadow: 0 12px 32px -14px rgb(4 59 101 / 0.35), 0 2px 6px -2px rgb(4 59 101 / 0.1);
+}
+
+:root[data-theme="dark"] {
+  --glass-bg: color-mix(in srgb, var(--color-pdm-card) 55%, transparent);
+  --glass-edge: rgb(255 255 255 / 0.1);
+  --glass-highlight: rgb(255 255 255 / 0.12);
+  --glass-hairline: rgb(0 0 0 / 0.4);
+  --glass-shadow: 0 14px 36px -12px rgb(0 0 0 / 0.65), 0 2px 6px -2px rgb(0 0 0 / 0.4);
+}
+
+@utility glass {
+  background-color: var(--glass-bg);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--glass-edge);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 0 0 1px var(--glass-hairline),
+    var(--glass-shadow);
+
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    background-color: color-mix(in srgb, var(--color-pdm-card) 95%, transparent);
+  }
+
+  @media (prefers-reduced-transparency: reduce) {
+    background-color: var(--color-pdm-card);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  @media (forced-colors: active) {
+    border: 1px solid CanvasText;
+  }
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    /* Keeps anchor targets (skip link, #main) clear of the sticky glass top bar. */
+    scroll-padding-top: 5rem;
+  }
+
+  body {
+    min-height: 100dvh;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    color: var(--color-pdm-heading);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-pdm-primary);
+    outline-offset: 2px;
+  }
 }

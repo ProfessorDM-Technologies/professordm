@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { cardLinkClass } from "@/components/ui/card-styles";
+import { Page } from "@/components/page";
 import Link from "next/link";
 import { RealtimeRefresh } from "@/components/inbox/realtime-refresh";
 import { LocalTime } from "@/components/local-time";
@@ -23,7 +25,7 @@ function SentCard({ question }: { question: QueueQuestion }) {
     <li>
       <Link
         href={`/inbox/question/${question.id}`}
-        className="block space-y-2 rounded-lg border border-pdm-border bg-white p-4 hover:border-pdm-accent"
+        className={cardLinkClass()}
       >
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <p className="font-semibold">{username}</p>
@@ -43,7 +45,7 @@ function SentCard({ question }: { question: QueueQuestion }) {
         <div className="flex flex-wrap items-center gap-2 text-xs">
           {edits !== null ? <span className="text-pdm-muted">Your edits: {edits}%</span> : null}
           {question.tags.map((tag) => (
-            <span key={tag} className="rounded-full bg-pdm-tint px-2 py-0.5 font-semibold text-pdm-accent-strong">
+            <span key={tag} className="rounded-full bg-pdm-primary-tint px-2 py-0.5 font-semibold text-pdm-primary">
               {tag}
             </span>
           ))}
@@ -57,14 +59,14 @@ export default async function SentPage() {
   const { questions, error } = await listQuestions("sent");
 
   return (
-    <div className="space-y-6">
+    <Page className="space-y-6">
       <RealtimeRefresh />
       <PageHeader title="Sent" description="Answers you've sent, newest first." />
       <QueueTabs current="/sent" />
 
       <PageSection id="sent" title="Sent answers">
         {error ? (
-          <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-800">
+          <p role="alert" className="rounded-xl border border-pdm-danger-border bg-pdm-danger-tint p-4 text-sm font-medium text-pdm-danger-text">
             Couldn&apos;t load sent answers. Try again.
           </p>
         ) : questions.length === 0 ? (
@@ -77,6 +79,6 @@ export default async function SentPage() {
           </ul>
         )}
       </PageSection>
-    </div>
+    </Page>
   );
 }

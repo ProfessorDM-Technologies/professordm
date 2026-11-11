@@ -2,8 +2,12 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { AccountMenu } from "@/components/account-menu";
+import { BrandMark } from "@/components/brand/brand-mark";
+import { BrandMist } from "@/components/brand/brand-mist";
+import { PageTransition } from "@/components/page-transition";
 import { WorkspaceNav } from "@/components/workspace-nav";
 import { getSessionUser, isWorkspaceRole } from "@/lib/auth/session";
+import { queueCounts } from "@/lib/inbox/questions";
 import { LOGIN_PATH } from "@/lib/routes";
 
 export default async function WorkspaceLayout({ children }: { children: ReactNode }) {
@@ -17,47 +21,49 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
     redirect("/auth/forbidden");
   }
 
-  const wordmark = (
-    <Link href="/" className="text-lg font-semibold tracking-tight text-pdm-accent-strong">
-      ProfessorDM
-    </Link>
-  );
+  // Unanswered count for the Inbox badge. A failed count is null and shows no badge.
+  const { inbox: inboxCount } = await queueCounts();
 
   return (
     <div className="min-h-dvh">
       <a
         href="#main"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:font-medium focus:shadow"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-lg focus:bg-pdm-card focus:px-4 focus:py-2 focus:font-medium focus:shadow"
       >
         Skip to content
       </a>
 
-      <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col border-r border-pdm-border bg-white md:flex">
-        <div className="px-6 py-5">
-          {wordmark}
-          <p className="text-xs text-pdm-muted">Creator Workspace</p>
-        </div>
-        <WorkspaceNav variant="sidebar" className="flex-1 overflow-y-auto px-3" />
-        <div className="border-t border-pdm-border p-4">
+      <BrandMist />
+
+      {/*
+        Logo stands apart in the top-left corner; the glass island (UI v2 spec, requirement 2) stays centred and holds
+        only navigation and the avatar. On phones the island shrinks to the avatar alone at the top right.
+      */}
+      <header className="pointer-events-none sticky top-3 z-40 flex items-center justify-between px-3 md:justify-center md:px-5">
+        <Link
+          href="/"
+          aria-label="ProfessorDM Creator Workspace home"
+          className="pointer-events-auto flex shrink-0 items-center gap-2.5 rounded-xl md:absolute md:left-5"
+        >
+          <span className="rounded-lg shadow-[var(--glass-shadow)]">
+            <BrandMark />
+          </span>
+          <span className="hidden font-display text-sm font-semibold text-pdm-heading xl:inline">Creator Workspace</span>
+        </Link>
+        <div className="glass pointer-events-auto flex items-center gap-1 rounded-full p-1.5">
+          <WorkspaceNav variant="top" inboxCount={inboxCount} className="hidden md:block" />
           <AccountMenu displayName={session.displayName} role={session.role} />
         </div>
-      </aside>
+      </header>
 
-      <div className="flex min-h-dvh flex-col md:pl-60">
-        <header className="border-b border-pdm-border bg-white md:hidden">
-          <div className="flex items-center justify-between px-4 py-3">
-            {wordmark}
-            <AccountMenu displayName={session.displayName} role={session.role} compact />
-          </div>
-        </header>
-        <main id="main" tabIndex={-1} className="mx-auto w-full max-w-5xl flex-1 px-4 pb-24 pt-6 md:px-8 md:pb-10">
-          {children}
-        </main>
-      </div>
+      <main id="main" tabIndex={-1} className="mx-auto w-full max-w-7xl px-4 pt-8 pb-32 md:px-8 md:pb-16">
+        <PageTransition>{children}</PageTransition>
+      </main>
 
       <WorkspaceNav
         variant="bottom"
-        className="fixed inset-x-0 bottom-0 border-t border-pdm-border bg-white pb-[env(safe-area-inset-bottom)] md:hidden"
+        inboxCount={inboxCount}
+        className="glass fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-40 rounded-full p-1 md:hidden"
       />
     </div>
   );

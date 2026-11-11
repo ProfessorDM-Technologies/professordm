@@ -15,18 +15,18 @@ export const metadata: Metadata = {
 };
 
 const CATEGORY_STYLES: Record<string, string> = {
-  expert_question: "bg-pdm-tint text-pdm-accent-strong",
-  safety_concern: "bg-red-100 text-red-800",
+  expert_question: "bg-pdm-ai-tint text-pdm-ai-text",
+  safety_concern: "bg-pdm-danger-tint text-pdm-danger-text",
 };
 
-// Same look as the conversation page bubbles: incoming bordered on the left, outgoing amber on the right.
+// Same look as the conversation page bubbles: the follower's on white at the left; the AI's clarification on cyan at the right.
 function SmallBubble({ outgoing, label, text }: { outgoing: boolean; label: string; text: string }) {
   return (
     <li className={`flex ${outgoing ? "justify-end" : "justify-start"}`}>
       <div className={`flex max-w-[85%] flex-col space-y-1 ${outgoing ? "items-end text-right" : "items-start"}`}>
         <div
-          className={`whitespace-pre-wrap rounded-2xl px-4 py-2 text-left text-sm ${
-            outgoing ? "bg-pdm-accent text-white" : "border border-pdm-border bg-white text-pdm-ink"
+          className={`whitespace-pre-wrap rounded-xl px-4 py-2 text-left text-sm text-pdm-ink ${
+            outgoing ? "bg-pdm-bubble-ai ring-1 ring-pdm-ai/25" : "bg-pdm-bubble-in ring-1 ring-pdm-border"
           }`}
         >
           {text}
@@ -58,7 +58,7 @@ export default async function AnswerQuestionPage({ params }: PageProps<"/inbox/q
     <article className="space-y-6">
       <RealtimeRefresh />
       <p>
-        <Link href="/inbox" className="text-sm font-medium text-pdm-accent-strong underline underline-offset-4">
+        <Link href="/inbox" className="text-sm font-medium text-pdm-primary underline underline-offset-4">
           Back to inbox
         </Link>
       </p>
@@ -66,13 +66,13 @@ export default async function AnswerQuestionPage({ params }: PageProps<"/inbox/q
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl font-semibold tracking-tight">{username}</h1>
+            <h1 className="text-[1.75rem] leading-[2.125rem] font-bold tracking-[-0.01em]">{username}</h1>
             <StatusChip label={state.label} tone={state.tone} />
           </div>
           {question.follower ? (
             <Link
               href={`/inbox/${question.follower.id}`}
-              className="text-sm font-medium text-pdm-accent-strong underline underline-offset-4"
+              className="text-sm font-medium text-pdm-primary underline underline-offset-4"
             >
               View full conversation
             </Link>
@@ -82,7 +82,7 @@ export default async function AnswerQuestionPage({ params }: PageProps<"/inbox/q
       </div>
 
       {error ? (
-        <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-800">
+        <p role="alert" className="rounded-xl border border-pdm-danger-border bg-pdm-danger-tint p-4 text-sm font-medium text-pdm-danger-text">
           Part of this question couldn&apos;t be loaded. Refresh before you answer.
         </p>
       ) : null}
@@ -102,7 +102,7 @@ export default async function AnswerQuestionPage({ params }: PageProps<"/inbox/q
         nextQuestionId={nextQuestion?.id ?? null}
         context={
           <>
-            <section aria-labelledby="question-heading" className="space-y-3 rounded-lg border border-pdm-border bg-white p-4">
+            <section aria-labelledby="question-heading" className="space-y-3 rounded-xl border border-pdm-border bg-pdm-card p-4">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <h2 id="question-heading" className="font-semibold">
                   The question
@@ -114,7 +114,7 @@ export default async function AnswerQuestionPage({ params }: PageProps<"/inbox/q
                 <div className="flex flex-wrap items-center gap-2 text-xs">
                   <span
                     className={`rounded-full px-2 py-0.5 font-semibold ${
-                      (origin.category && CATEGORY_STYLES[origin.category]) ?? "bg-stone-100 text-pdm-ink"
+                      (origin.category && CATEGORY_STYLES[origin.category]) ?? "bg-pdm-card text-pdm-ink ring-1 ring-pdm-border"
                     }`}
                   >
                     {categoryLabel(origin.category)}
@@ -126,7 +126,7 @@ export default async function AnswerQuestionPage({ params }: PageProps<"/inbox/q
               ) : null}
               {origin?.reason ? (
                 <details className="text-sm">
-                  <summary className="min-h-11 cursor-pointer content-center font-medium text-pdm-accent-strong">
+                  <summary className="min-h-11 cursor-pointer content-center font-medium text-pdm-primary">
                     Why the AI sorted it this way
                   </summary>
                   <p className="whitespace-pre-wrap text-pdm-muted">{origin.reason}</p>

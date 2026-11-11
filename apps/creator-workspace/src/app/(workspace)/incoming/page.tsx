@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { LiveList } from "@/components/ui/live-list";
+import { Page } from "@/components/page";
 import { MessageRow } from "@/components/inbox/message-row";
 import { RealtimeRefresh } from "@/components/inbox/realtime-refresh";
 import { PageHeader, PageSection } from "@/components/page-section";
@@ -12,7 +14,7 @@ export const metadata: Metadata = {
 export default async function IncomingPage() {
   const { messages, error } = await listInboundMessages();
   return (
-    <div className="space-y-8">
+    <Page className="space-y-8">
       <RealtimeRefresh />
       <PageHeader title="Incoming Messages" description="Instagram DMs, newest first." />
 
@@ -22,11 +24,11 @@ export default async function IncomingPage() {
         ) : messages.length === 0 ? (
           <Placeholder>No messages yet. New Instagram DMs will show up here.</Placeholder>
         ) : (
-          <ul className="space-y-3">
+          <LiveList className="space-y-3">
             {messages.map((message) => <MessageRow key={message.id} message={message} />)}
-          </ul>
+          </LiveList>
         )}
       </PageSection>
-    </div>
+    </Page>
   );
 }

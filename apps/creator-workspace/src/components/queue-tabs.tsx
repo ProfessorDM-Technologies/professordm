@@ -14,8 +14,9 @@ type QueueHref = (typeof TABS)[number]["href"];
 export async function QueueTabs({ current }: { current: QueueHref }) {
   const counts = await queueCounts();
   return (
-    <nav aria-label="Question queues">
-      <ul className="flex gap-1 border-b border-pdm-border">
+    // At 320px the three tabs are wider than the screen: the strip scrolls on its own instead of the whole page.
+    <nav aria-label="Question queues" className="overflow-x-auto pb-px [scrollbar-width:none]">
+      <ul className="flex w-max min-w-full gap-1 border-b border-pdm-border">
         {TABS.map((tab) => {
           const active = tab.href === current;
           return (
@@ -23,15 +24,15 @@ export async function QueueTabs({ current }: { current: QueueHref }) {
               <Link
                 href={tab.href}
                 aria-current={active ? "page" : undefined}
-                className={`-mb-px flex min-h-11 items-center border-b-2 px-4 text-sm font-medium ${
-                  active ? "border-pdm-accent text-pdm-accent-strong" : "border-transparent text-pdm-muted hover:text-pdm-ink"
+                className={`-mb-px flex min-h-11 items-center whitespace-nowrap border-b-2 px-3 font-display sm:px-4 text-sm font-semibold motion-safe:transition-colors ${
+                  active ? "border-pdm-primary text-pdm-primary" : "border-transparent text-pdm-muted hover:text-pdm-primary"
                 }`}
               >
                 {tab.label}
                 {counts[tab.count] !== null ? (
                   <span
                     className={`ml-2 rounded-full px-2 py-0.5 text-xs font-semibold ${
-                      active ? "bg-pdm-tint text-pdm-accent-strong" : "bg-stone-100 text-pdm-muted"
+                      active ? "bg-pdm-primary-tint text-pdm-primary" : "bg-pdm-canvas text-pdm-muted"
                     }`}
                   >
                     {counts[tab.count]}

@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { BrandLogo } from "@/components/brand/brand-mark";
+import { BrandMist } from "@/components/brand/brand-mist";
 import { safeNextPath } from "@/lib/routes";
 import { LoginForm } from "./login-form";
 
@@ -16,12 +18,13 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-4 py-10">
-      <div className="space-y-2 pb-8 text-center">
-        <p className="text-sm font-semibold uppercase tracking-wide text-pdm-accent">ProfessorDM</p>
-        <h1 className="text-2xl font-semibold tracking-tight">Sign in to your Creator Workspace</h1>
+      <BrandMist />
+      <div className="flex flex-col items-center space-y-3 pb-8 text-center">
+        <BrandLogo width={200} />
+        <h1 className="text-[1.75rem] leading-[2.125rem] font-bold tracking-[-0.01em]">Sign in to your Creator Workspace</h1>
         <p className="text-pdm-muted">Creator accounts are invite-only.</p>
       </div>
-      <div className="rounded-xl border border-pdm-border bg-white p-6 shadow-sm">
+      <div className="rounded-xl border border-pdm-border bg-pdm-card p-6 md:p-8">
         <LoginForm next={safeNextPath(next)} initialError={initialError} />
       </div>
     </main>

@@ -1,7 +1,7 @@
 // Pure: decides what an inbox card says (docs/plans/creator-inbox-spec.md section 6). No Supabase here.
 import { COVERAGE_LABELS, coverageLabel, noDraftReasonLabel } from "@/lib/inbox/labels";
 
-export type CardTone = "progress" | "danger" | "accent" | "neutral";
+export type CardTone = "progress" | "danger" | "accent" | "neutral" | "success";
 
 export type CardState = {
   label: string;
@@ -22,6 +22,10 @@ export function cardState(question: CardQuestion, draft: CardDraft | null, lastS
   }
   if (question.status === "approved" || question.status === "delivering") {
     return { label: "Sending", tone: "progress", hint: "Delivering to Instagram…", action: "View" };
+  }
+  // Reached from Sent: the question page shows the answered state, not "waiting for your answer".
+  if (question.status === "delivered" || question.status === "accepted" || question.status === "closed") {
+    return { label: "Sent", tone: "success", hint: "Delivered to Instagram.", action: "View" };
   }
   if (question.openFlagIds.length > 0) {
     return {

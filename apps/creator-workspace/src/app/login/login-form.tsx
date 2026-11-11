@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { buttonClass } from "@/components/ui/button-styles";
 import { signIn, type SignInState } from "@/lib/auth/actions";
 
 export function LoginForm({ next, initialError }: { next: string; initialError: string | null }) {
@@ -23,7 +24,7 @@ export function LoginForm({ next, initialError }: { next: string; initialError: 
           required
           aria-invalid={state.error ? true : undefined}
           aria-describedby={state.error ? "login-error" : undefined}
-          className="block w-full rounded-lg border border-pdm-border bg-white p-3 text-base"
+          className="block w-full rounded-lg border border-pdm-border-strong bg-pdm-card p-3 text-base"
         />
       </div>
 
@@ -39,13 +40,13 @@ export function LoginForm({ next, initialError }: { next: string; initialError: 
           required
           aria-invalid={state.error ? true : undefined}
           aria-describedby={state.error ? "login-error" : undefined}
-          className="block w-full rounded-lg border border-pdm-border bg-white p-3 text-base"
+          className="block w-full rounded-lg border border-pdm-border-strong bg-pdm-card p-3 text-base"
         />
       </div>
 
       <div aria-live="polite">
         {state.error ? (
-          <p id="login-error" className="text-sm font-medium text-red-700">
+          <p id="login-error" className="text-sm font-medium text-pdm-danger-text">
             {state.error}
           </p>
         ) : null}
@@ -54,7 +55,7 @@ export function LoginForm({ next, initialError }: { next: string; initialError: 
       <button
         type="submit"
         disabled={pending}
-        className="w-full rounded-lg bg-pdm-accent px-4 py-3 font-semibold text-white hover:bg-pdm-accent-strong disabled:opacity-60"
+        className={buttonClass("primary", "md", "w-full py-3")}
       >
         {pending ? "Signing in…" : "Sign in"}
       </button>

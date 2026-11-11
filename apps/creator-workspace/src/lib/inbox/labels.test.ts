@@ -1,6 +1,7 @@
 import { INBOUND_MESSAGE_STATUS, MESSAGE_CATEGORIES, OUTBOUND_TYPES, QUESTION_STATUS } from "@professordm/contracts";
 import { describe, expect, it } from "vitest";
 import {
+  isCreatorAuthored,
   KNOWLEDGE_COVERAGE,
   NO_DRAFT_REASONS,
   UNCLASSIFIED_LABEL,
@@ -129,5 +130,19 @@ describe("flagLabel", () => {
     expect(flagLabel({ layer: "moderation", category: "self_harm", detail: null })).toBe("Flagged: self harm");
     expect(flagLabel({ layer: "rules", category: "harassment", detail: null })).toBe("Flagged: harassment");
     expect(flagLabel({ layer: null, category: null, detail: null })).toBe("Flagged");
+  });
+});
+
+describe("isCreatorAuthored", () => {
+  it("is true only for the creator's own answers and follow-ups", () => {
+    expect(isCreatorAuthored("answer")).toBe(true);
+    expect(isCreatorAuthored("followup")).toBe(true);
+  });
+
+  it("is false for automated messages and unknown or missing types", () => {
+    for (const type of ["ask_link", "clarification", "confirmation", "rating_prompt", "survey", "decline", "other"]) {
+      expect(isCreatorAuthored(type)).toBe(false);
+    }
+    expect(isCreatorAuthored(undefined)).toBe(false);
   });
 });
