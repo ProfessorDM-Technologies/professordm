@@ -65,22 +65,21 @@ function RailList({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div role="tablist" aria-label="Switch list" className="m-2 grid grid-cols-2 gap-1 rounded-full bg-pdm-canvas p-1 ring-1 ring-pdm-border">
+      <div role="group" aria-label="Show" className="m-2 grid grid-cols-2 gap-1 rounded-full bg-pdm-canvas p-1 ring-1 ring-pdm-border">
         {(["chats", "questions"] as const).map((value) => (
           <button
             key={value}
             type="button"
-            role="tab"
-            aria-selected={mode === value}
+            aria-pressed={mode === value}
             onClick={() => setMode(value)}
-            className="min-h-9 rounded-full text-xs font-semibold text-pdm-muted motion-safe:transition-colors aria-selected:bg-pdm-card aria-selected:text-pdm-primary aria-selected:shadow-sm"
+            className="min-h-9 rounded-full text-xs font-semibold text-pdm-muted motion-safe:transition-colors aria-pressed:bg-pdm-card aria-pressed:text-pdm-primary aria-pressed:shadow-sm"
           >
             {value === "chats" ? `Chats (${conversations.length})` : `Questions (${questions.length})`}
           </button>
         ))}
       </div>
 
-      <div role="tabpanel" className="min-h-0 flex-1 overflow-y-auto px-2 pb-2 [scrollbar-width:thin]">
+      <div className="relative min-h-0 flex-1 overflow-y-auto px-2 pb-2 [scrollbar-width:thin]">
         {mode === "chats" ? (
           conversations.length === 0 ? (
             <p className="p-3 text-sm text-pdm-muted">No conversations yet.</p>

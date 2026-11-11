@@ -53,7 +53,7 @@ export function MessagePane({ count, children }: { count: number; children: Reac
       // Keyboard users can scroll the history with arrow keys once it has focus.
       tabIndex={0}
       aria-label="Message history"
-      className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 focus-visible:outline-offset-[-2px] [scrollbar-width:thin]"
+      className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 focus-visible:outline-offset-[-2px] [scrollbar-width:thin]"
     >
       {children}
       {pending ? (
