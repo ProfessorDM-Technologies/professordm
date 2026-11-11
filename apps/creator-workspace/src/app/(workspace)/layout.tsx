@@ -34,12 +34,22 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
 
       <BrandMist />
 
-      {/* Floating glass island (UI v2 spec, requirement 2): centred, sized to its content; full width only on phones. */}
-      <header className="pointer-events-none sticky top-3 z-40 flex justify-center px-3">
-        <div className="glass pointer-events-auto flex w-full items-center justify-between gap-2 rounded-full py-1.5 pr-1.5 pl-2 md:w-auto md:justify-start">
-          <Link href="/" aria-label="ProfessorDM Creator Workspace home" className="shrink-0 rounded-full">
-            <BrandMark size="sm" />
-          </Link>
+      {/*
+        Logo stands apart in the top-left corner; the glass island (UI v2 spec, requirement 2) stays centred and holds
+        only navigation and the avatar. On phones the island shrinks to the avatar alone at the top right.
+      */}
+      <header className="pointer-events-none sticky top-3 z-40 flex items-center justify-between px-3 md:justify-center md:px-5">
+        <Link
+          href="/"
+          aria-label="ProfessorDM Creator Workspace home"
+          className="pointer-events-auto flex shrink-0 items-center gap-2.5 rounded-xl md:absolute md:left-5"
+        >
+          <span className="rounded-lg shadow-[var(--glass-shadow)]">
+            <BrandMark />
+          </span>
+          <span className="hidden font-display text-sm font-semibold text-pdm-heading xl:inline">Creator Workspace</span>
+        </Link>
+        <div className="glass pointer-events-auto flex items-center gap-1 rounded-full p-1.5">
           <WorkspaceNav variant="top" inboxCount={inboxCount} className="hidden md:block" />
           <AccountMenu displayName={session.displayName} role={session.role} />
         </div>

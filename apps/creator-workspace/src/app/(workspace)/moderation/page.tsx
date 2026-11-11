@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Page } from "@/components/page";
 import Link from "next/link";
 import { RealtimeRefresh } from "@/components/inbox/realtime-refresh";
 import { LocalTime } from "@/components/local-time";
@@ -27,7 +28,7 @@ export default async function ModerationPage() {
   const isAdmin = session?.role === "admin";
 
   return (
-    <div className="space-y-6">
+    <Page className="space-y-6">
       <RealtimeRefresh />
       <PageHeader title="Moderation" description="Flagged questions and answers that need a review." />
       <QueueTabs current="/moderation" />
@@ -129,6 +130,6 @@ export default async function ModerationPage() {
           <Placeholder>Admin only: approve flagged answers or send them back with feedback.</Placeholder>
         </PageSection>
       ) : null}
-    </div>
+    </Page>
   );
 }

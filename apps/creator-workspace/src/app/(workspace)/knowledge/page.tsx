@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Page } from "@/components/page";
 import { PageHeader, PageSection } from "@/components/page-section";
 import { Placeholder } from "@/components/placeholder";
 
@@ -8,7 +9,7 @@ export const metadata: Metadata = {
 
 export default function KnowledgePage() {
   return (
-    <div className="space-y-8">
+    <Page className="space-y-8">
       <PageHeader
         title="Knowledge Database"
         description="Your past answers and facts. The AI searches these first when drafting."
@@ -21,6 +22,6 @@ export default function KnowledgePage() {
       <PageSection id="add" title="Add a fact">
         <Placeholder>A form to add a new fact by hand will appear here.</Placeholder>
       </PageSection>
-    </div>
+    </Page>
   );
 }

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Page } from "@/components/page";
 import Link from "next/link";
 import { RealtimeRefresh } from "@/components/inbox/realtime-refresh";
 import { LocalTime } from "@/components/local-time";
@@ -57,7 +58,7 @@ export default async function SentPage() {
   const { questions, error } = await listQuestions("sent");
 
   return (
-    <div className="space-y-6">
+    <Page className="space-y-6">
       <RealtimeRefresh />
       <PageHeader title="Sent" description="Answers you've sent, newest first." />
       <QueueTabs current="/sent" />
@@ -77,6 +78,6 @@ export default async function SentPage() {
           </ul>
         )}
       </PageSection>
-    </div>
+    </Page>
   );
 }

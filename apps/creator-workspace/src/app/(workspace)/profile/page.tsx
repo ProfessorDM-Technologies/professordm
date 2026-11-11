@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Page } from "@/components/page";
 import Link from "next/link";
 import { PageHeader, PageSection } from "@/components/page-section";
 import { Placeholder } from "@/components/placeholder";
@@ -20,7 +21,7 @@ const SETTINGS = [
 
 export default function ProfilePage() {
   return (
-    <div className="space-y-8">
+    <Page className="space-y-8">
       <PageHeader title="Profile" description="Your public profile, pricing and payout settings." />
 
       <PageSection id="settings" title="Settings">
@@ -39,6 +40,6 @@ export default function ProfilePage() {
           Manage your Knowledge Database
         </Link>
       </PageSection>
-    </div>
+    </Page>
   );
 }

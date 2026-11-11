@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Page } from "@/components/page";
 import { PageHeader, PageSection } from "@/components/page-section";
 import { Placeholder } from "@/components/placeholder";
 import { buttonClass } from "@/components/ui/button-styles";
@@ -15,7 +16,7 @@ const BALANCE_TILES = [
 
 export default function BankPage() {
   return (
-    <div className="space-y-8">
+    <Page className="space-y-8">
       <PageHeader title="ProfessorDM Bank" description="Your earnings, held funds and payouts." />
 
       <PageSection id="refunds" title="Refund requests">
@@ -60,6 +61,6 @@ export default function BankPage() {
           Withdrawals are not available yet.
         </p>
       </PageSection>
-    </div>
+    </Page>
   );
 }

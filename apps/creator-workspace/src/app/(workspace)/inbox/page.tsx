@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Page } from "@/components/page";
 import Link from "next/link";
 import { QuestionCard } from "@/components/inbox/question-card";
 import { RealtimeRefresh } from "@/components/inbox/realtime-refresh";
@@ -16,7 +17,7 @@ export default async function InboxPage() {
   const { questions, error, flagsError, loadedAt } = await listQuestions("inbox");
 
   return (
-    <div className="space-y-6">
+    <Page className="space-y-6">
       <RealtimeRefresh />
       <div className="flex flex-wrap items-end justify-between gap-4">
         <PageHeader title="Inbox" description="Questions waiting for your answer, oldest first." />
@@ -56,6 +57,6 @@ export default async function InboxPage() {
           </>
         )}
       </PageSection>
-    </div>
+    </Page>
   );
 }

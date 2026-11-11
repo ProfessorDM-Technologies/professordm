@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Page } from "@/components/page";
 import { MessageRow } from "@/components/inbox/message-row";
 import { RealtimeRefresh } from "@/components/inbox/realtime-refresh";
 import { PageHeader, PageSection } from "@/components/page-section";
@@ -12,7 +13,7 @@ export const metadata: Metadata = {
 export default async function IncomingPage() {
   const { messages, error } = await listInboundMessages();
   return (
-    <div className="space-y-8">
+    <Page className="space-y-8">
       <RealtimeRefresh />
       <PageHeader title="Incoming Messages" description="Instagram DMs, newest first." />
 
@@ -27,6 +28,6 @@ export default async function IncomingPage() {
           </ul>
         )}
       </PageSection>
-    </div>
+    </Page>
   );
 }
