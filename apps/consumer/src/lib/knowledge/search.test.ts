@@ -24,8 +24,9 @@ const entries: KnowledgeEntry[] = [
 ];
 
 describe("searchTerms", () => {
-  it("lowercases and splits on whitespace", () => {
+  it("lowercases and splits into words", () => {
     expect(searchTerms("  Fungus   GNATS ")).toEqual(["fungus", "gnats"]);
+    expect(searchTerms("yellow-leaves, why?")).toEqual(["yellow", "leaves", "why"]);
     expect(searchTerms("   ")).toEqual([]);
   });
 });
@@ -60,6 +61,26 @@ describe("filterEntries", () => {
 
   it("treats regex characters as plain text", () => {
     expect(filterEntries(entries, ".*")).toEqual([]);
+  });
+
+  it("does not match a term inside another word", () => {
+    const words: KnowledgeEntry[] = [
+      { id: "a", title: "Repot when it recovers fastest", content: "Feed it carrot peel tea.", tags: [] },
+    ];
+    expect(filterEntries(words, "test")).toEqual([]);
+    expect(filterEntries(words, "rot")).toEqual([]);
+  });
+
+  it("matches the start of a word", () => {
+    expect(filterEntries(entries, "pest").map((e) => e.id)).toEqual(["2", "3"]);
+    expect(filterEntries(entries, "gnat").map((e) => e.id)).toEqual(["2"]);
+  });
+
+  it("ignores punctuation and apostrophes", () => {
+    expect(filterEntries(entries, "gnats?").map((e) => e.id)).toEqual(["2"]);
+    const quoted: KnowledgeEntry[] = [{ id: "q", title: "Don't overwater", content: null, tags: [] }];
+    expect(filterEntries(quoted, "dont").map((e) => e.id)).toEqual(["q"]);
+    expect(filterEntries(quoted, "don't").map((e) => e.id)).toEqual(["q"]);
   });
 });
 
