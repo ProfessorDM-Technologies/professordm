@@ -390,27 +390,29 @@ export async function getQuestion(id: string): Promise<QuestionResult> {
 export type QueueCounts = { inbox: number | null; sent: number | null; moderation: number | null };
 
 // Tab counts. A count that fails to load is null, and the tab shows no number.
+// Moderation counts the same rows the Moderation page lists: flagged questions (not flag rows) plus
+// creator_decision DMs that have a follower.
 export async function queueCounts(): Promise<QueueCounts> {
   const supabase = await createClient();
-  const [inbox, sent, flags, decisions] = await Promise.all([
+  const [inbox, sent, flagged, decisions] = await Promise.all([
     supabase.from("questions").select("id", { count: "exact", head: true }).in("status", [...INBOX_STATUSES]),
     supabase.from("questions").select("id", { count: "exact", head: true }).in("status", [...SENT_STATUSES]),
+    listOpenFlags(),
     supabase
-      .from("safety_flags")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "open")
-      .in("target_type", ["message", "draft"]),
-    supabase.from("inbound_messages").select("id", { count: "exact", head: true }).eq("status", "creator_decision"),
+      .from("inbound_messages")
+      .select("id, follower:ig_followers!inner(id)", { count: "exact", head: true })
+      .eq("status", "creator_decision"),
   ]);
 
-  for (const [name, res] of Object.entries({ inbox, sent, flags, decisions })) {
+  // listOpenFlags logs its own failures.
+  for (const [name, res] of Object.entries({ inbox, sent, decisions })) {
     if (res.error) console.error("queueCounts failed", { count: name, code: res.error.code });
   }
 
   return {
     inbox: inbox.error ? null : (inbox.count ?? 0),
     sent: sent.error ? null : (sent.count ?? 0),
-    moderation: flags.error || decisions.error ? null : (flags.count ?? 0) + (decisions.count ?? 0),
+    moderation: flagged.error || decisions.error ? null : flagged.questions.length + (decisions.count ?? 0),
   };
 }
 

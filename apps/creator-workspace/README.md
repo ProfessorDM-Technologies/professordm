@@ -88,7 +88,7 @@ Spec: `docs/plans/creator-inbox-spec.md` (Part C). After the AI pipeline drafts 
 | Answer workspace | the above + origin `inbound_messages` (`text`, `category`, `confidence`, `reason`) + `clarification_rounds` + `drafts.citations` and `missing_info` |
 | Sent | `drafts.final_text` and `ai_text` (edit share), `question_tags` → `tags.name` |
 | Moderation | open `safety_flags` joined to their question; `inbound_messages` with `status = 'creator_decision'` |
-| Tab counts | three `count: "exact"` queries in `lib/inbox/questions.ts` `queueCounts()` |
+| Tab counts | `lib/inbox/questions.ts` `queueCounts()`: Inbox and Sent are `count: "exact"` queries on question status; Moderation = flagged questions (`listOpenFlags()`) + `creator_decision` DMs with a follower, the same rows the Moderation page lists |
 
 **Request ids.** Each send press carries a `client_request_id`. The action returns the id for the next press (`nextRequestId`): a new one after any answer that proves nothing is in flight (success, any 4xx, 502 `delivery_failed`), the same one when the outcome is unknown (network error, timeout, other 5xx, `pending`), so a retry can never send a second DM.
 
@@ -96,4 +96,4 @@ Spec: `docs/plans/creator-inbox-spec.md` (Part C). After the AI pipeline drafts 
 
 **Not logged:** DM, draft and answer text, tags and citations. Reads log the Supabase error code only.
 
-**Known gaps:** the Inbox also lists Knowledge-app questions, which the send API doesn't answer yet (the composer says so). The Moderation tab count includes open flags on messages that never became questions, so it can be higher than the rows on the page.
+**Known gaps:** the Inbox also lists Knowledge-app questions, which the send API doesn't answer yet (the composer says so).
