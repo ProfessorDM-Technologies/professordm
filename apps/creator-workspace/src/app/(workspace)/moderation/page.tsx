@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { DecisionButtons } from "@/components/inbox/decision-buttons";
 import { RealtimeRefresh } from "@/components/inbox/realtime-refresh";
 import { LocalTime } from "@/components/local-time";
 import { PageHeader, PageSection } from "@/components/page-section";
@@ -76,11 +77,8 @@ export default async function ModerationPage() {
         ) : (
           <ul className="space-y-3">
             {decisions.messages.map((message) => (
-              <li key={message.id}>
-                <Link
-                  href={`/inbox/${message.follower.id}`}
-                  className="block space-y-2 rounded-lg border border-pdm-border bg-white p-4 hover:border-pdm-accent"
-                >
+              <li key={message.id} className="space-y-3 rounded-lg border border-pdm-border bg-white p-4">
+                <div className="space-y-2">
                   <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                     <p className="font-semibold">
                       {message.follower.username ? `@${message.follower.username}` : "Unknown sender"}
@@ -103,10 +101,14 @@ export default async function ModerationPage() {
                       {message.reason}
                     </p>
                   ) : null}
-                  <p className="text-sm font-medium text-pdm-accent-strong underline underline-offset-4">
-                    Open the conversation to reply or leave it
-                  </p>
-                </Link>
+                  <Link
+                    href={`/inbox/${message.follower.id}`}
+                    className="inline-flex min-h-11 items-center text-sm font-medium text-pdm-accent-strong underline underline-offset-4"
+                  >
+                    Open the conversation to reply →
+                  </Link>
+                </div>
+                <DecisionButtons messageId={message.id} />
               </li>
             ))}
           </ul>
