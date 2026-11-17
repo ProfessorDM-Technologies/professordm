@@ -2,6 +2,7 @@ import "server-only";
 import { notFound } from "next/navigation";
 import type { QuestionStatus } from "@professordm/contracts";
 import { createClient } from "@/lib/supabase/server";
+import { groupFlagsByQuestion, type FlagRow } from "./flag-groups";
 
 // Reads for the question queues (docs/plans/creator-inbox-spec.md section 5).
 // RLS limits every row to the signed-in creator (admins see all). Log error codes only:
@@ -75,17 +76,6 @@ type QuestionRow = {
   follower: Follower | null;
   drafts: DraftRow[];
   question_tags: { tags: { name: string } | null }[];
-};
-
-type FlagRow = {
-  id: string;
-  target_type: string;
-  target_id: string;
-  checkpoint: string | null;
-  layer: string | null;
-  category: string | null;
-  detail: string | null;
-  status: string;
 };
 
 const QUEUE_SELECT =
@@ -479,32 +469,13 @@ export async function listOpenFlags(): Promise<FlaggedResult> {
 
   return {
     error: false,
-    questions: (questionsRes.data ?? []).flatMap((question) => {
-      const own = flags.filter((flag) =>
-        flag.target_type === "message"
-          ? flag.target_id === question.origin_message_id
-          : questionByDraft.get(flag.target_id) === question.id,
-      );
-      return own.length
-        ? [
-            {
-              id: question.id,
-              status: question.status,
-              questionText: question.question_text,
-              follower: question.follower,
-              flags: own.map((flag) => ({
-                id: flag.id,
-                targetType: flag.target_type === "draft" ? ("draft" as const) : ("message" as const),
-                checkpoint: flag.checkpoint,
-                layer: flag.layer,
-                category: flag.category,
-                detail: flag.detail,
-                status: flag.status,
-              })),
-            },
-          ]
-        : [];
-    }),
+    questions: groupFlagsByQuestion(flags, questionsRes.data ?? [], questionByDraft).map(({ question, flags: own }) => ({
+      id: question.id,
+      status: question.status,
+      questionText: question.question_text,
+      follower: question.follower,
+      flags: own,
+    })),
   };
 }
 
