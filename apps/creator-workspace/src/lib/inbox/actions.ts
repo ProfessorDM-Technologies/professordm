@@ -2,6 +2,8 @@
 
 import { refresh } from "next/cache";
 import { nextRequestId, parseAnswer, type SendOutcome } from "@/lib/inbox/answer";
+import { DECISION_MESSAGES, decisionErrorMessage, parseDecision } from "@/lib/inbox/decision";
+import { createClient } from "@/lib/supabase/server";
 import { parseReply } from "@/lib/inbox/reply";
 import { SESSION_EXPIRED, postToSendApi, type SendApiResult } from "@/lib/inbox/send-api";
 
@@ -134,4 +136,29 @@ export async function approveAnswer(_prev: ApproveAnswerState, formData: FormDat
     return { status: "error", message: ANSWER_MESSAGES.delivery_failed, nextClientRequestId };
   }
   return { status: "error", message: ANSWER_MESSAGES.unknown, nextClientRequestId };
+}
+
+export type DecideMessageState = { status: "idle" } | { status: "done" } | { status: "error"; message: string };
+
+// Records her decision on a DM in "Needs your decision" (SCRUM-140). record_message_decision (migration 012)
+// checks ownership, closes the DM, marks its flags reviewed and writes the audit row in one transaction.
+// A DM that was already decided (double click, second tab) counts as done: nothing is written twice.
+export async function decideMessage(_prev: DecideMessageState, formData: FormData): Promise<DecideMessageState> {
+  const parsed = parseDecision({ messageId: formData.get("message_id"), decision: formData.get("decision") });
+  if (!parsed.ok) {
+    return { status: "error", message: DECISION_MESSAGES.invalid };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("record_message_decision", {
+    p_message_id: parsed.input.messageId,
+    p_decision: parsed.input.decision,
+  });
+  if (error) {
+    console.error("decideMessage failed", { code: error.code });
+    return { status: "error", message: decisionErrorMessage(error) };
+  }
+
+  refresh();
+  return { status: "done" };
 }
