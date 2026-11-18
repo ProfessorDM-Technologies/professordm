@@ -226,7 +226,7 @@ All reads use the signed-in user's Supabase client (RLS). Log only `error.code`.
 | `listQuestions("inbox")` | `questions` where `status in (paid, drafting, awaiting_creator, approved, delivering)`, with `follower:ig_followers(id, username)`, `drafts(id, status, knowledge_coverage, reason, final_text)`, ordered **oldest `paid_at` first** (fair queue: whoever waited longest is on top). Flagged questions sort first |
 | `listQuestions("sent")` | `status in (delivered, accepted, closed)`, newest `delivered_at` first, with the draft `final_text` |
 | `getQuestion(id)` | UUID check (reuse the pattern in `queries.ts`), then the question + follower + drafts row (all fields in 2.2), the origin `inbound_messages` row (`text, received_at, category, confidence, reason`), its `clarification_rounds`, the open and reviewed `safety_flags` for the origin message and the draft, and the newest `outbound_messages` row for the draft (`status, created_at`). Not found or another creator's: `notFound()` |
-| `queueCounts()` | three `count: "exact", head: true` queries: inbox statuses above; sent statuses; Moderation = open flags + `creator_decision` messages |
+| `queueCounts()` | `count: "exact", head: true` queries for inbox statuses above and sent statuses; Moderation = flagged questions from `listOpenFlags()` (one per question, not per flag) + `creator_decision` messages with a follower, so it matches the rows on the Moderation page |
 | `listOpenFlags()` | `safety_flags` with `status='open'`, joined in code to their question (via origin message or draft) |
 | `listDecisionMessages()` | `inbound_messages` where `status='creator_decision'`, newest first, with follower |
 

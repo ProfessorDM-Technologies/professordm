@@ -2,6 +2,7 @@ import "server-only";
 import { notFound } from "next/navigation";
 import type { QuestionStatus } from "@professordm/contracts";
 import { createClient } from "@/lib/supabase/server";
+import { groupFlagsByQuestion, type FlagRow } from "./flag-groups";
 
 // Reads for the question queues (docs/plans/creator-inbox-spec.md section 5).
 // RLS limits every row to the signed-in creator (admins see all). Log error codes only:
@@ -75,17 +76,6 @@ type QuestionRow = {
   follower: Follower | null;
   drafts: DraftRow[];
   question_tags: { tags: { name: string } | null }[];
-};
-
-type FlagRow = {
-  id: string;
-  target_type: string;
-  target_id: string;
-  checkpoint: string | null;
-  layer: string | null;
-  category: string | null;
-  detail: string | null;
-  status: string;
 };
 
 const QUEUE_SELECT =
@@ -400,27 +390,29 @@ export async function getQuestion(id: string): Promise<QuestionResult> {
 export type QueueCounts = { inbox: number | null; sent: number | null; moderation: number | null };
 
 // Tab counts. A count that fails to load is null, and the tab shows no number.
+// Moderation counts the same rows the Moderation page lists: flagged questions (not flag rows) plus
+// creator_decision DMs that have a follower.
 export async function queueCounts(): Promise<QueueCounts> {
   const supabase = await createClient();
-  const [inbox, sent, flags, decisions] = await Promise.all([
+  const [inbox, sent, flagged, decisions] = await Promise.all([
     supabase.from("questions").select("id", { count: "exact", head: true }).in("status", [...INBOX_STATUSES]),
     supabase.from("questions").select("id", { count: "exact", head: true }).in("status", [...SENT_STATUSES]),
+    listOpenFlags(),
     supabase
-      .from("safety_flags")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "open")
-      .in("target_type", ["message", "draft"]),
-    supabase.from("inbound_messages").select("id", { count: "exact", head: true }).eq("status", "creator_decision"),
+      .from("inbound_messages")
+      .select("id, follower:ig_followers!inner(id)", { count: "exact", head: true })
+      .eq("status", "creator_decision"),
   ]);
 
-  for (const [name, res] of Object.entries({ inbox, sent, flags, decisions })) {
+  // listOpenFlags logs its own failures.
+  for (const [name, res] of Object.entries({ inbox, sent, decisions })) {
     if (res.error) console.error("queueCounts failed", { count: name, code: res.error.code });
   }
 
   return {
     inbox: inbox.error ? null : (inbox.count ?? 0),
     sent: sent.error ? null : (sent.count ?? 0),
-    moderation: flags.error || decisions.error ? null : (flags.count ?? 0) + (decisions.count ?? 0),
+    moderation: flagged.error || decisions.error ? null : flagged.questions.length + (decisions.count ?? 0),
   };
 }
 
@@ -479,32 +471,13 @@ export async function listOpenFlags(): Promise<FlaggedResult> {
 
   return {
     error: false,
-    questions: (questionsRes.data ?? []).flatMap((question) => {
-      const own = flags.filter((flag) =>
-        flag.target_type === "message"
-          ? flag.target_id === question.origin_message_id
-          : questionByDraft.get(flag.target_id) === question.id,
-      );
-      return own.length
-        ? [
-            {
-              id: question.id,
-              status: question.status,
-              questionText: question.question_text,
-              follower: question.follower,
-              flags: own.map((flag) => ({
-                id: flag.id,
-                targetType: flag.target_type === "draft" ? ("draft" as const) : ("message" as const),
-                checkpoint: flag.checkpoint,
-                layer: flag.layer,
-                category: flag.category,
-                detail: flag.detail,
-                status: flag.status,
-              })),
-            },
-          ]
-        : [];
-    }),
+    questions: groupFlagsByQuestion(flags, questionsRes.data ?? [], questionByDraft).map(({ question, flags: own }) => ({
+      id: question.id,
+      status: question.status,
+      questionText: question.question_text,
+      follower: question.follower,
+      flags: own,
+    })),
   };
 }
 
