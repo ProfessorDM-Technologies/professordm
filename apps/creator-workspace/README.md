@@ -97,3 +97,9 @@ Spec: `docs/plans/creator-inbox-spec.md` (Part C). After the AI pipeline drafts 
 **Not logged:** DM, draft and answer text, tags and citations. Reads log the Supabase error code only.
 
 **Known gaps:** the Inbox also lists Knowledge-app questions, which the send API doesn't answer yet (the composer says so).
+
+## Deciding on DMs in Moderation (SCRUM-140)
+
+Each DM in "Needs your decision" has **I replied** and **No reply needed**. Either one calls the `decideMessage` server action, which calls the database function `record_message_decision` (migration `supabase/migrations/20261117_012_message_decisions.sql`) with the creator's session. In one transaction it checks the DM is hers (or the caller is an admin), moves it from `creator_decision` to `closed_no_action`, marks its open message flags `creator_reviewed`, and writes an `audit_log` row (`action = 'message.decided'`, the decision and flag count, no DM text). A DM already decided (double click, second tab) is left as is. The row leaves the list and the Moderation count drops. Turning a DM into a paid question is not part of this. Spec: `docs/plans/scrum-140-moderation-decisions-spec.md`.
+
+**Requires** migration 012 run in the Supabase SQL editor. Without it, the buttons show "Couldn't save your decision. Try again."

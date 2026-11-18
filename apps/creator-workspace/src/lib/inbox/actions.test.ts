@@ -6,7 +6,7 @@ vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 
 import { refresh } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { approveAnswer, sendReply } from "./actions";
+import { approveAnswer, decideMessage, sendReply } from "./actions";
 
 const inboundId = "11111111-1111-4111-8111-111111111111";
 const requestId = "22222222-2222-4222-8222-222222222222";
@@ -235,5 +235,52 @@ describe("approveAnswer API handoff", () => {
     vi.stubGlobal("fetch", fetchMock);
     expect((await approveAnswer({ status: "idle" }, answerForm())).status).toBe("error");
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("decideMessage", () => {
+  const rpc = vi.fn();
+
+  function decisionForm(decision = "no_reply_needed", messageId = inboundId) {
+    const data = new FormData();
+    data.set("message_id", messageId);
+    data.set("decision", decision);
+    return data;
+  }
+
+  beforeEach(() => {
+    rpc.mockReset();
+    vi.mocked(refresh).mockClear();
+    vi.mocked(createClient).mockResolvedValue({ rpc } as unknown as Awaited<ReturnType<typeof createClient>>);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("records the decision through the database function and refreshes", async () => {
+    rpc.mockResolvedValue({ data: "recorded", error: null });
+    expect(await decideMessage({ status: "idle" }, decisionForm("replied"))).toEqual({ status: "done" });
+    expect(rpc).toHaveBeenCalledWith("record_message_decision", { p_message_id: inboundId, p_decision: "replied" });
+    expect(refresh).toHaveBeenCalledOnce();
+  });
+
+  it("treats an already decided message as done", async () => {
+    rpc.mockResolvedValue({ data: "already_decided", error: null });
+    expect(await decideMessage({ status: "idle" }, decisionForm())).toEqual({ status: "done" });
+  });
+
+  it("does not call the database for an unknown decision", async () => {
+    const result = await decideMessage({ status: "idle" }, decisionForm("escalate"));
+    expect(result).toEqual({ status: "error", message: "This decision couldn't be saved. Refresh the page and try again." });
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("shows a plain message and does not refresh when the database refuses", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    rpc.mockResolvedValue({ data: null, error: { code: "P0002", message: "not_found" } });
+    const result = await decideMessage({ status: "idle" }, decisionForm());
+    expect(result).toEqual({ status: "error", message: "This message is unavailable for your account. Refresh the page." });
+    expect(refresh).not.toHaveBeenCalled();
   });
 });
