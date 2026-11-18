@@ -41,6 +41,8 @@ export type QueueQuestion = {
   draft: QueueDraft | null;
   lastSend: LastSend | null;
   openFlagIds: string[];
+  /** The same open flags with their details, for the card's reason (SCRUM-142). */
+  openFlags: QuestionFlag[];
   tags: string[];
 };
 
@@ -98,14 +100,9 @@ function countCitations(citations: unknown): number {
 }
 
 // A flag belongs to a question when it is on its origin message or on its answer draft.
-function flagIdsFor(flags: FlagRow[], originMessageId: string | null, draftId: string | null): string[] {
-  return flags
-    .filter(
-      (flag) =>
-        (flag.target_type === "message" && flag.target_id === originMessageId) ||
-        (flag.target_type === "draft" && flag.target_id === draftId),
-    )
-    .map((flag) => flag.id);
+function openFlagsFor(flags: FlagRow[], row: QuestionRow, draftId: string | null): QuestionFlag[] {
+  const questionByDraft = new Map(draftId ? [[draftId, row.id]] : []);
+  return groupFlagsByQuestion(flags, [row], questionByDraft)[0]?.flags ?? [];
 }
 
 async function fetchOpenFlags(supabase: Supabase): Promise<{ flags: FlagRow[]; error: boolean }> {
@@ -124,6 +121,7 @@ async function fetchOpenFlags(supabase: Supabase): Promise<{ flags: FlagRow[]; e
 
 function toQueueQuestion(row: QuestionRow, openFlags: FlagRow[]): QueueQuestion {
   const draft = answerDraft(row.drafts ?? []);
+  const flags = openFlagsFor(openFlags, row, draft?.id ?? null);
   return {
     id: row.id,
     status: row.status,
@@ -145,7 +143,8 @@ function toQueueQuestion(row: QuestionRow, openFlags: FlagRow[]): QueueQuestion 
         }
       : null,
     lastSend: draft ? newestSend(draft.outbound_messages ?? []) : null,
-    openFlagIds: flagIdsFor(openFlags, row.origin_message_id, draft?.id ?? null),
+    openFlagIds: flags.map((flag) => flag.id),
+    openFlags: flags,
     tags: (row.question_tags ?? []).flatMap((link) => (link.tags ? [link.tags.name] : [])),
   };
 }
