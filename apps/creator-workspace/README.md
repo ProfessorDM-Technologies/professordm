@@ -41,7 +41,7 @@ Only `profiles.role` = `creator` or `admin`. A `consumer` who signs in is signed
 | `/inbox/[id]` | Conversation with one sender (`id` = `ig_followers.id`), manual reply | Done (SCRUM-56, SCRUM-73) |
 | `/sent` | Delivered answers with edit share and tags | Done (creator inbox) |
 | `/moderation` | Flagged questions and DMs that need the creator's decision; other sections placeholders | Partly done (creator inbox) |
-| `/knowledge` | Knowledge Database | Placeholder |
+| `/knowledge` | Knowledge Database: saved answers (`source = 'question'`) with Publish / Make private; Add a fact is a placeholder | Partly done (SCRUM-143) |
 | `/profile` | Creator settings | Placeholder |
 
 Reads go straight to Supabase with RLS; every write goes through the `api` service (BASELINE.md section 2.3).
@@ -103,3 +103,9 @@ Spec: `docs/plans/creator-inbox-spec.md` (Part C). After the AI pipeline drafts 
 Each DM in "Needs your decision" has **I replied** and **No reply needed**. Either one calls the `decideMessage` server action, which calls the database function `record_message_decision` (migration `supabase/migrations/20261117_012_message_decisions.sql`) with the creator's session. In one transaction it checks the DM is hers (or the caller is an admin), moves it from `creator_decision` to `closed_no_action`, marks its open message flags `creator_reviewed`, and writes an `audit_log` row (`action = 'message.decided'`, the decision and flag count, no DM text). A DM already decided (double click, second tab) is left as is. The row leaves the list and the Moderation count drops. Turning a DM into a paid question is not part of this. Spec: `docs/plans/scrum-140-moderation-decisions-spec.md`.
 
 **Requires** migration 012 run in the Supabase SQL editor. Without it, the buttons show "Couldn't save your decision. Try again."
+
+## Publishing answers (SCRUM-143)
+
+`/knowledge` lists the creator's saved answers: `knowledge_entries` with `source = 'question'`, read through the RLS policy from migration 008. They are newest delivered first, then entries without a question by title. **Publish** / **Make private** calls the `setEntryPublished` server action, which calls the database function `set_knowledge_entry_published` (migration `supabase/migrations/20261119_014_publish_knowledge_entries.sql`) with the creator's session. In one transaction it checks the entry is her answer entry (or the caller is an admin), sets `published` and writes an `audit_log` row (`knowledge.published` / `knowledge.unpublished`, no answer text). The consumer Knowledge app shows only published entries. Rows are created by the AI worker's store job after delivery (private by default), so they appear here with no change. Spec: `docs/plans/scrum-143-publish-answers-spec.md`.
+
+**Requires** migration 014 run in the Supabase SQL editor. Without it, the button shows "Couldn't save. Try again."
