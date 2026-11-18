@@ -35,7 +35,7 @@ Only `profiles.role` = `creator` or `admin`. A `consumer` who signs in is signed
 |---|---|---|
 | `/login` | Sign in | Done |
 | `/` | ProfessorDM Bank (home) | Placeholder |
-| `/incoming` | All inbound Instagram messages, newest first | Done (Oct 16) |
+| `/incoming` | All inbound Instagram messages, one row per question with its clarification replies folded in (matched on `clarification_rounds.reply`, like the conversation page), latest activity first | Done (Oct 16; grouped in SCRUM-144) |
 | `/inbox` | Questions waiting for the creator, oldest first, with card states and live updates | Done (creator inbox) |
 | `/inbox/question/[id]` | Answer workspace: question, clarification, flags, sources and the composer | Done (creator inbox) |
 | `/inbox/[id]` | Conversation with one sender (`id` = `ig_followers.id`), manual reply | Done (SCRUM-56, SCRUM-73) |
