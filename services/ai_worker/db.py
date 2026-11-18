@@ -296,3 +296,58 @@ class Db:
     def update_draft(self, draft_id, values):
         """Overwrite a draft row with a newer run's result."""
         self.request("PATCH", "drafts", params={"id": f"eq.{draft_id}"}, body=values)
+
+    # Q&A storage: the store_qa job (docs/plans/qa-storage-chinmay.md)
+
+    def get_question(self, question_id):
+        """Load one question's id, creator_id, question_text and status, or None."""
+        return _one(self.request("GET", "questions", params={
+            "id": f"eq.{question_id}", "select": "id,creator_id,question_text,status", "limit": "1"}))
+
+    def find_question_entry(self, question_id):
+        """Load the knowledge entry already saved for a question (source='question'), or None."""
+        return _one(self.request("GET", "knowledge_entries", params={
+            "question_id": f"eq.{question_id}", "source": "eq.question", "select": "id", "limit": "1"}))
+
+    def get_final_answer(self, question_id):
+        """Load the creator's final answer to a question.
+
+        Args:
+            question_id (str): The question.
+
+        Returns:
+            str | None: final_text of the question's most recently approved
+            draft, or None when no draft has both final_text and approved_at.
+            Never ai_text: the saved answer is what the creator approved.
+
+        Side effects: one request.
+        """
+        row = _one(self.request("GET", "drafts", params={
+            "question_id": f"eq.{question_id}", "final_text": "not.is.null", "approved_at": "not.is.null",
+            "select": "final_text", "order": "approved_at.desc", "limit": "1"}))
+        return row.get("final_text") if row else None
+
+    def get_question_tags(self, question_id):
+        """Load the names of a question's tags.
+
+        Args:
+            question_id (str): The question.
+
+        Returns:
+            list[str]: The tag names, or [] when the question has none.
+            PostgREST embeds each question_tags row's tag as {"tags": {"name"}}.
+
+        Side effects: one request.
+        """
+        rows = self.request("GET", "question_tags", params={
+            "question_id": f"eq.{question_id}", "select": "tags(name)"}) or []
+        return [row["tags"]["name"] for row in rows if isinstance(row.get("tags"), dict) and row["tags"].get("name")]
+
+    def insert_knowledge_entry(self, row):
+        """Insert one knowledge_entries row and return it.
+
+        Raises:
+            DbError: With code UNIQUE_VIOLATION when the question already has
+                a source='question' entry (migration 013), or on any failure.
+        """
+        return self._insert("knowledge_entries", row)

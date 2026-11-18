@@ -1,8 +1,10 @@
-"""Job logic for the AI worker: triage, reassess and draft.
+"""Job logic for the AI worker: triage, reassess, draft and store_qa.
 
 Runs the pure decision functions (triage.py, draft.py) and saves what they
-decide. handler.py is the Lambda entry; this module holds the decisions about
-claims, write order and retries, so tests can run it with fakes.
+decide. store_qa saves a delivered question and the creator's final answer as
+a private knowledge entry. handler.py is the Lambda entry; this module holds
+the decisions about claims, write order and retries, so tests can run it with
+fakes.
 
 Entry points:
     parse_job(body)
@@ -13,7 +15,8 @@ Entry points:
 Every job must be safe to run twice: SQS can deliver a job more than once and
 the webhook publishes a new job each time Meta retries. A job claims its row
 with a conditional update, every write checks first, and the status is written
-last, so a job that dies midway is finished by the redelivered one.
+last, so a job that dies midway is finished by the redelivered one. store_qa
+claims nothing: it has one write, guarded by a read and a unique index.
 
 Depends on:
     db       for every query (Db and DbError).
@@ -25,8 +28,11 @@ Depends on:
 Never does:
     - Import boto3. handler.py passes in publish.
     - Call Instagram. The outbound sender does that.
-    - Log DM text, clarification text, answer text, reason values or keys.
-      Logs carry ids, statuses, counts, latency and error type names only.
+    - Log DM text, clarification text, question text, answer text, tags,
+      embeddings, reason values or keys. Logs carry ids, statuses, counts,
+      latency and error type names only.
+    - Store the follower, the original DM or the AI draft in a knowledge
+      entry, or publish one. store_qa writes published false.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -36,7 +42,7 @@ import os
 import time
 import uuid
 
-from db import DbError
+from db import DbError, UNIQUE_VIOLATION
 import draft
 import llm
 import prompts
@@ -46,7 +52,7 @@ import triage
 JOB_VERSION = 1
 
 # The payload id each job type needs (spec section 3).
-PAYLOAD_IDS = {"triage": "messageId", "reassess": "messageId", "draft": "questionId"}
+PAYLOAD_IDS = {"triage": "messageId", "reassess": "messageId", "draft": "questionId", "store_qa": "questionId"}
 
 DONE = "done"
 RETRY = "retry"
@@ -67,6 +73,10 @@ OUTAGE_REASON = "AI unavailable after 3 attempts"
 
 # Seconds kept back from draft() for the writes that follow it (spec 6 step 3).
 DRAFT_WRITE_RESERVE = 15
+
+# The question statuses store_qa saves: the answer has reached the follower.
+# "accepted" is included because the hold can end before a late job runs.
+STORABLE_STATUSES = ("delivered", "accepted")
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -544,6 +554,103 @@ def _draft_job(job, receive_count, db, time_left):
     return RETRY, "retry_pending"
 
 
+def _store_qa(question_id, receive_count, db):
+    """Save one answered question as a private knowledge entry.
+
+    The steps of docs/plans/qa-storage-chinmay.md section 2, in order. Only
+    the question text and the creator's final answer are stored: never the
+    follower, the original DM or the AI draft. The entry is always written
+    with published false; publishing is the creator's choice later.
+
+    Safe to run twice: the "already stored?" read is the main guard, and the
+    unique index from migration 013 is the backup when two runs both pass
+    that read before either inserts.
+
+    Args:
+        question_id (str): The question.
+        receive_count (int): SQS ApproximateReceiveCount.
+        db (Db): The database client.
+
+    Returns:
+        tuple[str, str]: (outcome, status). outcome is DONE or RETRY. status
+        is one of "stored", "already_stored", "missing", "not_delivered",
+        "no_answer", "retry_pending" or "embed_unavailable", for the log.
+
+    Raises:
+        DbError: If a read fails, or the insert fails with anything other
+            than a unique violation. _store_qa_job turns it into a retry.
+
+    Side effects: up to four reads, one embeddings request and one insert.
+    """
+    question = db.get_question(question_id)
+    if not question:
+        logger.warning("AI worker stage=store_qa question_missing question_id=%s", question_id)
+        return DONE, "missing"
+    if question["status"] not in STORABLE_STATUSES:
+        # The sender publishes this job right after marking the question
+        # delivered, so an earlier status means that write is not visible yet.
+        if receive_count < MAX_ATTEMPTS:
+            return RETRY, "not_delivered"
+        logger.warning("AI worker stage=store_qa not_delivered question_id=%s status=%s", question_id,
+                       question["status"])
+        return DONE, "not_delivered"
+    if db.find_question_entry(question_id):
+        return DONE, "already_stored"
+    answer = db.get_final_answer(question_id)
+    if not answer or not answer.strip():
+        logger.warning("AI worker stage=store_qa no_final_answer question_id=%s", question_id)
+        return DONE, "no_answer"
+    tags = db.get_question_tags(question_id)
+    title, content = question["question_text"].strip(), answer.strip()
+    try:
+        # The same input format as the guide entries (see llm.embed), so saved
+        # answers and guide chunks are comparable in one vector space.
+        vectors, _ = llm.embed([f"{title}\n{content}"])
+    except (llm.LLMError, RuntimeError) as error:
+        if isinstance(error, llm.LLMError):
+            logger.warning("AI worker stage=store_qa FAIL question_id=%s error_type=LLMError service=%s status=%s "
+                           "code=%s", question_id, error.service, error.status or "network", error.code or "unknown")
+        else:
+            logger.error("AI worker config_error question_id=%s error_type=%s", question_id, type(error).__name__)
+        if receive_count < MAX_ATTEMPTS:
+            return RETRY, "retry_pending"
+        logger.warning("AI worker store_qa_unavailable question_id=%s", question_id)
+        return DONE, "embed_unavailable"
+    try:
+        db.insert_knowledge_entry({
+            "creator_id": question["creator_id"], "question_id": question_id, "source": "question", "title": title,
+            "content": content, "tags": tags, "published": False, "embedding": vectors[0], "doc_id": None})
+    except DbError as error:
+        if error.code != UNIQUE_VIOLATION:
+            raise
+        # Another run of the same job inserted between the check and here.
+        return DONE, "already_stored"
+    return DONE, "stored"
+
+
+def _store_qa_job(job, receive_count, db):
+    """Run one store_qa job (docs/plans/qa-storage-chinmay.md).
+
+    Args:
+        job (dict): The job envelope.
+        receive_count (int): SQS ApproximateReceiveCount.
+        db (Db): The database client.
+
+    Returns:
+        tuple[str, str]: (outcome, status). outcome is DONE or RETRY. status
+        says what happened, for the log (see _store_qa).
+
+    Side effects: database reads, one embeddings request, at most one insert,
+    and log lines with the question id, status and error type names only.
+    """
+    question_id = job["payload"]["questionId"]
+    try:
+        return _store_qa(question_id, receive_count, db)
+    except Exception as error:
+        logger.error("AI worker stage=store_qa FAIL question_id=%s error_type=%s", question_id, type(error).__name__)
+    return RETRY, "retry_pending"
+
+
 def run_job(job, *, receive_count, db, publish, time_left):
     """Run one validated job. Never raises.
 
@@ -563,6 +670,8 @@ def run_job(job, *, receive_count, db, publish, time_left):
     started = time.monotonic()
     if job["type"] == "draft":
         outcome, status = _draft_job(job, receive_count, db, time_left)
+    elif job["type"] == "store_qa":
+        outcome, status = _store_qa_job(job, receive_count, db)
     else:
         outcome, status = _triage_job(job, receive_count, db, publish)
     logger.info("AI worker job=%s id=%s trace=%s outcome=%s status=%s latency_ms=%d", job["type"], job.get("id"),

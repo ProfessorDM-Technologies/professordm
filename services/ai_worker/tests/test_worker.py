@@ -3,7 +3,9 @@
 No test calls a real model, database or queue. FakeDb keeps in-memory tables
 behind Db.request, with the PostgREST filters the worker uses, so the real
 queries in db.py run. triage.triage, triage.reassess and draft.draft are
-patched. Every fixture uses made-up text. Case numbers match spec section 11.
+patched. The store_qa tests run the real llm.embed and fake only its HTTPS
+request. Every fixture uses made-up text. Case numbers match spec section 11;
+store_qa case numbers match docs/plans/qa-storage-chinmay.md section 5.
 Run with:
     python3.11 -m unittest discover -s services/ai_worker/tests
 """
@@ -45,7 +47,15 @@ PROMPT_TEXT = "PRIVATE-PROMPT which plant is it"
 DECLINE_TEXT = "PRIVATE-DECLINE sorry, I can't help with that"
 REASON_TEXT = "PRIVATE-REASON asks about pale fronds"
 ANSWER_TEXT = "PRIVATE-ANSWER give it more light"
+QUESTION_TEXT = "PRIVATE-QUESTION why are the fronds on my made-up fern pale"
+FINAL_TEXT = "PRIVATE-FINAL move it next to the north window"
+TAG_NAMES = ["PRIVATE-TAG ferns", "PRIVATE-TAG light"]
 PRIVATE = "PRIVATE-"
+
+# One embedding the fake embeddings endpoint returns: the real length (1536),
+# with a value that is easy to search the logs for.
+VECTOR_VALUE = 0.123456
+VECTOR = [VECTOR_VALUE] * 1536
 
 COLUMN_DEFAULTS = {
     "inbound_messages": {"status": None, "triage_attempts": 0, "category": None, "confidence": None, "reason": None,
@@ -66,6 +76,9 @@ def iso(moment):
 def _matches(row, column, operator, value):
     """Apply one PostgREST filter to one row."""
     current = row.get(column)
+    if operator == "not":
+        inner, _, operand = value.partition(".")
+        return not _matches(row, column, inner, operand)
     if operator == "is":
         return current is None
     if operator == "in":
@@ -99,7 +112,8 @@ class FakeDb(Db):
 
     def __init__(self):
         self.tables = {name: [] for name in ("inbound_messages", "ig_followers", "clarification_rounds", "questions",
-                                             "drafts", "outbound_messages", "safety_flags")}
+                                             "drafts", "outbound_messages", "safety_flags", "knowledge_entries",
+                                             "tags", "question_tags")}
         self.tables["ig_followers"].append({"id": FOLLOWER, "creator_id": CREATOR, "ig_scoped_id": "1001"})
         self.writes = []
         self.crash_on = None      # (method, table) raises Crash before that write
@@ -134,8 +148,15 @@ class FakeDb(Db):
                 rows = [row for row in rows if _matches(row, key, operator, operand)]
         return rows
 
-    @staticmethod
-    def _shaped(rows, params):
+    def _cell(self, row, column):
+        """Return one selected value. "tags(name)" is the embedded tags row, found through tag_id."""
+        table, _, inner = column.partition("(")
+        if not inner:
+            return row.get(column)
+        related = next((item for item in self.tables[table] if item["id"] == row.get(f"{table[:-1]}_id")), None)
+        return {name: related.get(name) for name in inner[:-1].split(",")} if related else None
+
+    def _shaped(self, rows, params):
         rows, options = list(rows), dict(dict_pairs(params))
         if "order" in options:
             column, _, direction = options["order"].partition(".")
@@ -144,7 +165,7 @@ class FakeDb(Db):
             rows = rows[:int(options["limit"])]
         if "select" in options:
             columns = options["select"].split(",")
-            return [{column: row.get(column) for column in columns} for row in rows]
+            return [{column.partition("(")[0]: self._cell(row, column) for column in columns} for row in rows]
         return [dict(row) for row in rows]
 
     def _insert_rows(self, table, body):
@@ -153,6 +174,11 @@ class FakeDb(Db):
             row = {"id": str(uuid.uuid4()), **COLUMN_DEFAULTS.get(table, {}), **item}
             key = row.get("client_request_id")
             if key and any(other.get("client_request_id") == key for other in self.tables[table]):
+                raise DbError(409, "23505")
+            # Migration 013: one source='question' entry per question.
+            if (table == "knowledge_entries" and row.get("source") == "question" and row.get("question_id")
+                    and any(other.get("source") == "question" and other.get("question_id") == row["question_id"]
+                            for other in self.tables[table])):
                 raise DbError(409, "23505")
             self.tables[table].append(row)
             created.append(row)
@@ -241,10 +267,16 @@ def draft_job(question_id):
             "createdAt": iso(NOW), "payload": {"questionId": question_id}}
 
 
+def store_qa_job(question_id):
+    return {"v": 1, "type": "store_qa", "id": f"store_qa:{question_id}", "creatorId": CREATOR, "traceId": "trace-1",
+            "createdAt": iso(NOW), "payload": {"questionId": question_id}}
+
+
 class WorkerCase(unittest.TestCase):
     """Sets up the fakes, and checks after every test that logs hold no private text (case 19)."""
 
     stub = "true"
+    log_names = ("worker", "handler")   # the loggers whose lines tearDown searches
 
     def setUp(self):
         self.db = FakeDb()
@@ -259,7 +291,7 @@ class WorkerCase(unittest.TestCase):
         self.logs = []
         handler = logging.Handler(level=logging.DEBUG)
         handler.emit = lambda record: self.logs.append(record.getMessage())
-        for name in ("worker", "handler"):
+        for name in self.log_names:
             logging.getLogger(name).addHandler(handler)
             self.addCleanup(logging.getLogger(name).removeHandler, handler)
 
@@ -807,6 +839,203 @@ class DraftTests(WorkerCase):
                          ("no_draft", None, [], "no_coverage"))
 
 
+class StoreQaTests(WorkerCase):
+    """The store_qa job: one private knowledge entry per answered question."""
+
+    log_names = ("worker", "handler", "llm")
+
+    def setUp(self):
+        super().setUp()
+        key = patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"})
+        key.start()
+        self.addCleanup(key.stop)
+        self.embed_request = self._patch("llm._json_request", return_value={
+            "data": [{"index": 0, "embedding": list(VECTOR)}], "model": "text-embedding-3-small",
+            "usage": {"total_tokens": 21}})
+
+    def entries(self):
+        return self.db.tables["knowledge_entries"]
+
+    def answered(self, *, status="delivered", tags=TAG_NAMES, final_text=f"  {FINAL_TEXT}\n",
+                 approved_at=NOW):
+        """Add a question with its tags and one draft the creator edited. Returns the question id."""
+        question_id = str(uuid.uuid4())
+        self.db.tables["questions"].append({
+            "id": question_id, "creator_id": CREATOR, "source": "instagram", "follower_id": FOLLOWER,
+            "origin_message_id": MESSAGE, "question_text": f" {QUESTION_TEXT}\n", "status": status,
+            "safety_flagged": False, "paid_at": iso(NOW)})
+        self.add_draft(question_id, final_text=final_text, approved_at=approved_at)
+        for name in tags:
+            tag_id = str(uuid.uuid4())
+            self.db.tables["tags"].append({"id": tag_id, "creator_id": CREATOR, "name": name})
+            self.db.tables["question_tags"].append({"question_id": question_id, "tag_id": tag_id})
+        return question_id
+
+    def add_draft(self, question_id, *, final_text, approved_at):
+        self.db.tables["drafts"].append({
+            "id": str(uuid.uuid4()), "question_id": question_id, "status": "ready", "ai_text": ANSWER_TEXT,
+            "final_text": final_text, "approved_at": iso(approved_at) if approved_at else None})
+
+    def test_01_delivered_question_is_stored_as_one_private_entry(self):
+        """Case 1: the stored row holds the question, the creator's final answer and the tags, unpublished."""
+        question_id = self.answered()
+        self.assertEqual(self.run_job(store_qa_job(question_id)), "done")
+        self.assertEqual(len(self.entries()), 1)
+        row = dict(self.entries()[0])
+        row.pop("id")
+        self.assertEqual(len(row["embedding"]), 1536)
+        self.assertIs(type(row["embedding"]), list)
+        self.assertEqual(row, {
+            "creator_id": CREATOR, "question_id": question_id, "source": "question", "title": QUESTION_TEXT,
+            "content": FINAL_TEXT, "tags": ["PRIVATE-TAG ferns", "PRIVATE-TAG light"], "published": False,
+            "embedding": VECTOR, "doc_id": None})
+
+    def test_01_embedding_input_is_title_newline_content(self):
+        """Case 1: the embedded text has the guide entries' format, in one request without retries."""
+        self.run_job(store_qa_job(self.answered()))
+        self.assertEqual(self.embed_request.call_count, 1)
+        self.assertEqual(self.embed_request.call_args.args[3]["input"], [f"{QUESTION_TEXT}\n{FINAL_TEXT}"])
+
+    def test_accepted_question_is_stored_too(self):
+        """A job that arrives after the hold ended finds the question accepted, and still stores it."""
+        question_id = self.answered(status="accepted")
+        self.assertEqual(self.run_job(store_qa_job(question_id)), "done")
+        self.assertEqual(len(self.entries()), 1)
+
+    def test_question_without_tags_stores_an_empty_list(self):
+        """Zero tags is fine: tags is [], not null."""
+        self.assertEqual(self.run_job(store_qa_job(self.answered(tags=()))), "done")
+        self.assertEqual(self.entries()[0]["tags"], [])
+
+    def test_entry_belongs_to_the_questions_creator(self):
+        """creator_id comes from the question row, not from the job envelope."""
+        job = {**store_qa_job(self.answered()), "creatorId": "someone-else"}
+        self.assertEqual(self.run_job(job), "done")
+        self.assertEqual(self.entries()[0]["creator_id"], CREATOR)
+
+    def test_newest_approved_answer_is_the_one_stored(self):
+        """With several approved drafts, the latest approved_at wins."""
+        question_id = self.answered(approved_at=NOW - timedelta(hours=1))
+        self.add_draft(question_id, final_text="PRIVATE-NEWER water it weekly", approved_at=NOW)
+        self.add_draft(question_id, final_text="PRIVATE-OLDEST repot it", approved_at=NOW - timedelta(hours=2))
+        self.run_job(store_qa_job(question_id))
+        self.assertEqual(self.entries()[0]["content"], "PRIVATE-NEWER water it weekly")
+
+    def test_newer_approved_row_without_final_text_does_not_hide_the_answer(self):
+        """Only rows with a final text count, so the search never stops at an empty newer row."""
+        question_id = self.answered(approved_at=NOW - timedelta(hours=1))
+        self.add_draft(question_id, final_text=None, approved_at=NOW)
+        self.assertEqual(self.run_job(store_qa_job(question_id)), "done")
+        self.assertEqual([row["content"] for row in self.entries()], [FINAL_TEXT])
+
+    def test_02_same_job_twice_stores_one_entry(self):
+        """Case 2: the second run finds the entry, embeds nothing and writes nothing."""
+        job = store_qa_job(self.answered())
+        self.run_job(job)
+        writes = len(self.db.writes)
+        self.assertEqual(self.run_job(job, receive_count=2), "done")
+        self.assertEqual(len(self.entries()), 1)
+        self.assertEqual(len(self.db.writes), writes)
+        self.assertEqual(self.embed_request.call_count, 1)
+
+    def test_03_unique_violation_on_insert_is_done(self):
+        """Case 3: another run inserts between this run's check and its insert; the 23505 is acknowledged."""
+        question_id = self.answered()
+        self.entries().append({"id": "theirs", "question_id": question_id, "source": "question"})
+        self.db.find_question_entry = lambda _question_id: None     # this run checked before their insert
+        self.assertEqual(self.run_job(store_qa_job(question_id)), "done")
+        self.assertEqual([row["id"] for row in self.entries()], ["theirs"])
+
+    def test_other_insert_errors_retry_and_the_redelivery_stores_it(self):
+        """A database error that is not a unique violation is retried, not swallowed."""
+        job = store_qa_job(self.answered())
+        self.db.fail_on = ("POST", "knowledge_entries")
+        self.assertEqual(self.run_job(job, receive_count=3), "retry")
+        self.assertEqual(self.entries(), [])
+        self.db.fail_on = None
+        self.assertEqual(self.run_job(job, receive_count=2), "done")
+        self.assertEqual(len(self.entries()), 1)
+
+    def test_04_question_not_delivered_yet_retries_then_gives_up(self):
+        """Case 4: a question still delivering is retried on deliveries 1 and 2 and acknowledged on 3."""
+        job = store_qa_job(self.answered(status="delivering"))
+        for attempt, outcome in ((1, "retry"), (2, "retry"), (3, "done")):
+            self.assertEqual(self.run_job(job, receive_count=attempt), outcome, attempt)
+        self.assertEqual(self.entries(), [])
+        self.assertEqual(self.embed_request.call_count, 0)
+
+    def test_missing_question_is_acknowledged(self):
+        """A job for a question that does not exist can never succeed, so it is not retried."""
+        self.assertEqual(self.run_job(store_qa_job(str(uuid.uuid4()))), "done")
+        self.assertEqual(self.db.writes, [])
+        self.assertEqual(self.embed_request.call_count, 0)
+
+    def test_05_no_approved_draft_stores_nothing(self):
+        """Case 5: an AI draft, or an edit that was never approved, is not a final answer."""
+        for final_text, approved_at in ((None, None), (FINAL_TEXT, None), (None, NOW), ("  \n", NOW)):
+            self.db.tables["drafts"].clear()
+            question_id = self.answered(final_text=final_text, approved_at=approved_at)
+            self.assertEqual(self.run_job(store_qa_job(question_id)), "done", (final_text, approved_at))
+        self.assertEqual(self.entries(), [])
+        self.assertEqual(self.embed_request.call_count, 0)
+
+    def test_06_embedding_failure_retries_then_gives_up(self):
+        """Case 6: an embeddings outage is retried by SQS (one request per run), and acknowledged on delivery 3."""
+        job = store_qa_job(self.answered())
+        self.embed_request.side_effect = llm.LLMError("openai", 503, "unavailable")
+        for attempt, outcome in ((1, "retry"), (2, "retry"), (3, "done")):
+            self.assertEqual(self.run_job(job, receive_count=attempt), outcome, attempt)
+        self.assertEqual(self.embed_request.call_count, 3)
+        self.assertEqual(self.entries(), [])
+
+    def test_06_missing_openai_key_retries_then_gives_up(self):
+        """Case 6: llm.embed's RuntimeError for a missing key is handled like an outage."""
+        job = store_qa_job(self.answered())
+        with patch.dict(os.environ, {"OPENAI_API_KEY": ""}):
+            self.assertEqual(self.run_job(job, receive_count=1), "retry")
+            self.assertEqual(self.run_job(job, receive_count=3), "done")
+        self.assertEqual(self.entries(), [])
+
+    def test_retry_after_embedding_failure_stores_the_entry(self):
+        """Once the embeddings endpoint is back, the redelivered job finishes the work."""
+        job = store_qa_job(self.answered())
+        self.embed_request.side_effect = llm.LLMError("openai", None, "TimeoutError")
+        self.assertEqual(self.run_job(job), "retry")
+        self.embed_request.side_effect = None
+        self.assertEqual(self.run_job(job, receive_count=2), "done")
+        self.assertEqual(len(self.entries()), 1)
+
+    def test_read_error_retries(self):
+        """A database error while loading is retried, like the other jobs."""
+        job = store_qa_job(self.answered())
+        self.db.get_final_answer = MagicMock(side_effect=DbError(None, "network"))
+        self.assertEqual(self.run_job(job), "retry")
+        self.assertEqual(self.entries(), [])
+
+    def test_08_no_private_text_or_vector_in_any_log_line(self):
+        """Case 8: every branch logs ids, statuses and error types only."""
+        stored = store_qa_job(self.answered())
+        self.run_job(stored)
+        self.run_job(stored, receive_count=2)
+        self.run_job(store_qa_job(self.answered(status="delivering")), receive_count=3)
+        self.run_job(store_qa_job(self.answered(final_text=None)))
+        self.run_job(store_qa_job(str(uuid.uuid4())))
+        failing = store_qa_job(self.answered())
+        self.embed_request.side_effect = llm.LLMError("openai", 503, "unavailable")
+        self.run_job(failing)
+        self.run_job(failing, receive_count=3)
+        self.embed_request.side_effect = None
+        self.db.fail_on = ("POST", "knowledge_entries")
+        self.run_job(failing)
+        summaries = [line for line in self.logs if "job=store_qa" in line]
+        self.assertEqual(len(summaries), 8)
+        self.assertTrue(all(f"id={job['id']}" in line and "trace=trace-1" in line
+                            for job, line in ((stored, summaries[0]), (failing, summaries[-1]))))
+        for line in self.logs:
+            for secret in (QUESTION_TEXT, FINAL_TEXT, ANSWER_TEXT, *TAG_NAMES, PRIVATE, str(VECTOR_VALUE)):
+                self.assertNotIn(secret, line)
+
+
 class ParseJobTests(unittest.TestCase):
     def test_18_invalid_jobs(self):
         logger = logging.getLogger("worker")
@@ -815,12 +1044,14 @@ class ParseJobTests(unittest.TestCase):
         bodies = [None, "not json", "[]", "5", json.dumps({**triage_job(), "v": 2}),
                   json.dumps({**triage_job(), "type": "embed"}), json.dumps({**triage_job(), "type": ["triage"]}),
                   json.dumps({**triage_job(), "payload": {}}), json.dumps({**triage_job(), "payload": None}),
-                  json.dumps({**draft_job("q"), "payload": {"messageId": "m"}})]
+                  json.dumps({**draft_job("q"), "payload": {"messageId": "m"}}),
+                  json.dumps({**store_qa_job("q"), "payload": {}}),
+                  json.dumps({**store_qa_job("q"), "payload": {"messageId": "m"}})]
         for body in bodies:
             self.assertIsNone(worker.parse_job(body), body)
 
     def test_valid_jobs(self):
-        for job in (triage_job(), {**triage_job(), "type": "reassess"}, draft_job("q")):
+        for job in (triage_job(), {**triage_job(), "type": "reassess"}, draft_job("q"), store_qa_job("q")):
             self.assertEqual(worker.parse_job(json.dumps(job)), job)
 
 
@@ -962,6 +1193,18 @@ class HandlerTests(WorkerCase):
         self.db.add_message()
         handler._load_secrets.side_effect = RuntimeError("No value for SSM_OPENAI_KEY")
         self.assertEqual(self.handle(json.dumps(triage_job()))["batchItemFailures"], [{"itemIdentifier": "sqs-1"}])
+
+    def test_store_qa_job_runs_through_the_handler(self):
+        """A store_qa SQS record is parsed, run and acknowledged."""
+        key = patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"})
+        key.start()
+        self.addCleanup(key.stop)
+        self._patch("llm._json_request", return_value={"data": [{"index": 0, "embedding": list(VECTOR)}]})
+        question_id = self.claimed_question(status="delivered")
+        self.db.tables["drafts"].append({"id": "d1", "question_id": question_id, "final_text": FINAL_TEXT,
+                                         "approved_at": iso(NOW)})
+        self.assertEqual(self.handle(json.dumps(store_qa_job(question_id))), {"batchItemFailures": []})
+        self.assertEqual([row["question_id"] for row in self.db.tables["knowledge_entries"]], [question_id])
 
     def test_time_left_comes_from_the_context(self):
         question_id = self.claimed_question()
