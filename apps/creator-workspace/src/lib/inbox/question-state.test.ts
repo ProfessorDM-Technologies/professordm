@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cardState, waitLabel, type CardDraft } from "./question-state";
+import { cardState, flagHint, waitLabel, type CardDraft } from "./question-state";
 
 const question = (status: string, openFlagIds: string[] = []) => ({ status, openFlagIds });
 const ready: CardDraft = { status: "ready", coverage: "partial", reason: null };
@@ -33,6 +33,20 @@ describe("cardState", () => {
       label: "Review flag first",
       tone: "danger",
       hint: "A safety check flagged this. Review it before answering.",
+      action: "Review",
+    });
+  });
+
+  it("names the flag and the next step when the flag details are known", () => {
+    const flagged = {
+      status: "awaiting_creator",
+      openFlagIds: ["f1"],
+      openFlags: [{ targetType: "message" as const, layer: "policy", category: "risk_topic", detail: "pet_toxicity" }],
+    };
+    expect(cardState(flagged, ready, null)).toEqual({
+      label: "Review flag first",
+      tone: "danger",
+      hint: "Sensitive topic: pet toxicity on the message. Tick “I've reviewed this”, then answer.",
       action: "Review",
     });
   });
@@ -128,5 +142,39 @@ describe("waitLabel", () => {
   it("returns null without a valid time", () => {
     expect(waitLabel(null, now)).toBeNull();
     expect(waitLabel("not a date", now)).toBeNull();
+  });
+});
+
+describe("flagHint", () => {
+  const flag = (targetType: "message" | "draft", layer: string | null, category: string | null, detail: string | null = null) => ({
+    targetType,
+    layer,
+    category,
+    detail,
+  });
+
+  it("names a flag on the message and says to tick the review box", () => {
+    expect(flagHint([flag("message", "policy", "safety_concern")])).toBe(
+      "Safety concern on the message. Tick “I've reviewed this”, then answer.",
+    );
+  });
+
+  it("asks her to check the AI draft when the flag is on the draft", () => {
+    expect(flagHint([flag("draft", "moderation", "harassment")])).toBe(
+      "Harassing language on the AI draft. Check the draft, tick “I've reviewed this”, then answer.",
+    );
+  });
+
+  it("names the first flag and counts the rest", () => {
+    expect(flagHint([flag("message", "policy", "safety_concern"), flag("draft", "moderation", "harassment")])).toBe(
+      "Safety concern and 1 more flag. Open it to review each one, then answer.",
+    );
+    expect(
+      flagHint([flag("message", null, null), flag("draft", null, null), flag("draft", null, null)]),
+    ).toBe("Flagged and 2 more flags. Open it to review each one, then answer.");
+  });
+
+  it("falls back to the general sentence when no flag details are known", () => {
+    expect(flagHint([])).toBe("A safety check flagged this. Review it before answering.");
   });
 });

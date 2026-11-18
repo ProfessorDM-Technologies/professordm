@@ -243,7 +243,7 @@ never be **logged**.
 |---|---|---|---|---|
 | status `paid` or `drafting` | AI is drafting | `progress` (pulsing dot) | "Usually ready in under 20 seconds." | none (card not clickable yet) |
 | status `approved` or `delivering` | Sending | `progress` | "Delivering to Instagram…" | View |
-| has open flags | Review flag first | `danger` | "A safety check flagged this. Review it before answering." | Review |
+| has open flags | Review flag first | `danger` | The flag and the next step (SCRUM-142): one flag on the message → "{flag label} on the message. Tick “I've reviewed this”, then answer."; on the AI draft → "{flag label} on the AI draft. Check the draft, tick “I've reviewed this”, then answer."; several → "{first flag label} and N more flags. Open it to review each one, then answer."; flag details not loaded → "A safety check flagged this. Review it before answering." | Review |
 | last send `failed` | Send failed | `danger` | "Your answer was saved. Open it to try again." | Try again |
 | draft `ready` | Draft ready | `accent` | coverage line, e.g. "Partly covered by your guides" | Review & answer |
 | draft `no_draft` | Answer by hand | `neutral` | reason line, e.g. "Your guides don't cover this yet" | Answer |
@@ -299,7 +299,8 @@ Questions waiting for your answer, oldest first.     All messages ->
 ------------------------------------------------------------------------
 | @monstera.mom                         waiting 5 min  Review flag first|
 | Is my monstera safe for my cat to chew on?                           |
-| A safety check flagged this. Review it before answering.  [Review]  |
+| Sensitive topic: pet toxicity on the message. Tick "I've reviewed    |
+| this", then answer.                                         [Review] |
 ------------------------------------------------------------------------
 | @newgrower                            just now     * AI is drafting   |
 | [shimmer line] [shimmer line]                                        |

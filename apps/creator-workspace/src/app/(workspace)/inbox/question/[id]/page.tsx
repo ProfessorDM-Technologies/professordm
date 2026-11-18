@@ -44,8 +44,9 @@ export default async function AnswerQuestionPage({ params }: PageProps<"/inbox/q
   const [{ question, error }, inbox] = await Promise.all([getQuestion(id), listQuestions("inbox")]);
 
   const username = question.follower?.username ? `@${question.follower.username}` : "Unknown sender";
-  const openFlagIds = question.flags.filter((flag) => flag.status === "open").map((flag) => flag.id);
-  const state = cardState({ status: question.status, openFlagIds }, question.draft, question.lastSend);
+  const openFlags = question.flags.filter((flag) => flag.status === "open");
+  const openFlagIds = openFlags.map((flag) => flag.id);
+  const state = cardState({ status: question.status, openFlagIds, openFlags }, question.draft, question.lastSend);
   const origin = question.origin;
   // "Next question" after sending: the first other card in the inbox that can be opened.
   const nextQuestion = inbox.questions.find(

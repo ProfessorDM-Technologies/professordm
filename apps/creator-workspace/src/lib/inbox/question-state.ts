@@ -1,5 +1,5 @@
 // Pure: decides what an inbox card says (docs/plans/creator-inbox-spec.md section 6). No Supabase here.
-import { COVERAGE_LABELS, coverageLabel, noDraftReasonLabel } from "@/lib/inbox/labels";
+import { COVERAGE_LABELS, coverageLabel, flagLabel, noDraftReasonLabel } from "@/lib/inbox/labels";
 
 export type CardTone = "progress" | "danger" | "accent" | "neutral";
 
@@ -11,7 +11,24 @@ export type CardState = {
   action: string | null;
 };
 
-export type CardQuestion = { status: string; openFlagIds: readonly string[] };
+export type CardFlag = { targetType: "message" | "draft"; layer: string | null; category: string | null; detail: string | null };
+/** `openFlags`: the open flags' details, when loaded. Without them a flagged card shows the general sentence. */
+export type CardQuestion = { status: string; openFlagIds: readonly string[]; openFlags?: readonly CardFlag[] };
+
+const GENERAL_FLAG_HINT = "A safety check flagged this. Review it before answering.";
+
+/** Why a card is flagged and what to do next (SCRUM-142), in the same words as the Moderation page. */
+export function flagHint(flags: readonly CardFlag[]): string {
+  const [first] = flags;
+  if (!first) return GENERAL_FLAG_HINT;
+  if (flags.length > 1) {
+    const more = flags.length - 1;
+    return `${flagLabel(first)} and ${more} more ${more === 1 ? "flag" : "flags"}. Open it to review each one, then answer.`;
+  }
+  return first.targetType === "draft"
+    ? `${flagLabel(first)} on the AI draft. Check the draft, tick “I've reviewed this”, then answer.`
+    : `${flagLabel(first)} on the message. Tick “I've reviewed this”, then answer.`;
+}
 export type CardDraft = { status: string | null; coverage: string | null; reason: string | null };
 export type CardSend = { status: string | null };
 
@@ -27,7 +44,7 @@ export function cardState(question: CardQuestion, draft: CardDraft | null, lastS
     return {
       label: "Review flag first",
       tone: "danger",
-      hint: "A safety check flagged this. Review it before answering.",
+      hint: flagHint(question.openFlags ?? []),
       action: "Review",
     };
   }
