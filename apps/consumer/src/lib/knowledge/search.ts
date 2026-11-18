@@ -5,18 +5,29 @@ export type KnowledgeEntry = {
   tags: string[] | null;
 };
 
+function toWords(text: string) {
+  return text
+    .toLowerCase()
+    .replace(/['’]/g, "")
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean);
+}
+
 export function searchTerms(query: string) {
-  return query.toLowerCase().split(/\s+/).filter(Boolean);
+  return toWords(query);
 }
 
 export function filterEntries<T extends KnowledgeEntry>(entries: T[], query: string) {
-  const terms = searchTerms(query);
-  if (terms.length === 0) {
+  if (!query.trim()) {
     return entries;
   }
+  const terms = searchTerms(query);
+  if (terms.length === 0) {
+    return [];
+  }
   return entries.filter((entry) => {
-    const haystack = [entry.title ?? "", entry.content ?? "", ...(entry.tags ?? [])].join(" ").toLowerCase();
-    return terms.every((term) => haystack.includes(term));
+    const words = toWords([entry.title ?? "", entry.content ?? "", ...(entry.tags ?? [])].join(" "));
+    return terms.every((term) => words.some((word) => word.startsWith(term)));
   });
 }
 
