@@ -54,8 +54,12 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
           </ul>
         ) : (
           <div className="space-y-2 rounded-lg border border-flora-border bg-white p-4">
-            <p className="font-medium">No answers match your search yet.</p>
-            <p className="text-flora-muted">Try fewer words, or ask Sweetlife Flora directly.</p>
+            <p className="font-medium">
+              {query ? "No answers match your search yet." : "No answers have been published yet."}
+            </p>
+            <p className="text-flora-muted">
+              {query ? "Try fewer words, or ask Sweetlife Flora directly." : "Check back soon, or ask Sweetlife Flora directly."}
+            </p>
             <Link
               href="/ask-expert"
               className="inline-block font-semibold text-flora-accent-strong underline underline-offset-4"
