@@ -20,3 +20,13 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - run: python -m unittest discover services/ai_worker/tests
+      - run: python -m unittest discover -s tests
+        working-directory: services/instagram_backend
