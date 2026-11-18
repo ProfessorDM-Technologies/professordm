@@ -1,4 +1,5 @@
 import "server-only";
+import { groupMessagesByQuestion, type MessageThread } from "@/lib/inbox/message-threads";
 import { buildThread, type ThreadClarification, type ThreadItem, type ThreadOutbound } from "@/lib/inbox/thread";
 import { createClient } from "@/lib/supabase/server";
 
@@ -64,6 +65,32 @@ export async function listInboundMessages({ limit = 50 }: { limit?: number } = {
     ),
     error: false,
   };
+}
+
+export type InboxThreadsResult = { threads: MessageThread<InboxMessage>[]; error: boolean };
+
+// The Incoming list as one thread per question (SCRUM-144): each DM with the clarification replies that answer it.
+// If the clarification rounds can't be read, every DM is shown on its own, as before.
+export async function listInboundThreads(): Promise<InboxThreadsResult> {
+  const { messages, error } = await listInboundMessages();
+  if (error) return { threads: [], error: true };
+  if (messages.length === 0) return { threads: [], error: false };
+
+  const supabase = await createClient();
+  const { data, error: roundsError } = await supabase
+    .from("clarification_rounds")
+    .select("message_id, round, reply")
+    .in(
+      "message_id",
+      messages.map((message) => message.id),
+    )
+    .overrideTypes<{ message_id: string; round: number; reply: string | null }[], { merge: false }>();
+  if (roundsError) {
+    console.error("listInboundThreads rounds failed", { code: roundsError.code });
+  }
+
+  const rounds = (data ?? []).map((row) => ({ messageId: row.message_id, round: row.round, reply: row.reply }));
+  return { threads: groupMessagesByQuestion(messages, rounds), error: false };
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
