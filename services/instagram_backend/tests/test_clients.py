@@ -78,6 +78,19 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(job["creatorId"], "creator-id")
         self.assertEqual(job["v"], 1)
 
+    def test_store_qa_envelope_matches_the_ai_worker_contract(self):
+        sqs = FakeSqs()
+        SqsPublisher(sqs, "https://example.invalid/queue").publish_store_qa("question-id", "creator-id")
+        self.assertEqual(len(sqs.calls), 1)
+        self.assertEqual(sqs.calls[0]["QueueUrl"], "https://example.invalid/queue")
+        job = json.loads(sqs.calls[0]["MessageBody"])
+        self.assertEqual(set(job), {"v", "type", "id", "creatorId", "traceId", "createdAt", "payload"})
+        self.assertEqual((job["v"], job["type"], job["id"]), (1, "store_qa", "store_qa:question-id"))
+        self.assertEqual(job["creatorId"], "creator-id")
+        self.assertEqual(job["payload"], {"questionId": "question-id"})
+        self.assertTrue(job["traceId"])
+        self.assertTrue(job["createdAt"].endswith("+00:00"))
+
     def test_username_update_is_conditional_on_null(self):
         rest = FakeRest()
         updated = SupabaseRepository(rest).update_follower_username_if_missing("follower-id", "new_handle")

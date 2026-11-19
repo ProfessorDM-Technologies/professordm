@@ -20,6 +20,10 @@ _sqs = _session.client("sqs")
 _profile_ssm = _session.client("ssm", config=Config(
     connect_timeout=1, read_timeout=1,
     retries={"total_max_attempts": 1, "mode": "standard"}))
+# Short timeouts: the store_qa publish runs inside the 20 s send Lambda after the DM has gone out.
+_jobs_sqs = _session.client("sqs", config=Config(
+    connect_timeout=1, read_timeout=2,
+    retries={"total_max_attempts": 2, "mode": "standard"}))
 
 
 @lru_cache(maxsize=4)
@@ -64,11 +68,16 @@ def webhook_handler(event, context):
 def send_handler(event, context):
     try:
         rest = _supabase(timeout=3)
+        queue_url = os.environ.get("AI_JOBS_QUEUE_URL")
+        if not queue_url:
+            logger.warning("Instagram send config missing=AI_JOBS_QUEUE_URL")
+        jobs = SqsPublisher(_jobs_sqs, queue_url) if queue_url else None
         result = handle_send(event, auth=SupabaseAuth(rest),
                               repository=SupabaseRepository(rest),
                               profile_tokens=SsmProfileTokens(
                                   _profile_ssm, os.environ.get("SSM_INSTAGRAM_PROFILE_TOKEN_PREFIX")),
-                              graph=MetaGraph(os.environ.get("META_GRAPH_API_VERSION")))
+                              graph=MetaGraph(os.environ.get("META_GRAPH_API_VERSION")),
+                              jobs=jobs)
         logger.info("Instagram send method=%s status=%s", event.get("httpMethod"), result["statusCode"])
         return result
     except Exception as error:

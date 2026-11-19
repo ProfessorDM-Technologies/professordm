@@ -30,6 +30,7 @@ Resources:
           SSM_SUPABASE_KEY: /professordm/staging/supabase-service-role-key
           META_GRAPH_API_VERSION: !Ref GraphApiVersion
           SSM_INSTAGRAM_PROFILE_TOKEN_PREFIX: /professordm/staging/instagram-profile-tokens
+          AI_JOBS_QUEUE_URL: !Sub https://sqs.${AWS::Region}.amazonaws.com/${AWS::AccountId}/professordm-inbound
       Policies:
         - SSMParameterReadPolicy:
             ParameterName: professordm/staging/supabase-url
@@ -37,6 +38,8 @@ Resources:
             ParameterName: professordm/staging/supabase-service-role-key
         - SSMParameterReadPolicy:
             ParameterName: professordm/staging/instagram-profile-tokens/*
+        - SQSSendMessagePolicy:
+            QueueName: professordm-inbound
       Events:
         PostSend:
           Type: Api
