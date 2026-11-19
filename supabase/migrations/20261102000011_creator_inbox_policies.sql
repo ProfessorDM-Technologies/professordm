@@ -7,7 +7,7 @@
 -- SELECT only. Every write goes through the send API with the service role.
 -- Reuses is_admin() and current_creator_id() from migration 003.
 -- Safe to re-run: policies are dropped before they are created, publication adds are guarded.
--- Run in Supabase SQL Editor AFTER 20261030_010_match_knowledge.sql
+-- Run in Supabase SQL Editor AFTER 20261030000010_match_knowledge.sql
 -- =============================================================
 
 alter table safety_flags  enable row level security;

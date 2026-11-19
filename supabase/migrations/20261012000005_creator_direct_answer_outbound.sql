@@ -6,7 +6,7 @@
 -- Adds an INSERT policy so the signed-in creator can queue a 'pending' reply for their own
 -- contacts; the sender picks it up from there. The type check is unchanged.
 -- Safe to re-run: columns/indexes use if not exists, constraint and policies are dropped first.
--- Run in Supabase SQL Editor AFTER 20261011_004_creator_thread_policies.sql
+-- Run in Supabase SQL Editor AFTER 20261011000004_creator_thread_policies.sql
 -- =============================================================
 
 -- =============================================================
