@@ -84,7 +84,7 @@ def _record_status(repository, outbound_id, **values):
     return None
 
 
-def handle_send(event, *, auth, repository, profile_tokens, graph):
+def handle_send(event, *, auth, repository, profile_tokens, graph, jobs=None):
     if event.get("httpMethod") != "POST":
         return _response(405, {"error": "Method not allowed"})
     try:
@@ -120,7 +120,7 @@ def handle_send(event, *, auth, repository, profile_tokens, graph):
     if answer is not None:
         return _answer_question(answer, user_id=user_id, creator=creator, follower=follower, account=account,
                                 message_id=message_id, request_id=request_id, text=text,
-                                repository=repository, profile_tokens=profile_tokens, graph=graph)
+                                repository=repository, profile_tokens=profile_tokens, graph=graph, jobs=jobs)
 
     row = {"type": "answer", "draft_id": None, "status": "pending", "attempts": 0,
            "delivery_mode": "standard",
@@ -266,7 +266,8 @@ def _save_answer(repository, *, question, draft, user_id, creator_id, text, tags
     return draft_id
 
 
-def _deliver_answer(repository, profile_tokens, graph, *, question_id, outbound, account, follower, text):
+def _deliver_answer(repository, profile_tokens, graph, *, question_id, outbound, account, follower, text,
+                    creator_id=None, jobs=None):
     """Step 10 after the outbound row is reserved: call Meta once and record what happened."""
     from clients import RestError  # here, because clients imports this module
     outbound_id = outbound["id"]
@@ -316,6 +317,15 @@ def _deliver_answer(repository, profile_tokens, graph, *, question_id, outbound,
             _log_failure("question_delivered", error)
     if not delivered:
         logger.warning("Instagram send stage=question_delivered FAIL question_id=%s", question_id)
+    if delivered and jobs is not None:
+        # Ask the AI worker to save the Q&A. The answer has already reached the follower, so a
+        # failure here never changes the response; a missed row can be backfilled.
+        try:
+            jobs.publish_store_qa(question_id, creator_id)
+            logger.info("Instagram send stage=store_qa_publish PASS question_id=%s", question_id)
+        except Exception as error:
+            logger.warning("Instagram send stage=store_qa_publish FAIL question_id=%s error_type=%s",
+                           question_id, type(error).__name__)
     if not updated:
         return _response(500, {"id": outbound_id, "status": "pending",
                                "error": "Delivery confirmation unavailable. Check Instagram before retrying."})
@@ -324,7 +334,7 @@ def _deliver_answer(repository, profile_tokens, graph, *, question_id, outbound,
 
 
 def _answer_question(answer, *, user_id, creator, follower, account, message_id, request_id, text,
-                     repository, profile_tokens, graph):
+                     repository, profile_tokens, graph, jobs=None):
     question_id = answer["question_id"]
     existing = repository.get_outbound_by_client_request_id(request_id)
     if existing:
@@ -378,4 +388,4 @@ def _answer_question(answer, *, user_id, creator, follower, account, message_id,
         return _response(500, {"error": "Send processing failed"})
     logger.info("Instagram send stage=reservation PASS outbound_id=%s question_id=%s", outbound["id"], question_id)
     return _deliver_answer(repository, profile_tokens, graph, question_id=question_id, outbound=outbound,
-                           account=account, follower=follower, text=text)
+                           account=account, follower=follower, text=text, creator_id=creator["id"], jobs=jobs)

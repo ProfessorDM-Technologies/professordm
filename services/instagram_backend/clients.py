@@ -256,6 +256,15 @@ class SqsPublisher:
         self.sqs.send_message(QueueUrl=self.queue_url,
                               MessageBody=json.dumps(job, separators=(",", ":")))
 
+    def publish_store_qa(self, question_id, creator_id):
+        """Ask the AI worker to save a delivered answer as a private knowledge entry (its store_qa job)."""
+        job = {"v": 1, "type": "store_qa", "id": f"store_qa:{question_id}",
+               "creatorId": creator_id, "traceId": str(uuid4()),
+               "createdAt": datetime.now(timezone.utc).isoformat(),
+               "payload": {"questionId": question_id}}
+        self.sqs.send_message(QueueUrl=self.queue_url,
+                              MessageBody=json.dumps(job, separators=(",", ":")))
+
 
 class MetaGraph:
     def __init__(self, version):

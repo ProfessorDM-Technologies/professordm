@@ -180,6 +180,19 @@ class Graph:
         return f"meta-message-{len(self.sends)}"
 
 
+class Jobs:
+    """Records store_qa publishes; set error to make the queue call fail."""
+
+    def __init__(self):
+        self.calls = []
+        self.error = None
+
+    def publish_store_qa(self, question_id, creator_id):
+        self.calls.append((question_id, creator_id))
+        if self.error:
+            raise self.error
+
+
 def body(**fields):
     data = {"inbound_message_id": MESSAGE_ID, "text": ANSWER, "client_request_id": REQUEST_ID,
             "question_id": QUESTION_ID, "tags": [TAG], "reviewed_flag_ids": []}
@@ -189,7 +202,7 @@ def body(**fields):
 
 class AnswerTests(unittest.TestCase):
     def setUp(self):
-        self.store, self.graph, self.tokens = Store(), Graph(), Tokens()
+        self.store, self.graph, self.tokens, self.jobs = Store(), Graph(), Tokens(), Jobs()
         self.logs = []
         handler = logging.Handler(level=logging.DEBUG)
         handler.emit = lambda record: self.logs.append(record.getMessage())
@@ -201,7 +214,8 @@ class AnswerTests(unittest.TestCase):
 
     def send(self, **fields):
         event = {"httpMethod": "POST", "headers": {"Authorization": "Bearer user-jwt"}, "body": json.dumps(body(**fields))}
-        result = handle_send(event, auth=Auth(), repository=self.store, profile_tokens=self.tokens, graph=self.graph)
+        result = handle_send(event, auth=Auth(), repository=self.store, profile_tokens=self.tokens, graph=self.graph,
+                             jobs=self.jobs)
         self.assertNotIn("PRIVATE", result["body"])
         return result["statusCode"], json.loads(result["body"])
 
@@ -462,6 +476,58 @@ class AnswerTests(unittest.TestCase):
         self.send(client_request_id=RETRY_ID)
         self.assertTrue(self.logs)
         joined = "\n".join(self.logs)
+        self.assertNotIn(TAG.lower(), joined)
+
+
+    # store_qa trigger: after delivery, ask the AI worker to save the Q&A
+
+    def test_delivered_answer_publishes_one_store_qa_job(self):
+        status, data = self.send()
+        self.assertEqual((status, data["status"]), (200, "sent"))
+        self.assertEqual(self.jobs.calls, [(QUESTION_ID, CREATOR_ID)])
+        self.assertIn(f"Instagram send stage=store_qa_publish PASS question_id={QUESTION_ID}", self.logs)
+
+    def test_publish_failure_keeps_the_same_success_response(self):
+        status, expected = self.send()
+        self.setUp()
+        self.jobs.error = RuntimeError("queue unavailable")
+        self.assertEqual(self.send(), (status, {**expected, "id": next(iter(self.store.outbound))}))
+        self.assertEqual(self.question()["status"], "delivered")
+        self.assertEqual(len(self.jobs.calls), 1)
+        self.assertIn(f"Instagram send stage=store_qa_publish FAIL question_id={QUESTION_ID} "
+                      "error_type=RuntimeError", self.logs)
+
+    def test_no_publish_when_delivered_update_fails(self):
+        self.store.fail["question_delivered"] = RestError(503, "unavailable")
+        self.assertEqual(self.send()[0], 200)
+        self.assertEqual(self.jobs.calls, [])
+
+    def test_no_publish_when_meta_send_fails(self):
+        self.graph.send_error = RestError(400, 10, "OAuthException")
+        self.assertEqual(self.send()[0], 502)
+        self.graph.send_error = URLError("timeout")
+        self.question()["status"] = "awaiting_creator"
+        self.assertEqual(self.send(client_request_id=RETRY_ID)[0], 500)
+        self.assertEqual(self.jobs.calls, [])
+
+    def test_send_works_without_a_jobs_publisher(self):
+        self.jobs = None
+        status, data = self.send()
+        self.assertEqual((status, data["status"]), (200, "sent"))
+        self.assertEqual(self.question()["status"], "delivered")
+
+    def test_manual_reply_never_publishes(self):
+        self.assertEqual(self.send(question_id=..., tags=..., reviewed_flag_ids=..., text="A manual reply")[0], 200)
+        self.assertEqual(self.jobs.calls, [])
+
+    def test_store_qa_logs_hold_no_answer_text(self):
+        self.send()
+        self.setUp()
+        self.jobs.error = RuntimeError(ANSWER)
+        self.send()
+        joined = "\n".join(self.logs)
+        self.assertIn("store_qa_publish", joined)
+        self.assertNotIn(ANSWER, joined)
         self.assertNotIn(TAG.lower(), joined)
 
 
