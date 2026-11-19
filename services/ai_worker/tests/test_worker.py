@@ -511,7 +511,7 @@ class TriageTests(WorkerCase):
         self.db.add_message(received_at=NOW)
         minutes = lambda n: NOW - timedelta(minutes=n)  # noqa: E731
         self.db.add_message("m-old", text="too old", received_at=minutes(31))
-        self.db.add_message("m-second", text="second", received_at=minutes(5), status="ready_for_question")
+        self.db.add_message("m-second", text="second", received_at=minutes(5))
         self.db.add_message("m-first", text="first", received_at=minutes(20))
         self.db.add_message("m-blocked", text="blocked one", received_at=minutes(6), status="blocked")
         self.db.add_message("m-closed", text="closed one", received_at=minutes(7), status="closed_no_action")
@@ -523,6 +523,16 @@ class TriageTests(WorkerCase):
         self.run_job()
         self.assertEqual(self.triage.call_args.args[:2], (DM_TEXT, ["first", "second"]))
         self.assertNotIn("flagged one", self.triage.call_args.args[1])
+
+    def test_11b_recent_messages_skip_dm_that_already_became_a_question(self):
+        # Staging Nov 19: an answered snake plant DM was joined into the next
+        # pothos question 4 minutes later, so one draft answered both.
+        self.db.add_message(received_at=NOW)
+        self.db.add_message("m-answered", text="answered earlier", received_at=NOW - timedelta(minutes=4),
+                            status="ready_for_question")
+        self.db.add_message("m-part", text="first part", received_at=NOW - timedelta(minutes=2))
+        self.run_job()
+        self.assertEqual(self.triage.call_args.args[:2], (DM_TEXT, ["first part"]))
 
 
 class StubOffTests(WorkerCase):

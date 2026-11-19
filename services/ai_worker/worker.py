@@ -64,7 +64,9 @@ OUTBOUND_NS = uuid.UUID("f73729bd-0dac-45c2-9d2a-362857398e82")
 # The window of earlier DMs passed to triage, so a question split across
 # several DMs is read as one (README "For Akshay" item 3).
 RECENT_WINDOW = timedelta(minutes=30)
-RECENT_SKIP_STATUSES = ("blocked", "closed_no_action")
+# ready_for_question: that DM already became its own question, so joining it
+# again would make the next question repeat an answered one.
+RECENT_SKIP_STATUSES = ("blocked", "closed_no_action", "ready_for_question")
 
 # A message or draft goes to the creator after this many AI outages. Matches
 # the queue's maxReceiveCount, so it is decided before the job reaches the DLQ.
@@ -245,7 +247,8 @@ def _recent(run, message):
 
     Returns:
         list[str]: The follower's other DMs from the 30 minutes before it,
-        oldest first, without blocked, closed, flagged or empty ones.
+        oldest first, without blocked, closed, flagged or empty ones, or ones
+        that already became a question.
         Clarification replies are closed_no_action, so they are left out too.
         Flagged (safety_concern) messages are still held for the creator, but
         are not used as background for later messages.
