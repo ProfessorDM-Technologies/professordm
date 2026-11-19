@@ -283,6 +283,7 @@ Call **`reassess`** if the follower has an open clarification: a message in `awa
 Use the same follower's `inbound_messages.text` with `received_at` in the 30 minutes before this message, oldest first. For `reassess`, the window is relative to the original. Leave out:
 - the message itself
 - `blocked` messages
+- messages that already became a question (`ready_for_question`)
 - messages with no text
 - clarification replies, which are already in `rounds`
 
