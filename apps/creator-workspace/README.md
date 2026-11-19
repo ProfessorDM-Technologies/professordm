@@ -60,7 +60,7 @@ Code: `src/lib/inbox/` (`queries.ts` reads, `thread.ts` merges a conversation, `
 
 `ig_followers` holds everyone who has DMed the creator, not only people who follow them.
 
-**Requires migrations** `supabase/migrations/20261011_003_creator_read_policies.sql`, `..._004_creator_thread_policies.sql` (select-only RLS: a creator reads their own contacts' data, admins read all), `20261012_005_creator_direct_answer_outbound.sql` (reply columns + insert policy), and `20261014_006_oct16_realtime_publication.sql` (live inbound/outbound updates).
+**Requires migrations** `supabase/migrations/20261011000003_creator_read_policies.sql`, `20261011000004_creator_thread_policies.sql` (select-only RLS: a creator reads their own contacts' data, admins read all), `20261012000005_creator_direct_answer_outbound.sql` (reply columns + insert policy), and `20261014000006_oct16_realtime_publication.sql` (live inbound/outbound updates).
 
 ## Replying (SCRUM-73)
 
@@ -69,7 +69,7 @@ The conversation page has a reply box (`components/inbox/reply-box.tsx`). Send c
 - Empty or whitespace-only replies are blocked in the form, the action (`lib/inbox/reply.ts`) and a database check.
 - Double clicks: each Send press carries a `client_request_id` (unique in the database). A repeat returns the existing delivery state without another Meta send.
 - This is the manual reply. AI-drafted answers to questions go through the answer workspace (below).
-- The backend-only Vault RPC in migration `20261014_007_meta_page_token_rpc.sql` resolves the linked page token. The browser never receives the token or Supabase service-role key.
+- The backend-only Vault RPC in migration `20261014000007_meta_page_token_rpc.sql` resolves the linked page token. The browser never receives the token or Supabase service-role key.
 
 **Known limitation:** only typed replies use the new `follower_id`, `text` and `created_at` columns. Other sends without a draft (Ask link, confirmation, status) still don't fill them, so they can't be shown in a conversation, and AI-drafted answers are placed at `drafts.approved_at`, not the actual send time.
 
@@ -92,7 +92,7 @@ Spec: `docs/plans/creator-inbox-spec.md` (Part C). After the AI pipeline drafts 
 
 **Request ids.** Each send press carries a `client_request_id`. The action returns the id for the next press (`nextRequestId`): a new one after any answer that proves nothing is in flight (success, any 4xx, 502 `delivery_failed`), the same one when the outcome is unknown (network error, timeout, other 5xx, `pending`), so a retry can never send a second DM.
 
-**Requires** migration `supabase/migrations/20261102_011_creator_inbox_policies.sql` (select policies on `safety_flags`, `tags`, `question_tags`; Realtime on `questions` and `drafts`) and the send API extension (spec Part B) deployed. Without Part B, Send returns an error and the creator's text stays in the composer.
+**Requires** migration `supabase/migrations/20261102000011_creator_inbox_policies.sql` (select policies on `safety_flags`, `tags`, `question_tags`; Realtime on `questions` and `drafts`) and the send API extension (spec Part B) deployed. Without Part B, Send returns an error and the creator's text stays in the composer.
 
 **Not logged:** DM, draft and answer text, tags and citations. Reads log the Supabase error code only.
 
@@ -100,12 +100,12 @@ Spec: `docs/plans/creator-inbox-spec.md` (Part C). After the AI pipeline drafts 
 
 ## Deciding on DMs in Moderation (SCRUM-140)
 
-Each DM in "Needs your decision" has **I replied** and **No reply needed**. Either one calls the `decideMessage` server action, which calls the database function `record_message_decision` (migration `supabase/migrations/20261117_012_message_decisions.sql`) with the creator's session. In one transaction it checks the DM is hers (or the caller is an admin), moves it from `creator_decision` to `closed_no_action`, marks its open message flags `creator_reviewed`, and writes an `audit_log` row (`action = 'message.decided'`, the decision and flag count, no DM text). A DM already decided (double click, second tab) is left as is. The row leaves the list and the Moderation count drops. Turning a DM into a paid question is not part of this. Spec: `docs/plans/scrum-140-moderation-decisions-spec.md`.
+Each DM in "Needs your decision" has **I replied** and **No reply needed**. Either one calls the `decideMessage` server action, which calls the database function `record_message_decision` (migration `supabase/migrations/20261117000012_message_decisions.sql`) with the creator's session. In one transaction it checks the DM is hers (or the caller is an admin), moves it from `creator_decision` to `closed_no_action`, marks its open message flags `creator_reviewed`, and writes an `audit_log` row (`action = 'message.decided'`, the decision and flag count, no DM text). A DM already decided (double click, second tab) is left as is. The row leaves the list and the Moderation count drops. Turning a DM into a paid question is not part of this. Spec: `docs/plans/scrum-140-moderation-decisions-spec.md`.
 
 **Requires** migration 012 run in the Supabase SQL editor. Without it, the buttons show "Couldn't save your decision. Try again."
 
 ## Publishing answers (SCRUM-143)
 
-`/knowledge` lists the creator's saved answers: `knowledge_entries` with `source = 'question'`, read through the RLS policy from migration 008. They are newest delivered first, then entries without a question by title. **Publish** / **Make private** calls the `setEntryPublished` server action, which calls the database function `set_knowledge_entry_published` (migration `supabase/migrations/20261119_014_publish_knowledge_entries.sql`) with the creator's session. In one transaction it checks the entry is her answer entry (or the caller is an admin), sets `published` and writes an `audit_log` row (`knowledge.published` / `knowledge.unpublished`, no answer text). The consumer Knowledge app shows only published entries. Rows are created by the AI worker's store job after delivery (private by default), so they appear here with no change. Spec: `docs/plans/scrum-143-publish-answers-spec.md`.
+`/knowledge` lists the creator's saved answers: `knowledge_entries` with `source = 'question'`, read through the RLS policy from migration 008. They are newest delivered first, then entries without a question by title. **Publish** / **Make private** calls the `setEntryPublished` server action, which calls the database function `set_knowledge_entry_published` (migration `supabase/migrations/20261119000014_publish_knowledge_entries.sql`) with the creator's session. In one transaction it checks the entry is her answer entry (or the caller is an admin), sets `published` and writes an `audit_log` row (`knowledge.published` / `knowledge.unpublished`, no answer text). The consumer Knowledge app shows only published entries. Rows are created by the AI worker's store job after delivery (private by default), so they appear here with no change. Spec: `docs/plans/scrum-143-publish-answers-spec.md`.
 
 **Requires** migration 014 run in the Supabase SQL editor. Without it, the button shows "Couldn't save. Try again."

@@ -144,7 +144,7 @@ in section 6 except "flagged question"; scenario 6 in section 10 creates one.
 | `src/app/globals.css` | Only if needed: `--color-pdm-success`, `--color-pdm-danger`, one `@keyframes` for the drafting shimmer, and a `prefers-reduced-motion` rule |
 | `apps/creator-workspace/README.md` | Routes table + "Answering questions" section |
 
-### Part A: Karthik (`supabase/migrations/20261102_011_creator_inbox_policies.sql`)
+### Part A: Karthik (`supabase/migrations/20261102000011_creator_inbox_policies.sql`)
 
 1. `safety_flags`: enable RLS; **select** policy for the creator: flag on a message whose follower belongs to
    `current_creator_id()`, or on a draft whose question belongs to it; admins read all.
