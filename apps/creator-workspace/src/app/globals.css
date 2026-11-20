@@ -6,6 +6,8 @@
 /* Brand tokens (DESIGN.md). Values live on <html> so one data-theme switch re-themes every pdm-* utility. */
 :root {
   color-scheme: light;
+  /* Spring with a small overshoot, for the glass lens and the shrinking bar. */
+  --ease-spring: linear(0, 0.009, 0.035 2.1%, 0.141 4.4%, 0.723 12.9%, 0.938 16.7%, 1.017 19.4%, 1.067, 1.099 24.3%, 1.108 26%, 1.104, 1.088 30.6%, 1.03 37.6%, 1.007 41.3%, 0.991 46.4%, 0.996 58.1%, 1.001 67.5%, 1);
   --pdm-surface: #f5f8f9;
   --pdm-panel: #ffffff;
   --pdm-ink: #12232e;
@@ -27,14 +29,16 @@
   --pdm-cyan-ink: #065a66;
   --pdm-gold-tint: #fbebd8;
   --pdm-gold-ink: #8a4b0b;
-  --pdm-glass: linear-gradient(180deg, rgb(255 255 255 / 0.6), rgb(255 255 255 / 0.36));
-  --pdm-glass-rim: rgb(255 255 255 / 0.6);
+  --pdm-glass: linear-gradient(180deg, rgb(255 255 255 / 0.16), rgb(255 255 255 / 0.06));
+  --pdm-glass-rim: rgb(255 255 255 / 0.5);
   --pdm-glass-line: rgb(4 59 101 / 0.08);
   --pdm-glass-highlight: rgb(255 255 255 / 0.95);
   --pdm-glass-lowlight: rgb(255 255 255 / 0.4);
-  --pdm-glass-sheen: rgb(255 255 255 / 0.6);
-  --pdm-glass-drop: rgb(4 59 101 / 0.3);
-  --pdm-glass-active: rgb(255 255 255 / 0.85);
+  --pdm-glass-sheen: rgb(255 255 255 / 0.16);
+  --pdm-glass-drop: rgb(4 59 101 / 0.22);
+  --pdm-glass-active: rgb(255 255 255 / 0.6);
+  --pdm-glass-lens: linear-gradient(180deg, rgb(255 255 255 / 0.75), rgb(255 255 255 / 0.5));
+  --pdm-glass-lens-rim: rgb(255 255 255 / 0.9);
   --pdm-shadow: 0 1px 2px rgb(18 35 46 / 0.06), 0 8px 24px -8px rgb(4 59 101 / 0.18);
 }
 
@@ -61,14 +65,16 @@
   --pdm-cyan-ink: #7fe3f0;
   --pdm-gold-tint: #3a2a14;
   --pdm-gold-ink: #f2b46a;
-  --pdm-glass: linear-gradient(180deg, rgb(38 64 79 / 0.55), rgb(21 41 54 / 0.42));
+  --pdm-glass: linear-gradient(180deg, rgb(38 64 79 / 0.3), rgb(21 41 54 / 0.18));
   --pdm-glass-rim: rgb(255 255 255 / 0.14);
   --pdm-glass-line: rgb(0 0 0 / 0.25);
   --pdm-glass-highlight: rgb(255 255 255 / 0.22);
   --pdm-glass-lowlight: rgb(255 255 255 / 0.06);
-  --pdm-glass-sheen: rgb(255 255 255 / 0.12);
+  --pdm-glass-sheen: rgb(255 255 255 / 0.08);
   --pdm-glass-drop: rgb(0 0 0 / 0.6);
-  --pdm-glass-active: rgb(255 255 255 / 0.14);
+  --pdm-glass-active: rgb(255 255 255 / 0.12);
+  --pdm-glass-lens: linear-gradient(180deg, rgb(255 255 255 / 0.2), rgb(255 255 255 / 0.1));
+  --pdm-glass-lens-rim: rgb(255 255 255 / 0.22);
   --pdm-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 10px 28px -8px rgb(0 0 0 / 0.55);
 }
 
@@ -157,8 +163,8 @@ h1 {
     inset 0 0 0 0.5px var(--pdm-glass-line),
     0 12px 32px -12px var(--pdm-glass-drop),
     0 2px 8px -2px rgb(18 35 46 / 0.08);
-  -webkit-backdrop-filter: blur(22px) saturate(190%) brightness(1.04);
-  backdrop-filter: blur(22px) saturate(190%) brightness(1.04);
+  -webkit-backdrop-filter: blur(8px) saturate(180%);
+  backdrop-filter: blur(8px) saturate(180%);
 }
 
 .pdm-glass::before {
@@ -292,4 +298,51 @@ a.underline:hover {
   text-decoration-color: currentColor;
   text-decoration-thickness: 2px;
   text-underline-offset: 6px;
+}
+
+/*
+ * Selection lens (iOS 26 tab bar): a brighter glass bubble that springs between items, stretches while it travels
+ * and swells under a press. Position and size are set from workspace-nav.tsx.
+ */
+.pdm-lens {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  border-radius: 9999px;
+  pointer-events: none;
+  background: var(--pdm-glass-lens);
+  border: 1px solid var(--pdm-glass-lens-rim);
+  box-shadow:
+    inset 0 1px 0.5px var(--pdm-glass-highlight),
+    0 1px 3px rgb(4 59 101 / 0.12),
+    0 6px 16px -6px rgb(4 59 101 / 0.25);
+  transform-origin: center;
+  transition:
+    scale 420ms var(--ease-spring),
+    opacity 200ms var(--ease-pdm);
+}
+
+.pdm-lens[data-pressed="true"] {
+  scale: 1.08 1.12;
+}
+
+/* Shrinks while scrolling down, springs back on scroll up, like the iOS 26 tab bar. */
+.pdm-shrink {
+  transition: scale 520ms var(--ease-spring), translate 520ms var(--ease-spring);
+}
+
+.pdm-shrink[data-compact="true"] {
+  scale: 0.9;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pdm-lens,
+  .pdm-shrink {
+    transition: none;
+  }
+  .pdm-lens[data-pressed="true"],
+  .pdm-shrink[data-compact="true"] {
+    scale: none;
+  }
 }
