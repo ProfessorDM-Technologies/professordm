@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { cache } from "react";
 import { Avatar } from "@/components/inbox/avatar";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { RealtimeRefresh } from "@/components/inbox/realtime-refresh";
@@ -12,9 +13,15 @@ import { outboundStatusLabel, outboundTypeLabel } from "@/lib/inbox/labels";
 import { getThread, listInboundThreads } from "@/lib/inbox/queries";
 import type { ThreadItem } from "@/lib/inbox/thread";
 
+// One read per request, shared by the title and the page.
+const loadThread = cache(getThread);
+
 export async function generateMetadata({ params }: PageProps<"/inbox/[id]">): Promise<Metadata> {
   const { id } = await params;
-  return { title: "Conversation", alternates: { canonical: `/inbox/${id}` } };
+  const thread = await loadThread(id);
+  if (!thread.found) return { title: "Page not found" };
+  const name = thread.follower.username ? `@${thread.follower.username}` : "Conversation";
+  return { title: name, alternates: { canonical: `/inbox/${id}` } };
 }
 
 function itemCaption(item: ThreadItem) {
@@ -57,7 +64,7 @@ function Bubble({ item }: { item: ThreadItem }) {
 // a fixed height, so only the message list scrolls and the composer stays put. Phones show the conversation alone.
 export default async function ConversationPage({ params }: PageProps<"/inbox/[id]">) {
   const { id } = await params;
-  const [thread, inbound] = await Promise.all([getThread(id), listInboundThreads()]);
+  const [thread, inbound] = await Promise.all([loadThread(id), listInboundThreads()]);
 
   if (!thread.found) {
     notFound();
