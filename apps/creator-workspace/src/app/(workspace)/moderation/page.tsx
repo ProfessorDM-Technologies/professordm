@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 
 function LoadError({ children }: { children: string }) {
   return (
-    <p role="alert" className="rounded-lg border border-pdm-danger-line bg-pdm-danger-bg p-4 text-sm font-medium text-pdm-danger-ink">
+    <p role="alert" className="rounded-2xl border border-pdm-danger-line bg-pdm-danger-bg p-4 text-sm font-medium text-pdm-danger-ink">
       {children}
     </p>
   );
@@ -43,7 +43,7 @@ export default async function ModerationPage() {
               <li key={question.id}>
                 <Link
                   href={`/inbox/question/${question.id}`}
-                  className="block space-y-2 rounded-lg border border-pdm-border bg-pdm-panel p-4 hover:border-pdm-accent"
+                  className="pdm-lift block space-y-2 rounded-2xl border border-pdm-border bg-pdm-panel p-4 hover:border-pdm-accent"
                 >
                   <p className="font-semibold">
                     {question.follower?.username ? `@${question.follower.username}` : "Unknown sender"}
@@ -58,7 +58,7 @@ export default async function ModerationPage() {
                         </li>
                       ))}
                     </ul>
-                    <span className="inline-flex min-h-11 items-center rounded-lg bg-pdm-accent px-4 text-sm font-semibold text-pdm-on-accent">
+                    <span className="pdm-press inline-flex min-h-11 items-center rounded-full bg-pdm-accent px-4 text-sm font-semibold text-pdm-on-accent">
                       Review
                     </span>
                   </div>
@@ -77,7 +77,7 @@ export default async function ModerationPage() {
         ) : (
           <ul className="space-y-3">
             {decisions.messages.map((message) => (
-              <li key={message.id} className="space-y-3 rounded-lg border border-pdm-border bg-pdm-panel p-4">
+              <li key={message.id} className="space-y-3 rounded-2xl border border-pdm-border bg-pdm-panel p-4">
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                     <p className="font-semibold">

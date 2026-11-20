@@ -78,7 +78,7 @@ export default async function ConversationPage({ params }: PageProps<"/inbox/[id
       </div>
 
       {thread.error ? (
-        <p role="alert" className="rounded-lg border border-pdm-danger-line bg-pdm-danger-bg p-4 text-sm font-medium text-pdm-danger-ink">
+        <p role="alert" className="rounded-2xl border border-pdm-danger-line bg-pdm-danger-bg p-4 text-sm font-medium text-pdm-danger-ink">
           Part of this conversation couldn&apos;t be loaded. Try again.
         </p>
       ) : null}

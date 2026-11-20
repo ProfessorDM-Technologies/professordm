@@ -23,7 +23,7 @@ export function ReplyBox({ inboundMessageId, recipient }: { inboundMessageId: st
   const empty = text.trim().length === 0;
 
   return (
-    <form action={formAction} className="space-y-3 rounded-lg border border-pdm-border bg-pdm-panel p-4">
+    <form action={formAction} className="space-y-3 rounded-2xl border border-pdm-border bg-pdm-panel p-4">
       <input type="hidden" name="inbound_message_id" value={inboundMessageId} />
       <input type="hidden" name="client_request_id" value={requestId} />
 
@@ -40,7 +40,7 @@ export function ReplyBox({ inboundMessageId, recipient }: { inboundMessageId: st
         maxLength={MAX_REPLY_LENGTH}
         aria-invalid={state.status === "error" ? true : undefined}
         aria-describedby="reply-status"
-        className="block w-full rounded-lg border border-pdm-border bg-pdm-panel p-3 text-base"
+        className="block w-full rounded-xl border border-pdm-border bg-pdm-panel p-3 text-base transition-colors focus:border-pdm-accent"
       />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -59,7 +59,7 @@ export function ReplyBox({ inboundMessageId, recipient }: { inboundMessageId: st
         <button
           type="submit"
           disabled={pending || empty}
-          className="min-h-11 rounded-lg bg-pdm-accent px-5 font-semibold text-pdm-on-accent hover:bg-pdm-accent-strong disabled:opacity-60"
+          className="pdm-press min-h-11 rounded-full bg-pdm-accent px-5 font-semibold text-pdm-on-accent hover:bg-pdm-accent-strong disabled:opacity-60"
         >
           {pending ? "Sending…" : state.status === "pending" ? "Check status" : "Send"}
         </button>

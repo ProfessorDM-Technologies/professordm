@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 
 function EntryCard({ entry }: { entry: AnswerEntry }) {
   return (
-    <li className="space-y-3 rounded-lg border border-pdm-border bg-pdm-panel p-4">
+    <li className="space-y-3 rounded-2xl border border-pdm-border bg-pdm-panel p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <p className="font-semibold">{entryTitle(entry)}</p>
         <span
@@ -52,7 +52,7 @@ export default async function KnowledgePage() {
           Answers you send are saved here as private entries. Publish the ones you want in the Knowledge app.
         </p>
         {error ? (
-          <p role="alert" className="rounded-lg border border-pdm-danger-line bg-pdm-danger-bg p-4 text-sm font-medium text-pdm-danger-ink">
+          <p role="alert" className="rounded-2xl border border-pdm-danger-line bg-pdm-danger-bg p-4 text-sm font-medium text-pdm-danger-ink">
             Couldn&apos;t load your answers. Try again.
           </p>
         ) : entries.length === 0 ? (

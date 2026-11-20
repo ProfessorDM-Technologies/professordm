@@ -20,7 +20,7 @@ export function DecisionButtons({ messageId }: { messageId: string }) {
           name="decision"
           value="replied"
           disabled={locked}
-          className="min-h-11 rounded-lg bg-pdm-accent px-4 text-sm font-semibold text-pdm-on-accent hover:bg-pdm-accent-strong disabled:opacity-60"
+          className="pdm-press min-h-11 rounded-full bg-pdm-accent px-4 text-sm font-semibold text-pdm-on-accent hover:bg-pdm-accent-strong disabled:opacity-60"
         >
           I replied
         </button>
@@ -29,7 +29,7 @@ export function DecisionButtons({ messageId }: { messageId: string }) {
           name="decision"
           value="no_reply_needed"
           disabled={locked}
-          className="min-h-11 rounded-lg border border-pdm-border bg-pdm-panel px-4 text-sm font-medium hover:bg-pdm-surface disabled:opacity-60"
+          className="pdm-press min-h-11 rounded-full border border-pdm-border bg-pdm-panel px-4 text-sm font-semibold hover:border-pdm-accent hover:bg-pdm-subtle disabled:opacity-60"
         >
           No reply needed
         </button>

@@ -23,10 +23,20 @@ export default function BankPage() {
 
       <PageSection id="balance" title="Balance">
         <ul className="grid gap-3 sm:grid-cols-3">
-          {BALANCE_TILES.map((tile) => (
-            <li key={tile.label} className="space-y-1 rounded-lg border border-pdm-border bg-pdm-panel p-4">
-              <p className="text-sm font-medium text-pdm-muted">{tile.label}</p>
-              <p className="text-2xl font-semibold" aria-label={`${tile.label}: not available yet`}>
+          {BALANCE_TILES.map((tile, index) => (
+            <li
+              key={tile.label}
+              className={`relative space-y-1 overflow-hidden rounded-2xl border bg-pdm-panel p-5 ${
+                index === 0 ? "border-pdm-gold/50" : "border-pdm-border"
+              }`}
+            >
+              {/* Gold is the money colour (brand §03); only the withdrawable figure gets it. */}
+              {index === 0 ? <span aria-hidden="true" className="absolute inset-x-0 top-0 h-1 bg-pdm-gold" /> : null}
+              <p className="text-sm font-semibold text-pdm-muted">{tile.label}</p>
+              <p
+                className={`font-display text-3xl font-extrabold tabular-nums ${index === 0 ? "text-pdm-gold-ink" : "text-pdm-heading"}`}
+                aria-label={`${tile.label}: not available yet`}
+              >
                 —
               </p>
               <p className="text-xs text-pdm-muted">{tile.note}</p>
@@ -47,7 +57,7 @@ export default function BankPage() {
           type="button"
           disabled
           aria-describedby="withdraw-note"
-          className="rounded-lg bg-pdm-accent px-4 py-3 font-semibold text-pdm-on-accent disabled:cursor-not-allowed disabled:opacity-60"
+          className="pdm-press rounded-full bg-pdm-accent px-4 py-3 font-semibold text-pdm-on-accent disabled:cursor-not-allowed disabled:opacity-60"
         >
           Withdraw Available Balance
         </button>

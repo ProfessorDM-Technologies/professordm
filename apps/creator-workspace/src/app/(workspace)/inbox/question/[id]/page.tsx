@@ -83,7 +83,7 @@ export default async function AnswerQuestionPage({ params }: PageProps<"/inbox/q
       </div>
 
       {error ? (
-        <p role="alert" className="rounded-lg border border-pdm-danger-line bg-pdm-danger-bg p-4 text-sm font-medium text-pdm-danger-ink">
+        <p role="alert" className="rounded-2xl border border-pdm-danger-line bg-pdm-danger-bg p-4 text-sm font-medium text-pdm-danger-ink">
           Part of this question couldn&apos;t be loaded. Refresh before you answer.
         </p>
       ) : null}
@@ -103,7 +103,7 @@ export default async function AnswerQuestionPage({ params }: PageProps<"/inbox/q
         nextQuestionId={nextQuestion?.id ?? null}
         context={
           <>
-            <section aria-labelledby="question-heading" className="space-y-3 rounded-lg border border-pdm-border bg-pdm-panel p-4">
+            <section aria-labelledby="question-heading" className="space-y-3 rounded-2xl border border-pdm-border bg-pdm-panel p-4">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <h2 id="question-heading" className="font-semibold">
                   The question

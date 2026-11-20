@@ -54,7 +54,7 @@ export function QuestionCard({ question, now }: { question: QueueQuestion; now: 
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-xs text-pdm-muted">{[state.hint, ...footerParts(question)].join(" · ")}</p>
         {state.action ? (
-          <span className="inline-flex min-h-11 items-center rounded-lg bg-pdm-accent px-4 text-sm font-semibold text-pdm-on-accent group-hover/card:bg-pdm-accent-strong">
+          <span className="pdm-press inline-flex min-h-11 items-center rounded-full bg-pdm-accent px-4 text-sm font-semibold text-pdm-on-accent group-hover/card:bg-pdm-accent-strong">
             {state.action}
           </span>
         ) : null}
@@ -65,11 +65,11 @@ export function QuestionCard({ question, now }: { question: QueueQuestion; now: 
   return (
     <li>
       {drafting ? (
-        <div className="space-y-2 rounded-lg border border-pdm-border bg-pdm-panel p-4">{body}</div>
+        <div className="space-y-2 rounded-2xl border border-pdm-border bg-pdm-panel p-4">{body}</div>
       ) : (
         <Link
           href={`/inbox/question/${question.id}`}
-          className="group/card block space-y-2 rounded-lg border border-pdm-border bg-pdm-panel p-4 hover:border-pdm-accent"
+          className="pdm-lift group/card block space-y-2 rounded-2xl border border-pdm-border bg-pdm-panel p-4 hover:border-pdm-accent"
         >
           {body}
         </Link>

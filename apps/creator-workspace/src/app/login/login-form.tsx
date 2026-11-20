@@ -23,7 +23,7 @@ export function LoginForm({ next, initialError }: { next: string; initialError: 
           required
           aria-invalid={state.error ? true : undefined}
           aria-describedby={state.error ? "login-error" : undefined}
-          className="block w-full rounded-lg border border-pdm-border bg-pdm-panel p-3 text-base"
+          className="block w-full rounded-xl border border-pdm-border bg-pdm-panel p-3 text-base transition-colors focus:border-pdm-accent"
         />
       </div>
 
@@ -39,7 +39,7 @@ export function LoginForm({ next, initialError }: { next: string; initialError: 
           required
           aria-invalid={state.error ? true : undefined}
           aria-describedby={state.error ? "login-error" : undefined}
-          className="block w-full rounded-lg border border-pdm-border bg-pdm-panel p-3 text-base"
+          className="block w-full rounded-xl border border-pdm-border bg-pdm-panel p-3 text-base transition-colors focus:border-pdm-accent"
         />
       </div>
 
@@ -54,7 +54,7 @@ export function LoginForm({ next, initialError }: { next: string; initialError: 
       <button
         type="submit"
         disabled={pending}
-        className="w-full rounded-lg bg-pdm-accent px-4 py-3 font-semibold text-pdm-on-accent hover:bg-pdm-accent-strong disabled:opacity-60"
+        className="pdm-press w-full rounded-full bg-pdm-accent px-4 py-3 font-semibold text-pdm-on-accent hover:bg-pdm-accent-strong disabled:opacity-60"
       >
         {pending ? "Signing in…" : "Sign in"}
       </button>

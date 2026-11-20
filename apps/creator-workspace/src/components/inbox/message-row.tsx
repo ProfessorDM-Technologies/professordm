@@ -5,7 +5,7 @@ import type { MessageThread } from "@/lib/inbox/message-threads";
 import type { InboxMessage } from "@/lib/inbox/queries";
 
 const CATEGORY_STYLES: Record<string, string> = {
-  expert_question: "bg-pdm-tint text-pdm-accent-strong",
+  expert_question: "bg-pdm-cyan-tint text-pdm-cyan-ink",
   safety_concern: "bg-pdm-danger-bg text-pdm-danger-ink",
   spam_irrelevant: "bg-pdm-subtle text-pdm-muted",
 };
@@ -23,7 +23,7 @@ export function MessageRow({ thread }: { thread: MessageThread<InboxMessage> }) 
     <li>
       <Link
         href={`/inbox/${message.follower.id}`}
-        className="block space-y-2 rounded-lg border border-pdm-border bg-pdm-panel p-4 hover:border-pdm-accent"
+        className="pdm-lift block space-y-2 rounded-2xl border border-pdm-border bg-pdm-panel p-4 hover:border-pdm-accent"
       >
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <p className="font-semibold">{username}</p>

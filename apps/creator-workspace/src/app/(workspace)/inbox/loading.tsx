@@ -11,7 +11,7 @@ export default function InboxLoading() {
       </div>
       <ul aria-hidden="true" className="space-y-3">
         {[0, 1, 2].map((key) => (
-          <li key={key} className="space-y-3 rounded-lg border border-pdm-border bg-pdm-panel p-4">
+          <li key={key} className="space-y-3 rounded-2xl border border-pdm-border bg-pdm-panel p-4">
             <div className="flex justify-between gap-3">
               <div className="h-4 w-32 rounded bg-pdm-subtle motion-safe:animate-pulse" />
               <div className="h-4 w-24 rounded-full bg-pdm-subtle motion-safe:animate-pulse" />
@@ -20,7 +20,7 @@ export default function InboxLoading() {
             <div className="h-3 w-2/3 rounded bg-pdm-subtle motion-safe:animate-pulse" />
             <div className="flex items-end justify-between gap-3">
               <div className="h-3 w-56 max-w-[60%] rounded bg-pdm-subtle motion-safe:animate-pulse" />
-              <div className="h-11 w-32 rounded-lg bg-pdm-subtle motion-safe:animate-pulse" />
+              <div className="h-11 w-32 rounded-full bg-pdm-subtle motion-safe:animate-pulse" />
             </div>
           </li>
         ))}
