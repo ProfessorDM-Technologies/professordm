@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Montserrat } from "next/font/google";
 import { cookies } from "next/headers";
 import type { ReactNode } from "react";
+import { siteUrl } from "@/lib/site";
 import { parseTheme, THEME_COOKIE } from "@/lib/theme";
 import "./globals.css";
 
@@ -14,6 +15,8 @@ const montserrat = Montserrat({
 });
 
 export const metadata: Metadata = {
+  metadataBase: siteUrl(),
+  applicationName: "ProfessorDM Creator Workspace",
   title: { template: "%s | ProfessorDM Creator Workspace", default: "ProfessorDM Creator Workspace" },
   description: "Review, answer and track the questions your followers send you.",
   robots: { index: false, follow: false },

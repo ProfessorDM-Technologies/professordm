@@ -5,6 +5,7 @@ import { PageHeader, PageSection } from "@/components/page-section";
 
 export const metadata: Metadata = {
   title: "Profile",
+  alternates: { canonical: "/profile" },
 };
 
 const SETTINGS = [

@@ -10,6 +10,7 @@ import { listQuestions } from "@/lib/inbox/questions";
 
 export const metadata: Metadata = {
   title: "Inbox",
+  alternates: { canonical: "/inbox" },
 };
 
 export default async function InboxPage() {

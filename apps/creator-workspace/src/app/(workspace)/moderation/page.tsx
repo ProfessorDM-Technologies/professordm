@@ -12,6 +12,7 @@ import { listDecisionMessages, listOpenFlags } from "@/lib/inbox/questions";
 
 export const metadata: Metadata = {
   title: "Moderation",
+  alternates: { canonical: "/moderation" },
 };
 
 function LoadError({ children }: { children: string }) {

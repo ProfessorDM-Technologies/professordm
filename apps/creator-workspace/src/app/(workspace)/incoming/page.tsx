@@ -7,6 +7,7 @@ import { listInboundThreads } from "@/lib/inbox/queries";
 
 export const metadata: Metadata = {
   title: "Incoming Messages",
+  alternates: { canonical: "/incoming" },
 };
 
 export default async function IncomingPage() {

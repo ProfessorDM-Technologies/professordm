@@ -12,9 +12,10 @@ import { outboundStatusLabel, outboundTypeLabel } from "@/lib/inbox/labels";
 import { getThread, listInboundThreads } from "@/lib/inbox/queries";
 import type { ThreadItem } from "@/lib/inbox/thread";
 
-export const metadata: Metadata = {
-  title: "Conversation",
-};
+export async function generateMetadata({ params }: PageProps<"/inbox/[id]">): Promise<Metadata> {
+  const { id } = await params;
+  return { title: "Conversation", alternates: { canonical: `/inbox/${id}` } };
+}
 
 function itemCaption(item: ThreadItem) {
   if (item.kind === "clarification_prompt") return "Clarification question";

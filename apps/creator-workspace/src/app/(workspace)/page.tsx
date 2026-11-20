@@ -4,6 +4,7 @@ import { PageHeader, PageSection } from "@/components/page-section";
 
 export const metadata: Metadata = {
   title: "ProfessorDM Bank",
+  alternates: { canonical: "/" },
 };
 
 const BALANCE_TILES = [

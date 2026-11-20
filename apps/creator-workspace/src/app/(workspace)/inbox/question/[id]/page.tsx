@@ -10,9 +10,10 @@ import { categoryLabel } from "@/lib/inbox/labels";
 import { cardState } from "@/lib/inbox/question-state";
 import { getQuestion, listQuestions } from "@/lib/inbox/questions";
 
-export const metadata: Metadata = {
-  title: "Answer question",
-};
+export async function generateMetadata({ params }: PageProps<"/inbox/question/[id]">): Promise<Metadata> {
+  const { id } = await params;
+  return { title: "Answer question", alternates: { canonical: `/inbox/question/${id}` } };
+}
 
 const CATEGORY_STYLES: Record<string, string> = {
   expert_question: "bg-pdm-tint text-pdm-accent-strong",

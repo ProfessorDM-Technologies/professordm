@@ -7,6 +7,7 @@ import { listAnswerEntries, type AnswerEntry } from "@/lib/knowledge/queries";
 
 export const metadata: Metadata = {
   title: "Knowledge Database",
+  alternates: { canonical: "/knowledge" },
 };
 
 function EntryCard({ entry }: { entry: AnswerEntry }) {

@@ -10,6 +10,7 @@ import { listQuestions, type QueueQuestion } from "@/lib/inbox/questions";
 
 export const metadata: Metadata = {
   title: "Sent",
+  alternates: { canonical: "/sent" },
 };
 
 // One delivered answer (spec section 8.4). Opens the question with its context and sources.
