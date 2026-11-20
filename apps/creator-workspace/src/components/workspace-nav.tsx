@@ -157,7 +157,7 @@ export function WorkspaceNav({ variant, className = "" }: { variant: "island" | 
       ref={navRef}
       aria-label="Main"
       data-compact="false"
-      className={`pdm-glass pdm-shrink rounded-full p-1 ${variant === "dock" ? "origin-bottom" : "origin-top"} ${className}`}
+      className={`pdm-glass pdm-shrink rounded-full p-1 ${variant === "dock" ? "pdm-vt-dock origin-bottom" : "pdm-vt-island origin-top"} ${className}`}
     >
       <ul ref={listRef} className="relative flex items-center">
         <li ref={lensRef} aria-hidden="true" data-pressed="false" className="pdm-lens opacity-0" />

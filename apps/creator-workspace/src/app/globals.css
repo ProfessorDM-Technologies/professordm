@@ -346,3 +346,56 @@ a.underline:hover {
     scale: none;
   }
 }
+
+/*
+ * Page transition (template.tsx): the old page leaves fast (120 ms fade), the new one settles in
+ * (220 ms fade with an 8 px rise, after the exit). The nav islands opt out of the page crossfade so their
+ * selection lens keeps animating live instead of showing a ghost at the old position.
+ */
+::view-transition-old(.page-exit) {
+  animation: 120ms var(--ease-pdm) both pdm-page-out;
+}
+
+::view-transition-new(.page-enter) {
+  animation: 220ms var(--ease-pdm) 100ms both pdm-page-in;
+}
+
+@keyframes pdm-page-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes pdm-page-in {
+  from {
+    opacity: 0;
+    translate: 0 8px;
+  }
+}
+
+.pdm-vt-island {
+  view-transition-name: pdm-nav-island;
+}
+
+.pdm-vt-dock {
+  view-transition-name: pdm-nav-dock;
+}
+
+::view-transition-group(pdm-nav-island),
+::view-transition-group(pdm-nav-dock),
+::view-transition-new(pdm-nav-island),
+::view-transition-new(pdm-nav-dock) {
+  animation: none;
+}
+
+::view-transition-old(pdm-nav-island),
+::view-transition-old(pdm-nav-dock) {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(.page-exit),
+  ::view-transition-new(.page-enter) {
+    animation: none;
+  }
+}
