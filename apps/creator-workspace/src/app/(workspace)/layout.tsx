@@ -34,12 +34,12 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
       </a>
 
       {/* Fades scrolled content out under the fixed row so it never collides with the logo. */}
-      <div aria-hidden="true" className="pdm-scrim pointer-events-none fixed inset-x-0 top-0 z-30 h-24 xl:h-28" />
+      <div aria-hidden="true" className="pdm-scrim pointer-events-none fixed top-0 left-0 z-30 h-24 w-[80%] sm:w-[26rem] xl:h-28" />
 
       <header className="pointer-events-none fixed inset-x-0 top-0 z-40 grid grid-cols-[1fr_auto] items-center gap-4 px-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-4 xl:grid-cols-[1fr_auto_1fr] xl:px-6 xl:pt-4">
         <BrandLogo className="pointer-events-auto justify-self-start" />
-        <WorkspaceNav variant="island" className="pointer-events-auto hidden xl:block" />
-        <div className="pdm-glass pointer-events-auto flex items-center gap-1 justify-self-end rounded-full p-1">
+        <WorkspaceNav variant="island" className="pointer-events-auto relative hidden xl:block" />
+        <div className="pdm-glass pointer-events-auto relative flex items-center gap-1 justify-self-end rounded-full p-1">
           <ThemeToggle initial={theme} />
           <AccountMenu displayName={session.displayName} role={session.role} />
         </div>
