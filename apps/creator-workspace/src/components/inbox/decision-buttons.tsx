@@ -20,7 +20,7 @@ export function DecisionButtons({ messageId }: { messageId: string }) {
           name="decision"
           value="replied"
           disabled={locked}
-          className="min-h-11 rounded-lg bg-pdm-accent px-4 text-sm font-semibold text-white hover:bg-pdm-accent-strong disabled:opacity-60"
+          className="min-h-11 rounded-lg bg-pdm-accent px-4 text-sm font-semibold text-pdm-on-accent hover:bg-pdm-accent-strong disabled:opacity-60"
         >
           I replied
         </button>
@@ -29,7 +29,7 @@ export function DecisionButtons({ messageId }: { messageId: string }) {
           name="decision"
           value="no_reply_needed"
           disabled={locked}
-          className="min-h-11 rounded-lg border border-pdm-border bg-white px-4 text-sm font-medium hover:bg-pdm-surface disabled:opacity-60"
+          className="min-h-11 rounded-lg border border-pdm-border bg-pdm-panel px-4 text-sm font-medium hover:bg-pdm-surface disabled:opacity-60"
         >
           No reply needed
         </button>
@@ -38,11 +38,11 @@ export function DecisionButtons({ messageId }: { messageId: string }) {
         {pending ? (
           <p className="text-pdm-muted">Saving…</p>
         ) : state.status === "error" ? (
-          <p role="alert" className="font-medium text-red-700">
+          <p role="alert" className="font-medium text-pdm-danger-ink">
             {state.message}
           </p>
         ) : state.status === "done" ? (
-          <p className="font-medium text-green-800">Saved.</p>
+          <p className="font-medium text-pdm-success-ink">Saved.</p>
         ) : null}
       </div>
     </form>

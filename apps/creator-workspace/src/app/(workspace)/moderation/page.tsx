@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 
 function LoadError({ children }: { children: string }) {
   return (
-    <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-800">
+    <p role="alert" className="rounded-lg border border-pdm-danger-line bg-pdm-danger-bg p-4 text-sm font-medium text-pdm-danger-ink">
       {children}
     </p>
   );
@@ -43,7 +43,7 @@ export default async function ModerationPage() {
               <li key={question.id}>
                 <Link
                   href={`/inbox/question/${question.id}`}
-                  className="block space-y-2 rounded-lg border border-pdm-border bg-white p-4 hover:border-pdm-accent"
+                  className="block space-y-2 rounded-lg border border-pdm-border bg-pdm-panel p-4 hover:border-pdm-accent"
                 >
                   <p className="font-semibold">
                     {question.follower?.username ? `@${question.follower.username}` : "Unknown sender"}
@@ -52,13 +52,13 @@ export default async function ModerationPage() {
                   <div className="flex flex-wrap items-end justify-between gap-3">
                     <ul aria-label="Safety flags" className="flex flex-wrap gap-2 text-xs">
                       {question.flags.map((flag) => (
-                        <li key={flag.id} className="rounded-full bg-red-100 px-2 py-0.5 font-semibold text-red-800">
+                        <li key={flag.id} className="rounded-full bg-pdm-danger-bg px-2 py-0.5 font-semibold text-pdm-danger-ink">
                           {flagLabel(flag)}
                           <span className="font-normal"> · {flag.targetType === "draft" ? "on the AI draft" : "on the message"}</span>
                         </li>
                       ))}
                     </ul>
-                    <span className="inline-flex min-h-11 items-center rounded-lg bg-pdm-accent px-4 text-sm font-semibold text-white">
+                    <span className="inline-flex min-h-11 items-center rounded-lg bg-pdm-accent px-4 text-sm font-semibold text-pdm-on-accent">
                       Review
                     </span>
                   </div>
@@ -77,7 +77,7 @@ export default async function ModerationPage() {
         ) : (
           <ul className="space-y-3">
             {decisions.messages.map((message) => (
-              <li key={message.id} className="space-y-3 rounded-lg border border-pdm-border bg-white p-4">
+              <li key={message.id} className="space-y-3 rounded-lg border border-pdm-border bg-pdm-panel p-4">
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                     <p className="font-semibold">
@@ -89,7 +89,7 @@ export default async function ModerationPage() {
                   <p className="text-xs">
                     <span
                       className={`rounded-full px-2 py-0.5 font-semibold ${
-                        message.category === "safety_concern" ? "bg-red-100 text-red-800" : "bg-stone-100 text-pdm-ink"
+                        message.category === "safety_concern" ? "bg-pdm-danger-bg text-pdm-danger-ink" : "bg-pdm-subtle text-pdm-ink"
                       }`}
                     >
                       {categoryLabel(message.category)}

@@ -113,9 +113,9 @@ export function AnswerWorkspace({
             ref={(element) => element?.focus()}
             tabIndex={-1}
             role="status"
-            className="space-y-3 rounded-lg border border-green-200 bg-green-50 p-4"
+            className="space-y-3 rounded-lg border border-pdm-success-line bg-pdm-success-bg p-4"
           >
-            <p className="font-semibold text-green-800">
+            <p className="font-semibold text-pdm-success-ink">
               {state.status === "sent"
                 ? `Answer sent to ${username} on Instagram`
                 : `Your answer to ${username} is on its way to Instagram. This page updates when it's delivered.`}
@@ -124,14 +124,14 @@ export function AnswerWorkspace({
               {nextQuestionId ? (
                 <Link
                   href={`/inbox/question/${nextQuestionId}`}
-                  className="inline-flex min-h-11 items-center rounded-lg bg-pdm-accent px-5 font-semibold text-white hover:bg-pdm-accent-strong"
+                  className="inline-flex min-h-11 items-center rounded-lg bg-pdm-accent px-5 font-semibold text-pdm-on-accent hover:bg-pdm-accent-strong"
                 >
                   Next question →
                 </Link>
               ) : null}
               <Link
                 href="/inbox"
-                className="inline-flex min-h-11 items-center rounded-lg border border-pdm-border bg-white px-5 font-medium hover:bg-pdm-surface"
+                className="inline-flex min-h-11 items-center rounded-lg border border-pdm-border bg-pdm-panel px-5 font-medium hover:bg-pdm-surface"
               >
                 Back to inbox
               </Link>
@@ -151,7 +151,7 @@ export function AnswerWorkspace({
             error={state.status === "error" ? state.message : null}
           />
         ) : (
-          <p className="rounded-lg border border-pdm-border bg-white p-4 text-sm text-pdm-muted">{blocked}</p>
+          <p className="rounded-lg border border-pdm-border bg-pdm-panel p-4 text-sm text-pdm-muted">{blocked}</p>
         )}
         {sources}
       </div>
@@ -269,13 +269,13 @@ function AnswerForm({
       : "No AI draft · write your answer";
 
   const counterStyle =
-    bytes > MAX_REPLY_BYTES ? "font-semibold text-red-700" : bytes >= 900 ? "font-semibold text-pdm-accent-strong" : "text-pdm-muted";
+    bytes > MAX_REPLY_BYTES ? "font-semibold text-pdm-danger-ink" : bytes >= 900 ? "font-semibold text-pdm-accent-strong" : "text-pdm-muted";
 
   return (
     <form
       action={formAction}
       onSubmit={() => dialogRef.current?.close()}
-      className="space-y-4 rounded-lg border border-pdm-border bg-white p-4"
+      className="space-y-4 rounded-lg border border-pdm-border bg-pdm-panel p-4"
     >
       <input type="hidden" name="question_id" value={question.id} />
       <input type="hidden" name="inbound_message_id" value={question.originMessageId ?? ""} />
@@ -306,7 +306,7 @@ function AnswerForm({
           maxLength={MAX_REPLY_LENGTH}
           aria-describedby="answer-gate answer-counter"
           aria-invalid={error ? true : undefined}
-          className="block min-h-48 w-full rounded-lg border border-pdm-border bg-white p-3 text-base field-sizing-content"
+          className="block min-h-48 w-full rounded-lg border border-pdm-border bg-pdm-panel p-3 text-base field-sizing-content"
         />
         <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
           <div className="flex flex-wrap items-center gap-3">
@@ -338,7 +338,7 @@ function AnswerForm({
 
       {aiText !== null ? (
         <div className="space-y-1">
-          <div aria-hidden="true" className="h-1.5 overflow-hidden rounded-full bg-stone-200">
+          <div aria-hidden="true" className="h-1.5 overflow-hidden rounded-full bg-pdm-subtle">
             <div className="h-full rounded-full bg-pdm-accent" style={{ width: `${Math.round(ratio * 100)}%` }} />
           </div>
           <p aria-live="polite" className="text-sm text-pdm-muted">
@@ -354,7 +354,7 @@ function AnswerForm({
         <p id="answer-tags-help" className="text-sm text-pdm-muted">
           Tags help you find this answer later. Press Enter or a comma to add one.
         </p>
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-pdm-border bg-white p-2">
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-pdm-border bg-pdm-panel p-2">
           {tags.map((tag) => (
             <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-pdm-tint py-1 pr-1 pl-3 text-sm font-medium text-pdm-accent-strong">
               {tag}
@@ -363,7 +363,7 @@ function AnswerForm({
                 onClick={() => setTags(tags.filter((current) => current !== tag))}
                 disabled={pending}
                 aria-label={`Remove tag ${tag}`}
-                className="relative grid size-6 place-items-center rounded-full hover:bg-white after:absolute after:-inset-2.5 after:content-['']"
+                className="relative grid size-6 place-items-center rounded-full hover:bg-pdm-panel after:absolute after:-inset-2.5 after:content-['']"
               >
                 <svg aria-hidden="true" viewBox="0 0 12 12" className="size-3" fill="none" stroke="currentColor" strokeWidth="1.75">
                   <path d="M3 3l6 6M9 3l-6 6" />
@@ -388,7 +388,7 @@ function AnswerForm({
             className="min-h-11 min-w-32 flex-1 bg-transparent px-1 text-base outline-offset-2"
           />
         </div>
-        <p id="answer-tags-error" aria-live="polite" className="text-sm font-medium text-red-700">
+        <p id="answer-tags-error" aria-live="polite" className="text-sm font-medium text-pdm-danger-ink">
           {tagError}
         </p>
       </div>
@@ -396,7 +396,7 @@ function AnswerForm({
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-pdm-border pt-4">
         <div id="answer-gate" aria-live="polite" className="text-sm">
           {error ? (
-            <p role="alert" className="font-medium text-red-700">
+            <p role="alert" className="font-medium text-pdm-danger-ink">
               {error}
             </p>
           ) : null}
@@ -411,7 +411,7 @@ function AnswerForm({
           type="button"
           onClick={openConfirm}
           disabled={!gate.ok || pending}
-          className="min-h-11 rounded-lg bg-pdm-accent px-5 font-semibold text-white hover:bg-pdm-accent-strong disabled:opacity-60"
+          className="min-h-11 rounded-lg bg-pdm-accent px-5 font-semibold text-pdm-on-accent hover:bg-pdm-accent-strong disabled:opacity-60"
         >
           {pending ? "Sending…" : "Review & send"}
         </button>
@@ -421,13 +421,13 @@ function AnswerForm({
         ref={dialogRef}
         aria-labelledby="confirm-heading"
         onClose={() => triggerRef.current?.focus()}
-        className="m-auto w-[min(36rem,calc(100vw-2rem))] rounded-lg border border-pdm-border bg-white p-0 text-pdm-ink shadow-xl backdrop:bg-black/40"
+        className="m-auto w-[min(36rem,calc(100vw-2rem))] rounded-lg border border-pdm-border bg-pdm-panel p-0 text-pdm-ink shadow-xl backdrop:bg-pdm-midnight/60"
       >
         <div className="space-y-4 p-5">
           <h2 id="confirm-heading" className="text-lg font-semibold">
             Send this answer to {username}?
           </h2>
-          <p className="font-medium text-red-800">This sends a DM on Instagram now.</p>
+          <p className="font-medium text-pdm-danger-ink">This sends a DM on Instagram now.</p>
           <div className="max-h-[50vh] overflow-y-auto whitespace-pre-wrap rounded-lg border border-pdm-border bg-pdm-surface p-3 text-sm">
             {text.trim()}
           </div>
@@ -436,14 +436,14 @@ function AnswerForm({
             <button
               type="button"
               onClick={() => dialogRef.current?.close()}
-              className="min-h-11 rounded-lg border border-pdm-border bg-white px-5 font-medium hover:bg-pdm-surface"
+              className="min-h-11 rounded-lg border border-pdm-border bg-pdm-panel px-5 font-medium hover:bg-pdm-surface"
             >
               Keep editing
             </button>
             <button
               type="submit"
               disabled={pending || !gate.ok}
-              className="min-h-11 rounded-lg bg-pdm-accent px-5 font-semibold text-white hover:bg-pdm-accent-strong disabled:opacity-60"
+              className="min-h-11 rounded-lg bg-pdm-accent px-5 font-semibold text-pdm-on-accent hover:bg-pdm-accent-strong disabled:opacity-60"
             >
               Send answer
             </button>

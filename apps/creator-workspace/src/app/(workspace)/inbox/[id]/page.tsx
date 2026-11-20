@@ -36,7 +36,7 @@ function Bubble({ item }: { item: ThreadItem }) {
         <p className="sr-only">{outgoing ? "You sent:" : "They sent:"}</p>
         <div
           className={`whitespace-pre-wrap rounded-2xl px-4 py-2 text-left text-sm ${
-            outgoing ? "bg-pdm-accent text-white" : "border border-pdm-border bg-white text-pdm-ink"
+            outgoing ? "bg-pdm-accent text-pdm-on-accent" : "border border-pdm-border bg-pdm-panel text-pdm-ink"
           }`}
         >
           {item.text || "(No text — attachment only)"}
@@ -78,7 +78,7 @@ export default async function ConversationPage({ params }: PageProps<"/inbox/[id
       </div>
 
       {thread.error ? (
-        <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-800">
+        <p role="alert" className="rounded-lg border border-pdm-danger-line bg-pdm-danger-bg p-4 text-sm font-medium text-pdm-danger-ink">
           Part of this conversation couldn&apos;t be loaded. Try again.
         </p>
       ) : null}

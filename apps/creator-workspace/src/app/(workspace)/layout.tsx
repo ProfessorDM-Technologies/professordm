@@ -27,12 +27,12 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
     <div className="min-h-dvh">
       <a
         href="#main"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:font-medium focus:shadow"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-pdm-panel focus:px-4 focus:py-2 focus:font-medium focus:shadow"
       >
         Skip to content
       </a>
 
-      <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col border-r border-pdm-border bg-white md:flex">
+      <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col border-r border-pdm-border bg-pdm-panel md:flex">
         <div className="px-6 py-5">
           {wordmark}
           <p className="text-xs text-pdm-muted">Creator Workspace</p>
@@ -44,7 +44,7 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
       </aside>
 
       <div className="flex min-h-dvh flex-col md:pl-60">
-        <header className="border-b border-pdm-border bg-white md:hidden">
+        <header className="border-b border-pdm-border bg-pdm-panel md:hidden">
           <div className="flex items-center justify-between px-4 py-3">
             {wordmark}
             <AccountMenu displayName={session.displayName} role={session.role} compact />
@@ -57,7 +57,7 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
 
       <WorkspaceNav
         variant="bottom"
-        className="fixed inset-x-0 bottom-0 border-t border-pdm-border bg-white pb-[env(safe-area-inset-bottom)] md:hidden"
+        className="fixed inset-x-0 bottom-0 border-t border-pdm-border bg-pdm-panel pb-[env(safe-area-inset-bottom)] md:hidden"
       />
     </div>
   );

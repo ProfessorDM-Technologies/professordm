@@ -23,7 +23,7 @@ export function ReplyBox({ inboundMessageId, recipient }: { inboundMessageId: st
   const empty = text.trim().length === 0;
 
   return (
-    <form action={formAction} className="space-y-3 rounded-lg border border-pdm-border bg-white p-4">
+    <form action={formAction} className="space-y-3 rounded-lg border border-pdm-border bg-pdm-panel p-4">
       <input type="hidden" name="inbound_message_id" value={inboundMessageId} />
       <input type="hidden" name="client_request_id" value={requestId} />
 
@@ -40,17 +40,17 @@ export function ReplyBox({ inboundMessageId, recipient }: { inboundMessageId: st
         maxLength={MAX_REPLY_LENGTH}
         aria-invalid={state.status === "error" ? true : undefined}
         aria-describedby="reply-status"
-        className="block w-full rounded-lg border border-pdm-border bg-white p-3 text-base"
+        className="block w-full rounded-lg border border-pdm-border bg-pdm-panel p-3 text-base"
       />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div id="reply-status" aria-live="polite" className="text-sm">
           {state.status === "error" ? (
-            <p role="alert" className="font-medium text-red-700">
+            <p role="alert" className="font-medium text-pdm-danger-ink">
               {state.message}
             </p>
           ) : state.status === "sent" ? (
-            <p className="font-medium text-green-800">Reply sent to Instagram.</p>
+            <p className="font-medium text-pdm-success-ink">Reply sent to Instagram.</p>
           ) : state.status === "pending" ? (
             <p>This reply is processing. Check its status before composing another reply.</p>
           ) : null}
@@ -59,7 +59,7 @@ export function ReplyBox({ inboundMessageId, recipient }: { inboundMessageId: st
         <button
           type="submit"
           disabled={pending || empty}
-          className="min-h-11 rounded-lg bg-pdm-accent px-5 font-semibold text-white hover:bg-pdm-accent-strong disabled:opacity-60"
+          className="min-h-11 rounded-lg bg-pdm-accent px-5 font-semibold text-pdm-on-accent hover:bg-pdm-accent-strong disabled:opacity-60"
         >
           {pending ? "Sending…" : state.status === "pending" ? "Check status" : "Send"}
         </button>

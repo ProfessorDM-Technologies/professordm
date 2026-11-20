@@ -1,10 +1,10 @@
 import type { CardTone } from "@/lib/inbox/question-state";
 
 const TONE_STYLES: Record<CardTone, string> = {
-  progress: "bg-stone-100 text-pdm-ink",
-  danger: "bg-red-100 text-red-800",
+  progress: "bg-pdm-subtle text-pdm-ink",
+  danger: "bg-pdm-danger-bg text-pdm-danger-ink",
   accent: "bg-pdm-tint text-pdm-accent-strong",
-  neutral: "bg-stone-100 text-pdm-ink",
+  neutral: "bg-pdm-subtle text-pdm-ink",
 };
 
 // The label is always text, so colour is never the only signal. The dot pulses only when motion is allowed.

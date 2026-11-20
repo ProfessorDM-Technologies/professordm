@@ -12,7 +12,7 @@ export function RefreshButton() {
       type="button"
       onClick={() => startTransition(() => router.refresh())}
       disabled={pending}
-      className="min-h-11 rounded-lg border border-pdm-border bg-white px-4 text-sm font-medium hover:bg-pdm-surface disabled:opacity-60"
+      className="min-h-11 rounded-lg border border-pdm-border bg-pdm-panel px-4 text-sm font-medium hover:bg-pdm-surface disabled:opacity-60"
     >
       {pending ? "Refreshing…" : "Refresh"}
     </button>

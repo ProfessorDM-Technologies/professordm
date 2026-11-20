@@ -26,7 +26,7 @@ export function AccountMenu({
       <form action={signOut}>
         <button
           type="submit"
-          className={`min-h-11 rounded-lg border border-pdm-border bg-white px-3 text-sm font-medium text-pdm-ink hover:bg-pdm-surface ${
+          className={`min-h-11 rounded-lg border border-pdm-border bg-pdm-panel px-3 text-sm font-medium text-pdm-ink hover:bg-pdm-surface ${
             compact ? "" : "w-full"
           }`}
         >

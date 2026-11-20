@@ -31,7 +31,7 @@ export default async function InboxPage() {
 
       <PageSection id="questions" title="Questions">
         {error ? (
-          <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-800">
+          <p role="alert" className="rounded-lg border border-pdm-danger-line bg-pdm-danger-bg p-4 text-sm font-medium text-pdm-danger-ink">
             Couldn&apos;t load questions. Try again.
           </p>
         ) : questions.length === 0 ? (
@@ -44,7 +44,7 @@ export default async function InboxPage() {
         ) : (
           <>
             {flagsError ? (
-              <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-800">
+              <p role="alert" className="rounded-lg border border-pdm-danger-line bg-pdm-danger-bg p-4 text-sm font-medium text-pdm-danger-ink">
                 Safety flags couldn&apos;t be loaded. Open a question to check its flags before answering.
               </p>
             ) : null}

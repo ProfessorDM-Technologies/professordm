@@ -32,7 +32,7 @@ export function QuestionCard({ question, now }: { question: QueueQuestion; now: 
               {waited}
               <span
                 aria-hidden="true"
-                className="absolute top-full right-0 z-10 mt-1 hidden whitespace-nowrap rounded border border-pdm-border bg-white px-2 py-1 text-pdm-ink group-hover/time:block"
+                className="absolute top-full right-0 z-10 mt-1 hidden whitespace-nowrap rounded border border-pdm-border bg-pdm-panel px-2 py-1 text-pdm-ink group-hover/time:block"
               >
                 <LocalTime value={question.paidAt} />
               </span>
@@ -44,8 +44,8 @@ export function QuestionCard({ question, now }: { question: QueueQuestion; now: 
 
       {drafting ? (
         <div aria-hidden="true" className="space-y-2 py-1">
-          <div className="h-3 w-11/12 rounded bg-stone-200 motion-safe:animate-pulse" />
-          <div className="h-3 w-2/3 rounded bg-stone-200 motion-safe:animate-pulse" />
+          <div className="h-3 w-11/12 rounded bg-pdm-subtle motion-safe:animate-pulse" />
+          <div className="h-3 w-2/3 rounded bg-pdm-subtle motion-safe:animate-pulse" />
         </div>
       ) : (
         <p className="line-clamp-2 text-sm text-pdm-ink">{question.questionText}</p>
@@ -54,7 +54,7 @@ export function QuestionCard({ question, now }: { question: QueueQuestion; now: 
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-xs text-pdm-muted">{[state.hint, ...footerParts(question)].join(" · ")}</p>
         {state.action ? (
-          <span className="inline-flex min-h-11 items-center rounded-lg bg-pdm-accent px-4 text-sm font-semibold text-white group-hover/card:bg-pdm-accent-strong">
+          <span className="inline-flex min-h-11 items-center rounded-lg bg-pdm-accent px-4 text-sm font-semibold text-pdm-on-accent group-hover/card:bg-pdm-accent-strong">
             {state.action}
           </span>
         ) : null}
@@ -65,11 +65,11 @@ export function QuestionCard({ question, now }: { question: QueueQuestion; now: 
   return (
     <li>
       {drafting ? (
-        <div className="space-y-2 rounded-lg border border-pdm-border bg-white p-4">{body}</div>
+        <div className="space-y-2 rounded-lg border border-pdm-border bg-pdm-panel p-4">{body}</div>
       ) : (
         <Link
           href={`/inbox/question/${question.id}`}
-          className="group/card block space-y-2 rounded-lg border border-pdm-border bg-white p-4 hover:border-pdm-accent"
+          className="group/card block space-y-2 rounded-lg border border-pdm-border bg-pdm-panel p-4 hover:border-pdm-accent"
         >
           {body}
         </Link>

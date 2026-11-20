@@ -11,12 +11,12 @@ export const metadata: Metadata = {
 
 function EntryCard({ entry }: { entry: AnswerEntry }) {
   return (
-    <li className="space-y-3 rounded-lg border border-pdm-border bg-white p-4">
+    <li className="space-y-3 rounded-lg border border-pdm-border bg-pdm-panel p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <p className="font-semibold">{entryTitle(entry)}</p>
         <span
           className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-            entry.published ? "bg-green-100 text-green-800" : "bg-stone-100 text-pdm-ink"
+            entry.published ? "bg-pdm-success-bg text-pdm-success-ink" : "bg-pdm-subtle text-pdm-ink"
           }`}
         >
           {entry.published ? "Published" : "Private"}
@@ -52,7 +52,7 @@ export default async function KnowledgePage() {
           Answers you send are saved here as private entries. Publish the ones you want in the Knowledge app.
         </p>
         {error ? (
-          <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-800">
+          <p role="alert" className="rounded-lg border border-pdm-danger-line bg-pdm-danger-bg p-4 text-sm font-medium text-pdm-danger-ink">
             Couldn&apos;t load your answers. Try again.
           </p>
         ) : entries.length === 0 ? (

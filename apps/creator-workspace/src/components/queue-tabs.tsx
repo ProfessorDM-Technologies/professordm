@@ -31,7 +31,7 @@ export async function QueueTabs({ current }: { current: QueueHref }) {
                 {counts[tab.count] !== null ? (
                   <span
                     className={`ml-2 rounded-full px-2 py-0.5 text-xs font-semibold ${
-                      active ? "bg-pdm-tint text-pdm-accent-strong" : "bg-stone-100 text-pdm-muted"
+                      active ? "bg-pdm-tint text-pdm-accent-strong" : "bg-pdm-subtle text-pdm-muted"
                     }`}
                   >
                     {counts[tab.count]}

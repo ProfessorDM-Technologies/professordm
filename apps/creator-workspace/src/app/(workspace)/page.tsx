@@ -24,7 +24,7 @@ export default function BankPage() {
       <PageSection id="balance" title="Balance">
         <ul className="grid gap-3 sm:grid-cols-3">
           {BALANCE_TILES.map((tile) => (
-            <li key={tile.label} className="space-y-1 rounded-lg border border-pdm-border bg-white p-4">
+            <li key={tile.label} className="space-y-1 rounded-lg border border-pdm-border bg-pdm-panel p-4">
               <p className="text-sm font-medium text-pdm-muted">{tile.label}</p>
               <p className="text-2xl font-semibold" aria-label={`${tile.label}: not available yet`}>
                 —
@@ -47,7 +47,7 @@ export default function BankPage() {
           type="button"
           disabled
           aria-describedby="withdraw-note"
-          className="rounded-lg bg-pdm-accent px-4 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-lg bg-pdm-accent px-4 py-3 font-semibold text-pdm-on-accent disabled:cursor-not-allowed disabled:opacity-60"
         >
           Withdraw Available Balance
         </button>

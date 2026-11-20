@@ -21,7 +21,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
         <h1 className="text-2xl font-semibold tracking-tight">Sign in to your Creator Workspace</h1>
         <p className="text-pdm-muted">Creator accounts are invite-only.</p>
       </div>
-      <div className="rounded-xl border border-pdm-border bg-white p-6 shadow-sm">
+      <div className="rounded-xl border border-pdm-border bg-pdm-panel p-6 shadow-sm">
         <LoginForm next={safeNextPath(next)} initialError={initialError} />
       </div>
     </main>
