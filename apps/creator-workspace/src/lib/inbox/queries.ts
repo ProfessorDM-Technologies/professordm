@@ -67,14 +67,15 @@ export async function listInboundMessages({ limit = 50 }: { limit?: number } = {
   };
 }
 
-export type InboxThreadsResult = { threads: MessageThread<InboxMessage>[]; error: boolean };
+/** `loadedAt`: when the rows were read (ms), the reference point for relative times. */
+export type InboxThreadsResult = { threads: MessageThread<InboxMessage>[]; error: boolean; loadedAt: number };
 
 // The Incoming list as one thread per question (SCRUM-144): each DM with the clarification replies that answer it.
 // If the clarification rounds can't be read, every DM is shown on its own, as before.
 export async function listInboundThreads(): Promise<InboxThreadsResult> {
   const { messages, error } = await listInboundMessages();
-  if (error) return { threads: [], error: true };
-  if (messages.length === 0) return { threads: [], error: false };
+  if (error) return { threads: [], error: true, loadedAt: Date.now() };
+  if (messages.length === 0) return { threads: [], error: false, loadedAt: Date.now() };
 
   const supabase = await createClient();
   const { data, error: roundsError } = await supabase
@@ -90,7 +91,7 @@ export async function listInboundThreads(): Promise<InboxThreadsResult> {
   }
 
   const rounds = (data ?? []).map((row) => ({ messageId: row.message_id, round: row.round, reply: row.reply }));
-  return { threads: groupMessagesByQuestion(messages, rounds), error: false };
+  return { threads: groupMessagesByQuestion(messages, rounds), error: false, loadedAt: Date.now() };
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

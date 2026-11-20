@@ -20,7 +20,7 @@ export function FlagPanel({
   return (
     <section
       aria-labelledby="flags-heading"
-      className={`space-y-3 rounded-lg border p-4 ${open.length ? "border-red-200 bg-red-50" : "border-pdm-border bg-white"}`}
+      className={`space-y-3 rounded-2xl border p-4 ${open.length ? "border-pdm-danger-line bg-pdm-danger-bg" : "border-pdm-border bg-pdm-panel"}`}
     >
       <div className="space-y-1">
         <h2 id="flags-heading" className="font-semibold">
@@ -37,11 +37,11 @@ export function FlagPanel({
           const reviewed = flag.status !== "open";
           const where = flag.targetType === "draft" ? "On the AI draft" : "On the message";
           return (
-            <li key={flag.id} className="rounded-lg border border-pdm-border bg-white p-3">
+            <li key={flag.id} className="rounded-2xl border border-pdm-border bg-pdm-panel p-3">
               <p className="font-medium">{flagLabel(flag)}</p>
               <p className="text-xs text-pdm-muted">{where}</p>
               {reviewed ? (
-                <p className="mt-1 text-sm font-medium text-green-800">Reviewed by you</p>
+                <p className="mt-1 text-sm font-medium text-pdm-success-ink">Reviewed by you</p>
               ) : onToggle ? (
                 <label className="mt-1 flex min-h-11 cursor-pointer items-center gap-3 text-sm font-medium">
                   <input
@@ -54,7 +54,7 @@ export function FlagPanel({
                   I&apos;ve reviewed this
                 </label>
               ) : (
-                <p className="mt-1 text-sm font-medium text-red-800">Not reviewed yet</p>
+                <p className="mt-1 text-sm font-medium text-pdm-danger-ink">Not reviewed yet</p>
               )}
             </li>
           );

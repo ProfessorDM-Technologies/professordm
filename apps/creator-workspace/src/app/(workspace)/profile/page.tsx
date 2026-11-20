@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { EmptyState } from "@/components/empty-state";
 import { PageHeader, PageSection } from "@/components/page-section";
-import { Placeholder } from "@/components/placeholder";
 
 export const metadata: Metadata = {
   title: "Profile",
+  alternates: { canonical: "/profile" },
 };
 
 const SETTINGS = [
@@ -24,14 +25,16 @@ export default function ProfilePage() {
       <PageHeader title="Profile" description="Your public profile, pricing and payout settings." />
 
       <PageSection id="settings" title="Settings">
-        <ul className="divide-y divide-pdm-border rounded-lg border border-pdm-border bg-white">
+        <ul className="divide-y divide-pdm-border rounded-2xl border border-pdm-border bg-pdm-panel">
           {SETTINGS.map((setting) => (
             <li key={setting} className="px-4 py-3 text-sm text-pdm-muted">
               {setting}
             </li>
           ))}
         </ul>
-        <Placeholder>Editing these settings is not available yet.</Placeholder>
+        <EmptyState icon="settings" tone="teal" title="View only for now">
+          Editing opens in a later release. Your settings stay as they are until then.
+        </EmptyState>
       </PageSection>
 
       <PageSection id="knowledge" title="Knowledge Database">

@@ -15,7 +15,7 @@ export function PublishButton({ entryId, published }: { entryId: string; publish
       <input type="hidden" name="published" value={published ? "false" : "true"} />
       <div aria-live="polite" className="text-sm">
         {state.status === "error" && !pending ? (
-          <p role="alert" className="font-medium text-red-700">
+          <p role="alert" className="font-medium text-pdm-danger-ink">
             {state.message}
           </p>
         ) : null}
@@ -25,8 +25,8 @@ export function PublishButton({ entryId, published }: { entryId: string; publish
         disabled={pending}
         className={
           published
-            ? "min-h-11 rounded-lg border border-pdm-border bg-white px-4 text-sm font-medium hover:bg-pdm-surface disabled:opacity-60"
-            : "min-h-11 rounded-lg bg-pdm-accent px-4 text-sm font-semibold text-white hover:bg-pdm-accent-strong disabled:opacity-60"
+            ? "pdm-press min-h-11 rounded-full border border-pdm-border bg-pdm-panel px-4 text-sm font-semibold hover:border-pdm-accent hover:bg-pdm-subtle disabled:opacity-60"
+            : "pdm-press min-h-11 rounded-full bg-pdm-accent px-4 text-sm font-semibold text-pdm-on-accent hover:bg-pdm-accent-strong disabled:opacity-60"
         }
       >
         {pending ? "Saving…" : published ? "Make private" : "Publish"}

@@ -15,7 +15,7 @@ export async function QueueTabs({ current }: { current: QueueHref }) {
   const counts = await queueCounts();
   return (
     <nav aria-label="Question queues">
-      <ul className="flex gap-1 border-b border-pdm-border">
+      <ul className="inline-flex max-w-full gap-1 overflow-x-auto rounded-full border border-pdm-border bg-pdm-panel p-1">
         {TABS.map((tab) => {
           const active = tab.href === current;
           return (
@@ -23,15 +23,15 @@ export async function QueueTabs({ current }: { current: QueueHref }) {
               <Link
                 href={tab.href}
                 aria-current={active ? "page" : undefined}
-                className={`-mb-px flex min-h-11 items-center border-b-2 px-4 text-sm font-medium ${
-                  active ? "border-pdm-accent text-pdm-accent-strong" : "border-transparent text-pdm-muted hover:text-pdm-ink"
+                className={`pdm-press flex min-h-10 items-center rounded-full px-4 font-display text-sm font-semibold whitespace-nowrap ${
+                  active ? "bg-pdm-accent text-pdm-on-accent" : "text-pdm-muted hover:bg-pdm-subtle hover:text-pdm-ink"
                 }`}
               >
                 {tab.label}
                 {counts[tab.count] !== null ? (
                   <span
-                    className={`ml-2 rounded-full px-2 py-0.5 text-xs font-semibold ${
-                      active ? "bg-pdm-tint text-pdm-accent-strong" : "bg-stone-100 text-pdm-muted"
+                    className={`ml-2 rounded-full px-2 py-0.5 font-sans text-xs font-semibold tabular-nums ${
+                      active ? "bg-pdm-on-accent/15 text-pdm-on-accent" : "bg-pdm-subtle text-pdm-muted"
                     }`}
                   >
                     {counts[tab.count]}

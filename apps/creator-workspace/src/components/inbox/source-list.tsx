@@ -4,7 +4,7 @@ import type { Citation } from "@/lib/inbox/questions";
 const COVERAGE_STYLES: Record<string, string> = {
   high: "bg-pdm-tint text-pdm-accent-strong",
   partial: "bg-pdm-tint text-pdm-accent-strong",
-  none: "bg-stone-100 text-pdm-ink",
+  none: "bg-pdm-subtle text-pdm-ink",
 };
 
 // "Guide > Section > Subsection" as a breadcrumb with the last part bold.
@@ -40,7 +40,7 @@ export function SourceList({
   const badge = coverageLabel(coverage);
 
   return (
-    <section aria-labelledby="sources-heading" className="space-y-3 rounded-lg border border-pdm-border bg-white p-4">
+    <section aria-labelledby="sources-heading" className="space-y-3 rounded-2xl border border-pdm-border bg-pdm-panel p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 id="sources-heading" className="font-semibold">
           Sources
@@ -68,7 +68,7 @@ export function SourceList({
       )}
 
       {missingInfo.length ? (
-        <div className="space-y-1 rounded-lg bg-pdm-surface p-3 text-sm">
+        <div className="space-y-1 rounded-xl bg-pdm-surface p-3 text-sm">
           <h3 className="font-semibold">What your guides don&apos;t cover</h3>
           <p className="text-pdm-muted">Your answer fills these gaps. Consider adding them to your Knowledge Database too:</p>
           <ul className="list-disc space-y-0.5 pl-5">
