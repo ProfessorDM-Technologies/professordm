@@ -1,11 +1,16 @@
-import Link from "next/link";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { AccountMenu } from "@/components/account-menu";
+import { BrandLogo } from "@/components/brand-logo";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { WorkspaceNav } from "@/components/workspace-nav";
 import { getSessionUser, isWorkspaceRole } from "@/lib/auth/session";
 import { LOGIN_PATH } from "@/lib/routes";
+import { parseTheme, THEME_COOKIE } from "@/lib/theme";
 
+// Fixed chrome (DESIGN.md "Layout"): logo top-left with no background, the glass nav island centred at the top
+// (lg and up) or docked at the bottom (phones), and the account island top-right. None of it scrolls.
 export default async function WorkspaceLayout({ children }: { children: ReactNode }) {
   const session = await getSessionUser();
 
@@ -17,47 +22,40 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
     redirect("/auth/forbidden");
   }
 
-  const wordmark = (
-    <Link href="/" className="text-lg font-semibold tracking-tight text-pdm-accent-strong">
-      ProfessorDM
-    </Link>
-  );
+  const theme = parseTheme((await cookies()).get(THEME_COOKIE)?.value);
 
   return (
     <div className="min-h-dvh">
       <a
         href="#main"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-pdm-panel focus:px-4 focus:py-2 focus:font-medium focus:shadow"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-full focus:bg-pdm-panel focus:px-4 focus:py-2 focus:font-semibold focus:shadow-pdm"
       >
         Skip to content
       </a>
 
-      <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col border-r border-pdm-border bg-pdm-panel md:flex">
-        <div className="px-6 py-5">
-          {wordmark}
-          <p className="text-xs text-pdm-muted">Creator Workspace</p>
-        </div>
-        <WorkspaceNav variant="sidebar" className="flex-1 overflow-y-auto px-3" />
-        <div className="border-t border-pdm-border p-4">
+      {/* Fades scrolled content out under the fixed row so it never collides with the logo. */}
+      <div aria-hidden="true" className="pdm-scrim pointer-events-none fixed inset-x-0 top-0 z-30 h-20 lg:h-28" />
+
+      <header className="pointer-events-none fixed inset-x-0 top-0 z-40 grid grid-cols-[1fr_auto] items-center gap-4 px-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-4 lg:grid-cols-[1fr_auto_1fr] lg:px-6 lg:pt-4">
+        <BrandLogo className="pointer-events-auto justify-self-start" />
+        <WorkspaceNav variant="island" className="pointer-events-auto hidden lg:block" />
+        <div className="pdm-glass pointer-events-auto flex items-center gap-1 justify-self-end rounded-full p-1">
+          <ThemeToggle initial={theme} />
           <AccountMenu displayName={session.displayName} role={session.role} />
         </div>
-      </aside>
+      </header>
 
-      <div className="flex min-h-dvh flex-col md:pl-60">
-        <header className="border-b border-pdm-border bg-pdm-panel md:hidden">
-          <div className="flex items-center justify-between px-4 py-3">
-            {wordmark}
-            <AccountMenu displayName={session.displayName} role={session.role} compact />
-          </div>
-        </header>
-        <main id="main" tabIndex={-1} className="mx-auto w-full max-w-5xl flex-1 px-4 pb-24 pt-6 md:px-8 md:pb-10">
-          {children}
-        </main>
-      </div>
+      <main
+        id="main"
+        tabIndex={-1}
+        className="mx-auto w-full max-w-5xl px-4 pb-32 pt-24 outline-none sm:px-6 lg:px-8 lg:pb-16 lg:pt-32"
+      >
+        {children}
+      </main>
 
       <WorkspaceNav
-        variant="bottom"
-        className="fixed inset-x-0 bottom-0 border-t border-pdm-border bg-pdm-panel pb-[env(safe-area-inset-bottom)] md:hidden"
+        variant="dock"
+        className="fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-40 mx-auto max-w-md lg:hidden"
       />
     </div>
   );
