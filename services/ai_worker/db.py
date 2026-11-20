@@ -249,6 +249,22 @@ class Db:
         return _one(self.request("GET", "outbound_messages", params={
             "client_request_id": f"eq.{row['client_request_id']}", "select": "id"}))
 
+    def outbound_created_at(self, client_request_id):
+        """Load when an outbound row was written, found by its client_request_id.
+
+        Args:
+            client_request_id (str): The row's deterministic request id.
+
+        Returns:
+            str | None: The row's created_at as an ISO timestamp, or None when
+            there is no such row.
+
+        Side effects: one read.
+        """
+        row = _one(self.request("GET", "outbound_messages", params={
+            "client_request_id": f"eq.{client_request_id}", "select": "created_at"}))
+        return row.get("created_at") if row else None
+
     # questions
 
     def find_question(self, origin_message_id):

@@ -583,6 +583,34 @@ class ReassessTests(WorkerCase):
         self.assertEqual(self.triage.call_count, 0)
         self.assertEqual(self.round["reply"], REPLY_TEXT)
 
+    def ask_round_2(self, asked_at):
+        """Answer round 1 and add an open round 2 whose question was written at asked_at."""
+        self.round["reply"] = "PRIVATE-REPLY it is a fern"
+        self.db.tables["outbound_messages"].append({
+            "id": "outbound-round-2", "type": "clarification", "created_at": iso(asked_at),
+            "client_request_id": str(uuid.uuid5(worker.OUTBOUND_NS, f"{MESSAGE}:clarification:2"))})
+        return self.db.add_round(round_=2)
+
+    def test_round_2_reply_counts_from_when_round_2_was_asked(self):
+        """A round 2 asked an hour ago takes the reply, even on an original older than 24 hours."""
+        self.message()["received_at"] = iso(NOW - timedelta(hours=25))
+        round_2 = self.ask_round_2(NOW - timedelta(hours=1))
+        self.assertEqual(self.run_job(self.job()), "done")
+        self.assertEqual(self.triage.call_count, 0)
+        self.assertEqual(self.reassess.call_count, 1)
+        self.assertEqual(round_2["reply"], REPLY_TEXT)
+        self.assertEqual(self.message(REPLY)["status"], "closed_no_action")
+
+    def test_round_2_asked_24_hours_ago_is_not_reopened(self):
+        """A round 2 asked exactly 24 hours ago has expired: the new DM is triaged as a new message."""
+        self.message()["received_at"] = iso(NOW - timedelta(days=3))
+        round_2 = self.ask_round_2(NOW - timedelta(hours=24))
+        self.assertEqual(self.run_job(self.job()), "done")
+        self.assertEqual(self.reassess.call_count, 0)
+        self.assertEqual(self.triage.call_args.args[0], REPLY_TEXT)
+        self.assertIsNone(round_2["reply"])
+        self.assertEqual(self.message()["status"], "awaiting_clarification")
+
     def test_round_2_is_asked_on_the_original(self):
         self.reassess.return_value = vague(round_=2)
         self.assertEqual(self.run_job(self.job()), "done")

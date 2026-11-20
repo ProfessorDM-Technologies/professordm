@@ -276,7 +276,7 @@ No row back means another run has it, so stop. This is the same pattern as `upda
 
 ### 2. Choose `triage` or `reassess`
 
-Call **`reassess`** if the follower has an open clarification: a message in `awaiting_clarification` whose latest `clarification_rounds` row has `reply is null`. The new DM is that round's reply, unless the original arrived 24 hours or more before the new DM. An older clarification no longer counts as open, and the new DM is triaged as a new message. Otherwise call **`triage`**.
+Call **`reassess`** if the follower has an open clarification: a message in `awaiting_clarification` whose latest `clarification_rounds` row has `reply is null`. The new DM is that round's reply, unless that round's question was asked 24 hours or more before the new DM. The time asked is the `created_at` of the round's `clarification` row in `outbound_messages`, so a round 2 asked hours after the original still gets the full 24 hours. An older clarification no longer counts as open, and the new DM is triaged as a new message. Otherwise call **`triage`**.
 
 ### 3. Build `recent_messages`
 

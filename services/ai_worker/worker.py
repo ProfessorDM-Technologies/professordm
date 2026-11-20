@@ -65,7 +65,10 @@ OUTBOUND_NS = uuid.UUID("f73729bd-0dac-45c2-9d2a-362857398e82")
 # several DMs is read as one (README "For Akshay" item 3).
 RECENT_WINDOW = timedelta(minutes=30)
 # An unanswered clarification stops being open after this long, so a new DM
-# days later is triaged as a new message, not read as the old reply.
+# days later is triaged as a new message, not read as the old reply. The clock
+# starts when the open round's question was written, not when the original DM
+# arrived, so a round 2 asked hours later gets the full time too (_expired).
+# 24 hours is a first guess from the Nov 19 staging test.
 CLARIFICATION_TTL = timedelta(hours=24)
 # ready_for_question: that DM already became its own question, so joining it
 # again would make the next question repeat an answered one.
@@ -200,19 +203,20 @@ def _open_clarification(run):
 
     Returns:
         tuple[dict | None, list[dict]]: (original, rounds), or (None, []) when
-        this is a new message. An original older than CLARIFICATION_TTL is
-        left as it is and no longer counts as open.
+        this is a new message. An original whose latest round was asked
+        CLARIFICATION_TTL or more ago is left as it is and no longer counts
+        as open (_expired).
 
-    Side effects: up to two reads.
+    Side effects: up to three reads.
     """
     message, db = run.message, run.db
     redelivered = run.receive_count > 1
     statuses = ("awaiting_clarification", "reassessing") if redelivered else ("awaiting_clarification",)
     original = db.find_open_original(message["follower_id"], message["id"], message["received_at"], statuses)
-    if not original or _age(message, original) >= CLARIFICATION_TTL:
+    if not original:
         return None, []
     rounds = db.get_rounds(original["id"])
-    if not rounds:
+    if not rounds or _expired(run, original, rounds[-1]):
         return None, []
     reply = rounds[-1]["reply"]
     if reply is None or (redelivered and (original["status"] == "reassessing" or reply == message["text"])):
@@ -220,9 +224,53 @@ def _open_clarification(run):
     return None, []
 
 
-def _age(message, original):
-    """How long after the original this message arrived."""
-    return datetime.fromisoformat(message["received_at"]) - datetime.fromisoformat(original["received_at"])
+def _request_id(origin_id, outbound_type, round_):
+    """Build the deterministic client_request_id of one outbound row.
+
+    Args:
+        origin_id (str): The inbound message the outbound row belongs to.
+        outbound_type (str): "clarification" or "decline".
+        round_ (int): The clarification round, or 0 when there is none.
+
+    Returns:
+        str: The same UUID for the same three values, so a retried job finds
+        the row it already wrote, and _expired can look a round's row up.
+
+    Side effects: none.
+    """
+    return str(uuid.uuid5(OUTBOUND_NS, f"{origin_id}:{outbound_type}:{round_}"))
+
+
+def _expired(run, original, latest_round):
+    """Say whether a clarification is too old for this message to be its reply.
+
+    The clock starts when the latest round's question was written (the
+    created_at of its outbound row), not when the original DM arrived. Round 2
+    is asked only after the follower answers round 1, which can be many hours
+    after the original, and its reply must still count.
+
+    Both times are stored ones, so every delivery of a job gets the same
+    answer.
+
+    Args:
+        run (_TriageRun): The job.
+        original (dict): The message waiting for a reply, with "id" and
+            "received_at".
+        latest_round (dict): Its highest clarification round, with "round".
+
+    Returns:
+        bool: True when that round was asked CLARIFICATION_TTL or more before
+        this message arrived. If its outbound row cannot be found, the
+        original's own arrival time is used instead.
+
+    Side effects: one read, and only when the original itself is that old.
+    """
+    received_at = datetime.fromisoformat(run.message["received_at"])
+    if received_at - datetime.fromisoformat(original["received_at"]) < CLARIFICATION_TTL:
+        # Every round is asked after the original arrived, so none is older.
+        return False
+    asked_at = run.db.outbound_created_at(_request_id(original["id"], "clarification", latest_round["round"]))
+    return asked_at is None or received_at - datetime.fromisoformat(asked_at) >= CLARIFICATION_TTL
 
 
 def _claim_message(run):
@@ -311,7 +359,7 @@ def _write_decision(run, decision, origin, in_progress):
             "type": outbound_type, "text": decision["outbound"]["text"], "status": "pending", "attempts": 0,
             "delivery_mode": "standard", "inbound_message_id": origin_id, "follower_id": follower_id,
             "creator_id": run.creator_id, "draft_id": None,
-            "client_request_id": str(uuid.uuid5(OUTBOUND_NS, f"{origin_id}:{outbound_type}:{round_}"))})
+            "client_request_id": _request_id(origin_id, outbound_type, round_)})
 
     question = None
     if decision["question"]:
