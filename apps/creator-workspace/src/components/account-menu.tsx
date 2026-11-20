@@ -1,3 +1,4 @@
+import { AccountMenuLink } from "@/components/account-menu-link";
 import { signOut } from "@/lib/auth/actions";
 import type { WorkspaceRole } from "@/lib/auth/session";
 
@@ -41,10 +42,16 @@ export function AccountMenu({ displayName, role }: { displayName: string | null;
             {ROLE_LABELS[role]}
           </span>
         </div>
+        <AccountMenuLink href="/profile">
+          <svg aria-hidden="true" viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
+            <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0" />
+          </svg>
+          Profile and settings
+        </AccountMenuLink>
         <form action={signOut}>
           <button
             type="submit"
-            className="pdm-press min-h-11 w-full rounded-full border border-pdm-border bg-pdm-panel px-4 text-sm font-semibold text-pdm-ink hover:border-pdm-accent hover:bg-pdm-subtle"
+            className="pdm-press mt-1 min-h-11 w-full rounded-full border border-pdm-border bg-pdm-panel px-4 text-sm font-semibold text-pdm-ink hover:border-pdm-accent hover:bg-pdm-subtle"
           >
             Sign out
           </button>
