@@ -66,7 +66,7 @@ Hard-coded `bg-white`, `stone-*`, `red-*` and `green-*` classes are not allowed 
 - **Nav island (xl, 1280 px and up):** fixed, centred, compact (about 475 px) liquid-glass pill with six items: Bank,
   Incoming, Inbox, Sent, Moderation, Knowledge. The current page gets a brighter glass pill and a teal dot, placed
   absolutely so labels never shift.
-- **Liquid glass** (iOS style, `.pdm-glass`): gradient tint, `blur(22px) saturate(190%)`, a bright top rim, a softer
+- **Liquid glass** (iOS style, `.pdm-glass`): a clear gradient tint (6 to 16% white), `blur(8px) saturate(180%)`, a bright top rim, a softer
   bottom rim and a sheen in `::before`. It falls back to a solid panel without `backdrop-filter` or under
   `prefers-reduced-transparency`.
 - **Account island:** fixed top-right glass pill with the theme toggle and an account popover (name, role,
@@ -105,6 +105,13 @@ Hard-coded `bg-white`, `stone-*`, `red-*` and `green-*` classes are not allowed 
 ## Motion
 
 - One easing curve: `cubic-bezier(0.2, 0.7, 0.2, 1)`; 160 ms for controls, 240 ms for cards.
+- The nav is the exception and moves like the iOS 26 tab bar, on `--ease-spring` (a `linear()` spring with a small
+  overshoot):
+  - A glass lens marks the current page. It springs to the tapped item the moment it is tapped, before the route
+    loads, stretching and flattening slightly as it travels (560 ms).
+  - The lens swells under a press.
+  - The bar shrinks to 90% while scrolling down and springs back on any scroll up or near the top.
+  - Under reduced motion the lens jumps and nothing scales.
 - Hover on primary targets (nav items, cards, buttons): a 1 to 2 px lift plus a fill or border change. Press is
   `scale(0.98)`.
 - The page stays still at rest, and that's deliberate: this is a work tool. Only the "drafting" status dot pulses.
