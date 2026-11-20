@@ -1,26 +1,173 @@
 @import "tailwindcss";
 
-@theme {
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+/* Brand tokens (DESIGN.md). Values live on <html> so one data-theme switch re-themes every pdm-* utility. */
+:root {
+  color-scheme: light;
+  --pdm-surface: #f5f8f9;
+  --pdm-panel: #ffffff;
+  --pdm-ink: #12232e;
+  --pdm-heading: #043b65;
+  --pdm-muted: #4a5d6b;
+  --pdm-border: #dce5ea;
+  --pdm-accent: #043b65;
+  --pdm-accent-strong: #032c4c;
+  --pdm-on-accent: #ffffff;
+  --pdm-tint: #e3f1ea;
+  --pdm-subtle: #edf2f5;
+  --pdm-danger-bg: #fdecec;
+  --pdm-danger-line: #f5c2c2;
+  --pdm-danger-ink: #9b1c1c;
+  --pdm-success-bg: #e4f4ec;
+  --pdm-success-line: #b9e3cc;
+  --pdm-success-ink: #0c6b46;
+  --pdm-glass: rgb(255 255 255 / 0.72);
+  --pdm-glass-line: rgb(4 59 101 / 0.1);
+  --pdm-shadow: 0 1px 2px rgb(18 35 46 / 0.06), 0 8px 24px -8px rgb(4 59 101 / 0.18);
+  --pdm-scrim: rgb(245 248 249 / 0.92);
+}
 
-  --color-pdm-ink: #1c1917;
-  --color-pdm-muted: #57534e;
-  --color-pdm-accent: #b45309;
-  --color-pdm-accent-strong: #92400e;
-  --color-pdm-surface: #fffbeb;
-  --color-pdm-tint: #fef3c7;
-  --color-pdm-border: #e7e5e4;
+[data-theme="dark"] {
+  color-scheme: dark;
+  --pdm-surface: #0e1b24;
+  --pdm-panel: #152936;
+  --pdm-ink: #e8eff3;
+  --pdm-heading: #ffffff;
+  --pdm-muted: #a3b5c2;
+  --pdm-border: #26404f;
+  --pdm-accent: #0dbed6;
+  --pdm-accent-strong: #6fdceb;
+  --pdm-on-accent: #0b1a22;
+  --pdm-tint: #163a38;
+  --pdm-subtle: #1e3644;
+  --pdm-danger-bg: #3a1d22;
+  --pdm-danger-line: #6b2a33;
+  --pdm-danger-ink: #ffb4b4;
+  --pdm-success-bg: #12352a;
+  --pdm-success-line: #1f5a44;
+  --pdm-success-ink: #7fe0b4;
+  --pdm-glass: rgb(21 41 54 / 0.66);
+  --pdm-glass-line: rgb(255 255 255 / 0.09);
+  --pdm-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 10px 28px -8px rgb(0 0 0 / 0.55);
+  --pdm-scrim: rgb(14 27 36 / 0.92);
+}
+
+@theme inline {
+  --font-sans: Aptos, "Segoe UI Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: var(--font-montserrat), Aptos, -apple-system, system-ui, sans-serif;
+
+  --color-pdm-surface: var(--pdm-surface);
+  --color-pdm-panel: var(--pdm-panel);
+  --color-pdm-ink: var(--pdm-ink);
+  --color-pdm-heading: var(--pdm-heading);
+  --color-pdm-muted: var(--pdm-muted);
+  --color-pdm-border: var(--pdm-border);
+  --color-pdm-accent: var(--pdm-accent);
+  --color-pdm-accent-strong: var(--pdm-accent-strong);
+  --color-pdm-on-accent: var(--pdm-on-accent);
+  --color-pdm-tint: var(--pdm-tint);
+  --color-pdm-subtle: var(--pdm-subtle);
+  --color-pdm-danger-bg: var(--pdm-danger-bg);
+  --color-pdm-danger-line: var(--pdm-danger-line);
+  --color-pdm-danger-ink: var(--pdm-danger-ink);
+  --color-pdm-success-bg: var(--pdm-success-bg);
+  --color-pdm-success-line: var(--pdm-success-line);
+  --color-pdm-success-ink: var(--pdm-success-ink);
+
+  /* Fixed brand colours (same in both themes). */
+  --color-pdm-navy: #043b65;
+  --color-pdm-midnight: #12232e;
+  --color-pdm-teal: #17a770;
+  --color-pdm-cyan: #0dbed6;
+  --color-pdm-gold: #db8424;
+  --color-pdm-sage: #d2e1be;
+
+  --shadow-pdm: var(--pdm-shadow);
+  --ease-pdm: cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
 html {
   -webkit-text-size-adjust: 100%;
+  background-color: var(--pdm-surface);
 }
 
 body {
   min-height: 100dvh;
+  line-height: 1.5;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  color: var(--pdm-heading);
+  text-wrap: balance;
+}
+
+h1 {
+  letter-spacing: -0.02em;
 }
 
 :focus-visible {
-  outline: 2px solid currentColor;
+  outline: 2px solid var(--pdm-accent);
   outline-offset: 2px;
+}
+
+::selection {
+  background: rgb(13 190 214 / 0.28);
+}
+
+/* Floating chrome only (nav and account islands). Content cards stay solid. */
+.pdm-glass {
+  background: var(--pdm-glass);
+  border: 1px solid var(--pdm-glass-line);
+  box-shadow: var(--pdm-shadow);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  backdrop-filter: blur(16px) saturate(160%);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .pdm-glass {
+    background: var(--pdm-panel);
+  }
+}
+
+/* "Settle": a small lift on hover and a soft press, on one curve. */
+.pdm-press {
+  transition:
+    transform 160ms var(--ease-pdm),
+    background-color 160ms var(--ease-pdm),
+    border-color 160ms var(--ease-pdm),
+    color 160ms var(--ease-pdm),
+    box-shadow 240ms var(--ease-pdm);
+}
+
+.pdm-press:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.pdm-lift {
+  transition:
+    translate 240ms var(--ease-pdm),
+    border-color 240ms var(--ease-pdm),
+    box-shadow 240ms var(--ease-pdm);
+}
+
+@media (hover: hover) {
+  .pdm-lift:hover {
+    translate: 0 -2px;
+    box-shadow: var(--pdm-shadow);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pdm-press,
+  .pdm-lift {
+    transition: none;
+  }
+  .pdm-press:active:not(:disabled) {
+    transform: none;
+  }
+  .pdm-lift:hover {
+    translate: none;
+  }
 }
