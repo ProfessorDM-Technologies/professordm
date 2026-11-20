@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { EmptyState } from "@/components/empty-state";
 import { PageHeader, PageSection } from "@/components/page-section";
-import { Placeholder } from "@/components/placeholder";
 
 export const metadata: Metadata = {
   title: "Profile",
@@ -31,7 +31,9 @@ export default function ProfilePage() {
             </li>
           ))}
         </ul>
-        <Placeholder>Editing these settings is not available yet.</Placeholder>
+        <EmptyState icon="settings" tone="teal" title="View only for now">
+          Editing opens in a later release. Your settings stay as they are until then.
+        </EmptyState>
       </PageSection>
 
       <PageSection id="knowledge" title="Knowledge Database">

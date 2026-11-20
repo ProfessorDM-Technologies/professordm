@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { PublishButton } from "@/components/knowledge/publish-button";
+import { EmptyState } from "@/components/empty-state";
 import { PageHeader, PageSection } from "@/components/page-section";
-import { Placeholder } from "@/components/placeholder";
 import { entryTitle } from "@/lib/knowledge/answer-entries";
 import { listAnswerEntries, type AnswerEntry } from "@/lib/knowledge/queries";
 
@@ -56,7 +56,9 @@ export default async function KnowledgePage() {
             Couldn&apos;t load your answers. Try again.
           </p>
         ) : entries.length === 0 ? (
-          <Placeholder>No saved answers yet. They appear here after you send an answer.</Placeholder>
+          <EmptyState icon="book" tone="teal" title="No saved answers yet" action={{ href: "/inbox", label: "Answer a question" }}>
+            Every answer you send is saved here as a private entry you can publish.
+          </EmptyState>
         ) : (
           <ul className="space-y-3">
             {entries.map((entry) => (
@@ -67,7 +69,9 @@ export default async function KnowledgePage() {
       </PageSection>
 
       <PageSection id="add" title="Add a fact">
-        <Placeholder>A form to add a new fact by hand will appear here.</Placeholder>
+        <EmptyState icon="book" tone="teal" title="Adding facts by hand is coming">
+          Until then, every answer you send is saved above automatically.
+        </EmptyState>
       </PageSection>
     </div>
   );

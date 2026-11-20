@@ -3,8 +3,8 @@ import Link from "next/link";
 import { DecisionButtons } from "@/components/inbox/decision-buttons";
 import { RealtimeRefresh } from "@/components/inbox/realtime-refresh";
 import { LocalTime } from "@/components/local-time";
+import { EmptyState } from "@/components/empty-state";
 import { PageHeader, PageSection } from "@/components/page-section";
-import { Placeholder } from "@/components/placeholder";
 import { QueueTabs } from "@/components/queue-tabs";
 import { getSessionUser } from "@/lib/auth/session";
 import { categoryLabel, flagLabel } from "@/lib/inbox/labels";
@@ -36,7 +36,9 @@ export default async function ModerationPage() {
         {flagged.error ? (
           <LoadError>Couldn&apos;t load flagged questions. Try again.</LoadError>
         ) : flagged.questions.length === 0 ? (
-          <Placeholder>No flagged questions. Questions flagged by a safety check appear here.</Placeholder>
+          <EmptyState icon="shield" tone="teal" title="No flagged questions">
+            Questions a safety check flags wait here for you before anything is sent.
+          </EmptyState>
         ) : (
           <ul className="space-y-3">
             {flagged.questions.map((question) => (
@@ -73,7 +75,9 @@ export default async function ModerationPage() {
         {decisions.error ? (
           <LoadError>Couldn&apos;t load messages that need your decision. Try again.</LoadError>
         ) : decisions.messages.length === 0 ? (
-          <Placeholder>Nothing to decide. Messages the AI hands to you, like safety concerns, appear here.</Placeholder>
+          <EmptyState icon="shield" tone="teal" title="Nothing to decide">
+            Messages the AI hands to you, like safety concerns, wait here for your call.
+          </EmptyState>
         ) : (
           <ul className="space-y-3">
             {decisions.messages.map((message) => (
@@ -116,16 +120,22 @@ export default async function ModerationPage() {
       </PageSection>
 
       <PageSection id="flagged-answers" title="Answers with the ProfessorDM team">
-        <Placeholder>Your answers held for ProfessorDM review, with any feedback.</Placeholder>
+        <EmptyState icon="shield" tone="teal" title="Nothing held for review">
+          If the ProfessorDM team holds one of your answers, it shows here with their feedback.
+        </EmptyState>
       </PageSection>
 
       <PageSection id="flagged-knowledge" title="Flagged knowledge entries">
-        <Placeholder>Knowledge entries flagged by the weekly safety review.</Placeholder>
+        <EmptyState icon="book" tone="teal" title="No flagged entries">
+          Nothing in your Knowledge Database is flagged.
+        </EmptyState>
       </PageSection>
 
       {isAdmin ? (
         <PageSection id="admin-review" title="ProfessorDM team review">
-          <Placeholder>Admin only: approve flagged answers or send them back with feedback.</Placeholder>
+          <EmptyState icon="shield" tone="teal" title="Nothing waiting for review">
+            Flagged answers from every creator come here for you to approve or send back with feedback.
+          </EmptyState>
         </PageSection>
       ) : null}
     </div>

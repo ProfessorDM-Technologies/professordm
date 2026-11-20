@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { RealtimeRefresh } from "@/components/inbox/realtime-refresh";
 import { LocalTime } from "@/components/local-time";
+import { EmptyState } from "@/components/empty-state";
 import { PageHeader, PageSection } from "@/components/page-section";
-import { Placeholder } from "@/components/placeholder";
 import { QueueTabs } from "@/components/queue-tabs";
 import { changeRatio } from "@/lib/inbox/answer";
 import { listQuestions, type QueueQuestion } from "@/lib/inbox/questions";
@@ -68,7 +68,9 @@ export default async function SentPage() {
             Couldn&apos;t load sent answers. Try again.
           </p>
         ) : questions.length === 0 ? (
-          <Placeholder>Answers you send appear here.</Placeholder>
+          <EmptyState icon="send" title="No answers sent yet" action={{ href: "/inbox", label: "Go to Inbox" }}>
+            Answer a question in your Inbox and it moves here once it&apos;s on its way to Instagram.
+          </EmptyState>
         ) : (
           <ul className="space-y-3">
             {questions.map((question) => (
