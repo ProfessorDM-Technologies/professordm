@@ -23,6 +23,10 @@
   --pdm-success-bg: #e4f4ec;
   --pdm-success-line: #b9e3cc;
   --pdm-success-ink: #0c6b46;
+  --pdm-cyan-tint: #e0f5f8;
+  --pdm-cyan-ink: #065a66;
+  --pdm-gold-tint: #fbebd8;
+  --pdm-gold-ink: #8a4b0b;
   --pdm-glass: rgb(255 255 255 / 0.72);
   --pdm-glass-line: rgb(4 59 101 / 0.1);
   --pdm-shadow: 0 1px 2px rgb(18 35 46 / 0.06), 0 8px 24px -8px rgb(4 59 101 / 0.18);
@@ -48,6 +52,10 @@
   --pdm-success-bg: #12352a;
   --pdm-success-line: #1f5a44;
   --pdm-success-ink: #7fe0b4;
+  --pdm-cyan-tint: #113a44;
+  --pdm-cyan-ink: #7fe3f0;
+  --pdm-gold-tint: #3a2a14;
+  --pdm-gold-ink: #f2b46a;
   --pdm-glass: rgb(21 41 54 / 0.66);
   --pdm-glass-line: rgb(255 255 255 / 0.09);
   --pdm-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 10px 28px -8px rgb(0 0 0 / 0.55);
@@ -75,6 +83,10 @@
   --color-pdm-success-bg: var(--pdm-success-bg);
   --color-pdm-success-line: var(--pdm-success-line);
   --color-pdm-success-ink: var(--pdm-success-ink);
+  --color-pdm-cyan-tint: var(--pdm-cyan-tint);
+  --color-pdm-cyan-ink: var(--pdm-cyan-ink);
+  --color-pdm-gold-tint: var(--pdm-gold-tint);
+  --color-pdm-gold-ink: var(--pdm-gold-ink);
 
   /* Fixed brand colours (same in both themes). */
   --color-pdm-navy: #043b65;
