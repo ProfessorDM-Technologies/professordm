@@ -567,6 +567,22 @@ class ReassessTests(WorkerCase):
         self.assertEqual(args[0], DM_TEXT)
         self.assertEqual(args[1][0]["reply"], REPLY_TEXT)
 
+    def test_clarification_older_than_24_hours_is_not_reopened(self):
+        # Staging Nov 19: a clarification asked on Nov 3 and never answered
+        # swallowed a new question 16 days later.
+        self.message()["received_at"] = iso(NOW - timedelta(days=16))
+        self.assertEqual(self.run_job(self.job()), "done")
+        self.assertEqual(self.reassess.call_count, 0)
+        self.assertEqual(self.triage.call_args.args[0], REPLY_TEXT)
+        self.assertIsNone(self.round["reply"])
+        self.assertEqual(self.message()["status"], "awaiting_clarification")
+
+    def test_clarification_just_under_24_hours_is_still_open(self):
+        self.message()["received_at"] = iso(NOW - timedelta(hours=23, minutes=59))
+        self.assertEqual(self.run_job(self.job()), "done")
+        self.assertEqual(self.triage.call_count, 0)
+        self.assertEqual(self.round["reply"], REPLY_TEXT)
+
     def test_round_2_is_asked_on_the_original(self):
         self.reassess.return_value = vague(round_=2)
         self.assertEqual(self.run_job(self.job()), "done")

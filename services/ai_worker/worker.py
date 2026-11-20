@@ -64,6 +64,9 @@ OUTBOUND_NS = uuid.UUID("f73729bd-0dac-45c2-9d2a-362857398e82")
 # The window of earlier DMs passed to triage, so a question split across
 # several DMs is read as one (README "For Akshay" item 3).
 RECENT_WINDOW = timedelta(minutes=30)
+# An unanswered clarification stops being open after this long, so a new DM
+# days later is triaged as a new message, not read as the old reply.
+CLARIFICATION_TTL = timedelta(hours=24)
 # ready_for_question: that DM already became its own question, so joining it
 # again would make the next question repeat an answered one.
 RECENT_SKIP_STATUSES = ("blocked", "closed_no_action", "ready_for_question")
@@ -197,7 +200,8 @@ def _open_clarification(run):
 
     Returns:
         tuple[dict | None, list[dict]]: (original, rounds), or (None, []) when
-        this is a new message.
+        this is a new message. An original older than CLARIFICATION_TTL is
+        left as it is and no longer counts as open.
 
     Side effects: up to two reads.
     """
@@ -205,7 +209,7 @@ def _open_clarification(run):
     redelivered = run.receive_count > 1
     statuses = ("awaiting_clarification", "reassessing") if redelivered else ("awaiting_clarification",)
     original = db.find_open_original(message["follower_id"], message["id"], message["received_at"], statuses)
-    if not original:
+    if not original or _age(message, original) >= CLARIFICATION_TTL:
         return None, []
     rounds = db.get_rounds(original["id"])
     if not rounds:
@@ -214,6 +218,11 @@ def _open_clarification(run):
     if reply is None or (redelivered and (original["status"] == "reassessing" or reply == message["text"])):
         return original, rounds
     return None, []
+
+
+def _age(message, original):
+    """How long after the original this message arrived."""
+    return datetime.fromisoformat(message["received_at"]) - datetime.fromisoformat(original["received_at"])
 
 
 def _claim_message(run):
