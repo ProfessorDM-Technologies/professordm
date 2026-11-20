@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* dark: utilities follow the saved theme on <html>, not the OS setting. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 /* Brand tokens (DESIGN.md). Values live on <html> so one data-theme switch re-themes every pdm-* utility. */
 :root {
   color-scheme: light;
