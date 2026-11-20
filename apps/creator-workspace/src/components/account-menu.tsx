@@ -21,7 +21,7 @@ export function AccountMenu({ displayName, role }: { displayName: string | null;
       <button
         type="button"
         popoverTarget="account-menu"
-        aria-label={`Account: ${displayName ?? "signed in"}`}
+        aria-label={`${letters ?? "Account"}, account menu for ${displayName ?? "you"}`}
         className="pdm-press grid size-10 place-items-center rounded-full bg-pdm-navy font-display text-sm font-bold text-white ring-2 ring-transparent hover:ring-pdm-cyan/60 dark:bg-pdm-cyan dark:text-pdm-midnight"
       >
         {letters ?? (

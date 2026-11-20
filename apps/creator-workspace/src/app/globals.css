@@ -30,7 +30,6 @@
   --pdm-glass: rgb(255 255 255 / 0.72);
   --pdm-glass-line: rgb(4 59 101 / 0.1);
   --pdm-shadow: 0 1px 2px rgb(18 35 46 / 0.06), 0 8px 24px -8px rgb(4 59 101 / 0.18);
-  --pdm-scrim: rgb(245 248 249 / 0.92);
 }
 
 [data-theme="dark"] {
@@ -59,7 +58,6 @@
   --pdm-glass: rgb(21 41 54 / 0.66);
   --pdm-glass-line: rgb(255 255 255 / 0.09);
   --pdm-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 10px 28px -8px rgb(0 0 0 / 0.55);
-  --pdm-scrim: rgb(14 27 36 / 0.92);
 }
 
 @theme inline {
@@ -195,7 +193,7 @@ h1 {
 }
 
 .pdm-scrim {
-  background: linear-gradient(to bottom, var(--pdm-scrim) 45%, transparent);
+  background: linear-gradient(to bottom, var(--pdm-surface) 55%, transparent);
 }
 
 /* Account popover: pinned under the account island; settles in on open. */
@@ -213,7 +211,7 @@ h1 {
     display 160ms allow-discrete;
 }
 
-@media (min-width: 64rem) {
+@media (min-width: 80rem) {
   .pdm-popover {
     inset: auto 1.5rem auto auto;
     top: 5rem;
@@ -236,4 +234,18 @@ h1 {
   .pdm-popover {
     transition: none;
   }
+}
+
+/* Inline text links keep their underline at rest and answer hover by thickening it. */
+a.underline {
+  text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+  transition:
+    text-decoration-color 160ms var(--ease-pdm),
+    text-underline-offset 160ms var(--ease-pdm);
+}
+
+a.underline:hover {
+  text-decoration-color: currentColor;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 6px;
 }

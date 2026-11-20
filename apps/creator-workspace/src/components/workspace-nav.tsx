@@ -32,7 +32,7 @@ function isActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-// "island": the floating glass pill at the top (lg and up). "dock": the same pill docked at the bottom on phones.
+// "island": the floating glass pill at the top (xl and up). "dock": the same pill docked at the bottom on phones.
 export function WorkspaceNav({ variant, className = "" }: { variant: "island" | "dock"; className?: string }) {
   const pathname = usePathname();
   const items = variant === "dock" ? NAV_ITEMS.filter((item) => item.mobile) : NAV_ITEMS;

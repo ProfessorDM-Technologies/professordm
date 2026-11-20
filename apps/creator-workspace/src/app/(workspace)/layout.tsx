@@ -10,7 +10,7 @@ import { LOGIN_PATH } from "@/lib/routes";
 import { parseTheme, THEME_COOKIE } from "@/lib/theme";
 
 // Fixed chrome (DESIGN.md "Layout"): logo top-left with no background, the glass nav island centred at the top
-// (lg and up) or docked at the bottom (phones), and the account island top-right. None of it scrolls.
+// (xl and up) or docked at the bottom (phones), and the account island top-right. None of it scrolls.
 export default async function WorkspaceLayout({ children }: { children: ReactNode }) {
   const session = await getSessionUser();
 
@@ -34,11 +34,11 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
       </a>
 
       {/* Fades scrolled content out under the fixed row so it never collides with the logo. */}
-      <div aria-hidden="true" className="pdm-scrim pointer-events-none fixed inset-x-0 top-0 z-30 h-20 lg:h-28" />
+      <div aria-hidden="true" className="pdm-scrim pointer-events-none fixed inset-x-0 top-0 z-30 h-24 xl:h-28" />
 
-      <header className="pointer-events-none fixed inset-x-0 top-0 z-40 grid grid-cols-[1fr_auto] items-center gap-4 px-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-4 lg:grid-cols-[1fr_auto_1fr] lg:px-6 lg:pt-4">
+      <header className="pointer-events-none fixed inset-x-0 top-0 z-40 grid grid-cols-[1fr_auto] items-center gap-4 px-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-4 xl:grid-cols-[1fr_auto_1fr] xl:px-6 xl:pt-4">
         <BrandLogo className="pointer-events-auto justify-self-start" />
-        <WorkspaceNav variant="island" className="pointer-events-auto hidden lg:block" />
+        <WorkspaceNav variant="island" className="pointer-events-auto hidden xl:block" />
         <div className="pdm-glass pointer-events-auto flex items-center gap-1 justify-self-end rounded-full p-1">
           <ThemeToggle initial={theme} />
           <AccountMenu displayName={session.displayName} role={session.role} />
@@ -48,14 +48,14 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
       <main
         id="main"
         tabIndex={-1}
-        className="mx-auto w-full max-w-5xl px-4 pb-32 pt-24 outline-none sm:px-6 lg:px-8 lg:pb-16 lg:pt-32"
+        className="mx-auto w-full max-w-5xl px-4 pb-32 pt-24 outline-none sm:px-6 lg:px-8 xl:pb-16 xl:pt-32"
       >
         {children}
       </main>
 
       <WorkspaceNav
         variant="dock"
-        className="fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-40 mx-auto max-w-md lg:hidden"
+        className="fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-40 mx-auto max-w-md xl:hidden"
       />
     </div>
   );

@@ -15,12 +15,12 @@ export function BrandLogo({ className = "" }: { className?: string }) {
         alt=""
         width={278}
         height={192}
-        className="h-8 w-auto lg:h-10"
+        className="h-9 w-auto xl:h-12"
       />
-      <span className="flex flex-col">
-        <img src="/brand/wordmark-light.svg" alt="" width={530} height={96} className="h-4 w-auto dark:hidden lg:h-5" />
-        <img src="/brand/wordmark-dark.svg" alt="" width={530} height={96} className="hidden h-4 w-auto dark:block lg:h-5" />
-        <span className="mt-0.5 text-[0.6875rem] font-semibold uppercase tracking-[0.14em] text-pdm-muted">
+      <span className="flex flex-col items-start">
+        <img src="/brand/wordmark-light.svg" alt="" width={530} height={96} className="h-[1.125rem] w-auto dark:hidden xl:h-6" />
+        <img src="/brand/wordmark-dark.svg" alt="" width={530} height={96} className="hidden h-[1.125rem] w-auto dark:block xl:h-6" />
+        <span className="mt-0.5 text-[0.6875rem] font-semibold whitespace-nowrap uppercase tracking-[0.14em] text-pdm-muted">
           Creator Workspace
         </span>
       </span>

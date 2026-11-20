@@ -63,10 +63,10 @@ Hard-coded `bg-white`, `stone-*`, `red-*` and `green-*` classes are not allowed 
 ```
 
 - **Logo:** fixed top-left with no background: the icon mark next to the vector wordmark. It does not move on scroll.
-- **Nav island (lg and up):** fixed, centred, glass pill (`backdrop-filter: blur(16px) saturate(160%)` over a 72%
+- **Nav island (xl, 1280 px and up):** fixed, centred, glass pill (`backdrop-filter: blur(16px) saturate(160%)` over a 72%
   panel tint, a hairline border and a soft shadow). The current page gets a solid panel pill with a teal dot.
 - **Account island:** fixed top-right glass pill with the theme toggle and an account popover (role, sign out).
-- **Below lg:** the logo and account row stay at the top. The nav island docks at the bottom as a glass pill with the
+- **Below xl:** the logo and account row stay at the top. The nav island docks at the bottom as a glass pill with the
   five mobile items, inside the safe area. Seven items do not fit a 390 px top bar, and the bottom is where thumbs are.
 - A fixed gradient scrim under the top row, matching the ground colour, stops scrolled text from colliding with the
   logo. The logo itself still has no background.
