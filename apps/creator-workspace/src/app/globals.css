@@ -174,3 +174,10 @@ h1 {
     translate: none;
   }
 }
+
+/* Theme switch crossfade (View Transitions). Short, and skipped under reduced motion in theme-toggle.tsx. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 240ms;
+  animation-timing-function: var(--ease-pdm);
+}
