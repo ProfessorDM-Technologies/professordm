@@ -10,7 +10,7 @@
 -- Raises not_authenticated, invalid_decision or not_found.
 -- Reuses is_admin() and current_creator_id() from migration 003.
 -- Safe to re-run: create or replace.
--- Run in Supabase SQL Editor AFTER 20261102_011_creator_inbox_policies.sql
+-- Run in Supabase SQL Editor AFTER 20261102000011_creator_inbox_policies.sql
 -- =============================================================
 
 create or replace function public.record_message_decision(p_message_id uuid, p_decision text)

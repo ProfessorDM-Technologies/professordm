@@ -10,7 +10,7 @@
 -- Guide chunks (source = 'doc') and manual facts are out of reach of this function.
 -- Reuses is_admin() and current_creator_id() from migration 003.
 -- Safe to re-run: create or replace.
--- Run in Supabase SQL Editor AFTER 20261119_013_knowledge_question_unique.sql
+-- Run in Supabase SQL Editor AFTER 20261119000013_knowledge_question_unique.sql
 -- =============================================================
 
 create or replace function public.set_knowledge_entry_published(p_entry_id uuid, p_published boolean)

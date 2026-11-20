@@ -5,7 +5,7 @@
 -- Does not create accounts or change roles. Stops with an error if an account is missing or
 -- user@gmail.com is not a consumer.
 -- Safe to re-run: fixed ids, so a second run updates the same rows instead of adding new ones.
--- Run in Supabase SQL Editor AFTER 20261014_008_consumer_read_policies.sql (needs the title column)
+-- Run in Supabase SQL Editor AFTER 20261014000008_consumer_read_policies.sql (needs the title column)
 -- =============================================================
 
 do $seed$

@@ -7,7 +7,7 @@
 -- SELECT only: writes go through the api, which uses the service role and bypasses RLS.
 -- Reuses is_admin() and current_creator_id() from migration 003.
 -- Safe to re-run: the column uses if not exists, policies are dropped before they are created.
--- Run in Supabase SQL Editor AFTER 20261011_003_creator_read_policies.sql
+-- Run in Supabase SQL Editor AFTER 20261011000003_creator_read_policies.sql
 -- =============================================================
 
 -- =============================================================

@@ -6,7 +6,7 @@ Account `939603205947`, region `us-east-1`, profile `professordm-staging`, Supab
 
 1. Confirm the staging SSM `meta-app-secret` and `meta-verify-token` match the Meta app currently calling `/webhook`. Never paste their values into a ticket or command history.
 2. Confirm the Meta Graph API version and link the staging Instagram account in `ig_accounts`, with `vault_token_id` pointing to a Vault secret. Keep the token in Vault.
-3. Apply migrations `20261014_006_oct16_realtime_publication.sql` and `20261014_007_meta_page_token_rpc.sql` in the staging Supabase SQL Editor. Run `docs/oct16-staging-verification.sql`; both tables must appear, RLS must remain enabled, and only `service_role` may execute the Vault function.
+3. Apply migrations `20261014000006_oct16_realtime_publication.sql` and `20261014000007_meta_page_token_rpc.sql` in the staging Supabase SQL Editor. Run `docs/oct16-staging-verification.sql`; both tables must appear, RLS must remain enabled, and only `service_role` may execute the Vault function.
 4. Run Python tests and Creator Workspace lint, typecheck, tests, and build. Review `git diff --check` and a secret scan.
 
 ## AWS rollout

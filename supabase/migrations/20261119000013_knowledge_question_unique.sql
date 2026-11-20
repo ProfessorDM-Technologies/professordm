@@ -8,7 +8,7 @@
 --   where source = 'question' and question_id is not null
 --   group by question_id having count(*) > 1;
 -- Safe to re-run.
--- Run in Supabase SQL Editor AFTER 20261117_012_message_decisions.sql
+-- Run in Supabase SQL Editor AFTER 20261117000012_message_decisions.sql
 -- =============================================================
 
 create unique index if not exists knowledge_entries_question_unique
