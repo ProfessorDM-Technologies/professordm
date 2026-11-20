@@ -63,14 +63,27 @@ Hard-coded `bg-white`, `stone-*`, `red-*` and `green-*` classes are not allowed 
 ```
 
 - **Logo:** fixed top-left with no background: the icon mark next to the vector wordmark. It does not move on scroll.
-- **Nav island (xl, 1280 px and up):** fixed, centred, glass pill (`backdrop-filter: blur(16px) saturate(160%)` over a 72%
-  panel tint, a hairline border and a soft shadow). The current page gets a solid panel pill with a teal dot.
-- **Account island:** fixed top-right glass pill with the theme toggle and an account popover (role, sign out).
-- **Below xl:** the logo and account row stay at the top. The nav island docks at the bottom as a glass pill with the
-  five mobile items, inside the safe area. Seven items do not fit a 390 px top bar, and the bottom is where thumbs are.
-- A fixed gradient scrim under the top row, matching the ground colour, stops scrolled text from colliding with the
-  logo. The logo itself still has no background.
+- **Nav island (xl, 1280 px and up):** fixed, centred, compact (about 475 px) liquid-glass pill with six items: Bank,
+  Incoming, Inbox, Sent, Moderation, Knowledge. The current page gets a brighter glass pill and a teal dot, placed
+  absolutely so labels never shift.
+- **Liquid glass** (iOS style, `.pdm-glass`): gradient tint, `blur(22px) saturate(190%)`, a bright top rim, a softer
+  bottom rim and a sheen in `::before`. It falls back to a solid panel without `backdrop-filter` or under
+  `prefers-reduced-transparency`.
+- **Account island:** fixed top-right glass pill with the theme toggle and an account popover (name, role,
+  Profile and settings, sign out). Profile lives here, not in the nav.
+- **Below xl:** the logo and account row stay at the top. The nav docks at the bottom as a glass pill with Bank,
+  Incoming, Inbox, Moderation and Knowledge. Sent lights up Inbox, since they share the queue tabs.
+- A gradient scrim sits only behind the logo corner, so scrolled text never collides with the logo while content still
+  passes under the glass islands. The logo itself has no background.
 - Glass is used **only** on floating chrome (the nav and account islands). Content cards are solid, for legibility.
+
+## Conversation (Instagram-style)
+
+- `/inbox/[id]`: two panes in one fixed-height card. Left (md and up): every sender, newest first, with a relative
+  time and a one-line preview. Right: header, messages, composer.
+- Only the message list scrolls (`flex-col-reverse`, so it opens at the newest message with no script). The composer
+  is pinned under it. Enter sends and Shift+Enter adds a line.
+- Phones show the conversation alone, with a back arrow to the full message list.
 
 ## Logo (brand §02)
 
