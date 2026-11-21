@@ -10,15 +10,16 @@ Safety Layer link: DAT01 (private by default, publishing needs approval and a pr
 
 The `store_qa` job saves every delivered answer as a `knowledge_entries` row with `source = 'question'` and
 `published = false` (`services/ai_worker/worker.py`, `_store_qa`). It runs right after delivery: the sender publishes
-the job once the question is marked delivered (PR #48). Migration 013 keeps it to one row per question. A private row
-can help the AI draft future answers for the same creator, but it never shows in the consumer app.
+the job once the question is marked delivered (PR #48). Migration 013 keeps it to one row per question. Today drafts
+search guide chunks only (`SEARCH_SOURCES = ("doc",)` in `services/ai_worker/draft.py`). Saved Q&A could later help
+draft answers for the same creator, but a private row never shows in the consumer app.
 
 ## 2. Who decides
 
 | Role | Can publish | Can unpublish |
 |---|---|---|
 | Creator | Yes, her own answers, one at a time | Yes, her own |
-| Admin (ProfessorDM staff) | Allowed by migration 014 today. **Open:** should only the creator publish? | Yes, any entry |
+| Admin (ProfessorDM staff) | No (DAT01 needs the creator's approval) | Yes, any entry (take-down) |
 | Consumer, Instagram follower | No | No |
 
 Sending an answer is **not** publishing it. They are two separate creator actions.
@@ -34,10 +35,14 @@ All of these must be true:
 4. The public version has **no follower details**: no name, @handle, Instagram id, photos or the original DM word for
    word. The public question starts as `question_text` and the creator edits it in the publish dialog.
 5. It has **1 to 5 tags** (already required when sending).
+6. The question was **not refunded**.
 
 **Server check for rule 4** (agreed Nov 21): the server rejects a publish if the title or content contains the
-follower's `ig_followers.username`, or the original DM text word for word. This works now, without waiting for the AI
-anonymizer, which is not in the repo yet.
+follower's `ig_followers.username`, or the original DM text word for word. It doesn't need the AI anonymizer, which is
+not in the repo yet.
+
+**To build:** the publish dialog, the server check for rule 4 and the checks for rules 2 and 6. Today the SCRUM-143
+Publish button publishes the entry as it is.
 
 ## 4. What the consumer sees
 
@@ -57,7 +62,8 @@ load. To change a published answer: unpublish, edit, publish again, so section 3
 | Consumer app | Every read filters `published = true` and selects only `id, title, content, tags` | Done, tested (SCRUM-146) |
 | Search function | `match_knowledge` defaults to `p_published_only = false`. Any consumer search endpoint **must** pass `true` | Rule for later |
 | Publish write | `set_knowledge_entry_published` (migration 014): own `question` entries only, writes `audit_log` | Done (SCRUM-143) |
-| Publish checks | Rules 3.2 and 3.4 checked on the server, plus the edit dialog | To build (section 8) |
+| Creator-only publish | Migration 014 also lets an admin publish. Limit admins to unpublish | To build |
+| Publish checks | Rules 3.2, 3.4 and 3.6 checked on the server, plus the edit dialog | To build |
 
 ## 7. Acceptance tests
 
@@ -78,5 +84,5 @@ load. To change a published answer: unpublish, edit, publish again, so section 3
 | 2 | Removing names | Server check from section 3 for now; automated anonymizer later (Safety Layer) |
 | 3 | Who builds what | Ritvik: dialog and server action in the Creator Workspace. Akshay: server route, same split as `approveAnswer`. **Waiting for Akshay to confirm** |
 | 4 | Demo | SQL update was the fallback; the SCRUM-143 Publish button now works, so the demo can use it |
-| 5 | Timing | `store_qa` runs right after delivery (PR #48), but diagram 04 and the architecture README say "only after the 3-day hold, never if refunded". **Chinmay to confirm** which is right. If it stays right after delivery, a refunded question should not be publishable, and the diagrams need updating |
-| 6 | Admin publishing | Migration 014 lets an admin publish. Keep it, or limit publishing to the creator? |
+| 5 | Timing | Keep saving right after delivery (Karthik). A refunded question can't be published (rule 3.6). Diagram 04 updated to match |
+| 6 | Admin publishing | Creator-only publish, since DAT01 needs the creator's approval. An admin can unpublish only (Karthik) |
