@@ -29,12 +29,12 @@ the receiving account from the webhook. It then requires the profile response's
 
 ## Read-only staging observations, October 14, 2026
 
-- Receiving Instagram professional account: `17841479724216495`, username
+- Receiving Instagram professional account: `<ig-account-id>`, username
   `professordm_appsuite`. The Facebook User candidate can read this account.
-- Expected Facebook Page: `1358275557370847`. Page reads require access absent
+- Expected Facebook Page: `<facebook-page-id>`. Page reads require access absent
   from the current candidate. This does not establish that the Page is unlinked.
-- Real follower IGSIDs: `4672837849619460` and `2234200840491090`. The Instagram
-  Login candidate returned `reddy_arun7` and `akshayvoora`, respectively, with
+- Real follower IGSIDs: `<follower-igsid-1>` and `<follower-igsid-2>`. The Instagram
+  Login candidate returned `<follower-username>` and `<follower-username-2>`, respectively, with
   matching sender IDs. Both database usernames were still NULL at validation;
   no database update was made by these read-only probes.
 - Existing Vault token: previously identified as a Facebook SYSTEM_USER token.
@@ -42,14 +42,14 @@ the receiving account from the webhook. It then requires the profile response's
   token debugger as a Facebook USER token. Both have `instagram_basic` and
   `instagram_manage_messages`; neither is an Instagram Login token.
 - The Instagram Login candidate's `/me` returned app-scoped `id`
-  `28789161677380659`, webhook account `user_id` `17841479724216495`, and username
+  `<ig-app-scoped-id>`, webhook account `user_id` `<ig-account-id>`, and username
   `professordm_appsuite`. The implementation matches `user_id`, not app-scoped
   `id`, to the webhook recipient.
 - Backend tests: 33 passed. Coverage includes new and existing NULL usernames,
   populated username skip, missing/failed credentials, unsafe response mapping,
   conditional updates, time budget, batch processing order, and duplicate MIDs.
 - The implemented client also passed a read-only live probe for sender
-  `4672837849619460`, returning `reddy_arun7` after its account identity check.
+  `<follower-igsid-1>`, returning `<follower-username>` after its account identity check.
 
 ## Candidate validation and implementation gate
 
@@ -70,7 +70,7 @@ Read the candidate only into backend process memory. Before any Vault update:
 ## Runtime credentials and reliability
 
 The staging webhook uses the validated token as a separate SSM SecureString:
-`/professordm/staging/instagram-profile-tokens/17841479724216495`.
+`/professordm/staging/instagram-profile-tokens/<ig-account-id>`.
 `SSM_INSTAGRAM_PROFILE_TOKEN_PREFIX` configures the prefix; the receiving
 Instagram account ID selects the credential. Other receiving accounts need
 their own authorized token under that prefix. Missing credentials leave the
@@ -114,11 +114,11 @@ The user sent a fresh real DM at approximately **6:20 PM MST on October 14,
 | Stage | Evidence | Result |
 | --- | --- | --- |
 | JSON parsing | `stage=json_parse PASS message_candidates=1` | PASS |
-| Receiving account resolution | `stage=account_resolution PASS`; account `f4f57c1c-6317-45c2-8b91-381f0fa58472`, Instagram ID `17841479724216495` | PASS |
-| Follower upsert | `stage=follower_upsert PASS`; row `fd528a98-994f-4dc7-87b7-859de91a7e79`, IGSID `2234200840491090` | PASS |
+| Receiving account resolution | `stage=account_resolution PASS`; account `<ig-account-row-id>`, Instagram ID `<ig-account-id>` | PASS |
+| Follower upsert | `stage=follower_upsert PASS`; row `<follower-row-id>`, IGSID `<follower-igsid-2>` | PASS |
 | Inbound persistence | `stage=inbound_upsert PASS`; row `0fa115f4-c4ab-46c4-82c8-bb8d635ba136`; exactly one row exists for its MID | PASS |
 | SQS publication | `stage=sqs_publish PASS`; CloudWatch `NumberOfMessagesSent` sum was 1 for the 01:20 UTC minute; visible count 44 to 45, zero in flight | PASS |
-| Username retrieval and update | `username_returned=true updated=True`; follower changed from NULL to `akshayvoora` | PASS |
+| Username retrieval and update | `username_returned=true updated=True`; follower changed from NULL to `<follower-username-2>` | PASS |
 | Webhook response | `Instagram webhook method=POST status=200` | PASS |
 
 The follower's creator `9bd6dce3-a884-445f-a3a5-6c4422e945ad` matches the receiving
