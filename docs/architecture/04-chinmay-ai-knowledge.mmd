@@ -112,12 +112,12 @@ sequenceDiagram
     end
 
     rect rgb(227, 242, 253)
-    Note over SQS,DB: FLOW 6  KNOWLEDGE  jobs: embed, ingest, kb_safety_review
+    Note over SQS,DB: FLOW 6  KNOWLEDGE  jobs: store_qa, ingest, kb_safety_review
     end
-    SQS->>AI: { type: embed, questionId }  queued by the scheduler when the 3-day hold ends,<br/>never for refunded questions
-    AI->>AI: anonymize (remove handle, names, PII). Voice note kept with the same tags
-    AI->>MOD: embed Q+A
-    AI->>DB: knowledge_entries row: text, tags, source, published flag, embedding
+    SQS->>AI: { type: store_qa, questionId }  published by the sender right after delivery
+    AI->>MOD: embed question text + the creator's final answer (never the follower, the original DM or the AI draft)
+    AI->>DB: knowledge_entries row: source question, title, content, tags, embedding, published = false
+    Note over AI,DB: The creator publishes later (SCRUM-143, SCRUM-137). A refunded question can't be published.<br/>Anonymizing (handle, names, PII) is not built yet: the publish rules cover it for now.
     SQS->>AI: { type: ingest, docId }  seed docs from Kristin (about 110) or a fact the creator added by hand
     AI->>AI: chunk
     AI->>MOD: batch embed
