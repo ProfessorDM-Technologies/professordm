@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { AiDisclosure } from "@/components/ai-disclosure";
 import { getPublishedEntry } from "@/lib/knowledge/queries";
 import { entryTitle } from "@/lib/knowledge/search";
 
@@ -55,6 +56,7 @@ export default async function EntryPage({ params }: PageProps<"/entry/[id]">) {
             {paragraph.trim()}
           </p>
         ))}
+        <AiDisclosure variant="full" />
       </section>
 
       <p>
