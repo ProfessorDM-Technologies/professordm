@@ -30,8 +30,15 @@ Resources:
             Fn::GetAtt:
             - InboundQueue
             - QueueName
+      # Only the parameters the webhook reads (SSM_* above), not all of professordm/*.
       - SSMParameterReadPolicy:
-          ParameterName: professordm/*
+          ParameterName: professordm/staging/supabase-url
+      - SSMParameterReadPolicy:
+          ParameterName: professordm/staging/supabase-service-role-key
+      - SSMParameterReadPolicy:
+          ParameterName: professordm/staging/meta-verify-token
+      - SSMParameterReadPolicy:
+          ParameterName: professordm/staging/instagram-profile-tokens/*
       Events:
         WebhookGet:
           Type: Api
