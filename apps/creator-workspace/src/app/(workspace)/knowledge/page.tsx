@@ -1,22 +1,23 @@
 import type { Metadata } from "next";
 import { PublishButton } from "@/components/knowledge/publish-button";
+import { EmptyState } from "@/components/empty-state";
 import { PageHeader, PageSection } from "@/components/page-section";
-import { Placeholder } from "@/components/placeholder";
 import { entryTitle } from "@/lib/knowledge/answer-entries";
 import { listAnswerEntries, type AnswerEntry } from "@/lib/knowledge/queries";
 
 export const metadata: Metadata = {
   title: "Knowledge Database",
+  alternates: { canonical: "/knowledge" },
 };
 
 function EntryCard({ entry }: { entry: AnswerEntry }) {
   return (
-    <li className="space-y-3 rounded-lg border border-pdm-border bg-white p-4">
+    <li className="space-y-3 rounded-2xl border border-pdm-border bg-pdm-panel p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <p className="font-semibold">{entryTitle(entry)}</p>
         <span
           className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-            entry.published ? "bg-green-100 text-green-800" : "bg-stone-100 text-pdm-ink"
+            entry.published ? "bg-pdm-success-bg text-pdm-success-ink" : "bg-pdm-subtle text-pdm-ink"
           }`}
         >
           {entry.published ? "Published" : "Private"}
@@ -52,11 +53,13 @@ export default async function KnowledgePage() {
           Answers you send are saved here as private entries. Publish the ones you want in the Knowledge app.
         </p>
         {error ? (
-          <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-800">
+          <p role="alert" className="rounded-2xl border border-pdm-danger-line bg-pdm-danger-bg p-4 text-sm font-medium text-pdm-danger-ink">
             Couldn&apos;t load your answers. Try again.
           </p>
         ) : entries.length === 0 ? (
-          <Placeholder>No saved answers yet. They appear here after you send an answer.</Placeholder>
+          <EmptyState icon="book" tone="teal" title="No saved answers yet" action={{ href: "/inbox", label: "Answer a question" }}>
+            Every answer you send is saved here as a private entry you can publish.
+          </EmptyState>
         ) : (
           <ul className="space-y-3">
             {entries.map((entry) => (
@@ -67,7 +70,9 @@ export default async function KnowledgePage() {
       </PageSection>
 
       <PageSection id="add" title="Add a fact">
-        <Placeholder>A form to add a new fact by hand will appear here.</Placeholder>
+        <EmptyState icon="book" tone="teal" title="Adding facts by hand is coming">
+          Until then, every answer you send is saved above automatically.
+        </EmptyState>
       </PageSection>
     </div>
   );

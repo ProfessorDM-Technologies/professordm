@@ -10,13 +10,14 @@ import { categoryLabel } from "@/lib/inbox/labels";
 import { cardState } from "@/lib/inbox/question-state";
 import { getQuestion, listQuestions } from "@/lib/inbox/questions";
 
-export const metadata: Metadata = {
-  title: "Answer question",
-};
+export async function generateMetadata({ params }: PageProps<"/inbox/question/[id]">): Promise<Metadata> {
+  const { id } = await params;
+  return { title: "Answer question", alternates: { canonical: `/inbox/question/${id}` } };
+}
 
 const CATEGORY_STYLES: Record<string, string> = {
   expert_question: "bg-pdm-tint text-pdm-accent-strong",
-  safety_concern: "bg-red-100 text-red-800",
+  safety_concern: "bg-pdm-danger-bg text-pdm-danger-ink",
 };
 
 // Same look as the conversation page bubbles: incoming bordered on the left, outgoing amber on the right.
@@ -26,7 +27,7 @@ function SmallBubble({ outgoing, label, text }: { outgoing: boolean; label: stri
       <div className={`flex max-w-[85%] flex-col space-y-1 ${outgoing ? "items-end text-right" : "items-start"}`}>
         <div
           className={`whitespace-pre-wrap rounded-2xl px-4 py-2 text-left text-sm ${
-            outgoing ? "bg-pdm-accent text-white" : "border border-pdm-border bg-white text-pdm-ink"
+            outgoing ? "bg-pdm-accent text-pdm-on-accent" : "border border-pdm-border bg-pdm-panel text-pdm-ink"
           }`}
         >
           {text}
@@ -83,7 +84,7 @@ export default async function AnswerQuestionPage({ params }: PageProps<"/inbox/q
       </div>
 
       {error ? (
-        <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-800">
+        <p role="alert" className="rounded-2xl border border-pdm-danger-line bg-pdm-danger-bg p-4 text-sm font-medium text-pdm-danger-ink">
           Part of this question couldn&apos;t be loaded. Refresh before you answer.
         </p>
       ) : null}
@@ -103,7 +104,7 @@ export default async function AnswerQuestionPage({ params }: PageProps<"/inbox/q
         nextQuestionId={nextQuestion?.id ?? null}
         context={
           <>
-            <section aria-labelledby="question-heading" className="space-y-3 rounded-lg border border-pdm-border bg-white p-4">
+            <section aria-labelledby="question-heading" className="space-y-3 rounded-2xl border border-pdm-border bg-pdm-panel p-4">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <h2 id="question-heading" className="font-semibold">
                   The question
@@ -115,7 +116,7 @@ export default async function AnswerQuestionPage({ params }: PageProps<"/inbox/q
                 <div className="flex flex-wrap items-center gap-2 text-xs">
                   <span
                     className={`rounded-full px-2 py-0.5 font-semibold ${
-                      (origin.category && CATEGORY_STYLES[origin.category]) ?? "bg-stone-100 text-pdm-ink"
+                      (origin.category && CATEGORY_STYLES[origin.category]) ?? "bg-pdm-subtle text-pdm-ink"
                     }`}
                   >
                     {categoryLabel(origin.category)}

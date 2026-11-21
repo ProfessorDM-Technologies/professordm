@@ -3,8 +3,8 @@ import Link from "next/link";
 import { DecisionButtons } from "@/components/inbox/decision-buttons";
 import { RealtimeRefresh } from "@/components/inbox/realtime-refresh";
 import { LocalTime } from "@/components/local-time";
+import { EmptyState } from "@/components/empty-state";
 import { PageHeader, PageSection } from "@/components/page-section";
-import { Placeholder } from "@/components/placeholder";
 import { QueueTabs } from "@/components/queue-tabs";
 import { getSessionUser } from "@/lib/auth/session";
 import { categoryLabel, flagLabel } from "@/lib/inbox/labels";
@@ -12,11 +12,12 @@ import { listDecisionMessages, listOpenFlags } from "@/lib/inbox/questions";
 
 export const metadata: Metadata = {
   title: "Moderation",
+  alternates: { canonical: "/moderation" },
 };
 
 function LoadError({ children }: { children: string }) {
   return (
-    <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-800">
+    <p role="alert" className="rounded-2xl border border-pdm-danger-line bg-pdm-danger-bg p-4 text-sm font-medium text-pdm-danger-ink">
       {children}
     </p>
   );
@@ -36,14 +37,16 @@ export default async function ModerationPage() {
         {flagged.error ? (
           <LoadError>Couldn&apos;t load flagged questions. Try again.</LoadError>
         ) : flagged.questions.length === 0 ? (
-          <Placeholder>No flagged questions. Questions flagged by a safety check appear here.</Placeholder>
+          <EmptyState icon="shield" tone="teal" title="No flagged questions">
+            Questions a safety check flags wait here for you before anything is sent.
+          </EmptyState>
         ) : (
           <ul className="space-y-3">
             {flagged.questions.map((question) => (
               <li key={question.id}>
                 <Link
                   href={`/inbox/question/${question.id}`}
-                  className="block space-y-2 rounded-lg border border-pdm-border bg-white p-4 hover:border-pdm-accent"
+                  className="pdm-lift block space-y-2 rounded-2xl border border-pdm-border bg-pdm-panel p-4 hover:border-pdm-accent"
                 >
                   <p className="font-semibold">
                     {question.follower?.username ? `@${question.follower.username}` : "Unknown sender"}
@@ -52,13 +55,13 @@ export default async function ModerationPage() {
                   <div className="flex flex-wrap items-end justify-between gap-3">
                     <ul aria-label="Safety flags" className="flex flex-wrap gap-2 text-xs">
                       {question.flags.map((flag) => (
-                        <li key={flag.id} className="rounded-full bg-red-100 px-2 py-0.5 font-semibold text-red-800">
+                        <li key={flag.id} className="rounded-full bg-pdm-danger-bg px-2 py-0.5 font-semibold text-pdm-danger-ink">
                           {flagLabel(flag)}
                           <span className="font-normal"> · {flag.targetType === "draft" ? "on the AI draft" : "on the message"}</span>
                         </li>
                       ))}
                     </ul>
-                    <span className="inline-flex min-h-11 items-center rounded-lg bg-pdm-accent px-4 text-sm font-semibold text-white">
+                    <span className="pdm-press inline-flex min-h-11 items-center rounded-full bg-pdm-accent px-4 text-sm font-semibold text-pdm-on-accent">
                       Review
                     </span>
                   </div>
@@ -73,11 +76,13 @@ export default async function ModerationPage() {
         {decisions.error ? (
           <LoadError>Couldn&apos;t load messages that need your decision. Try again.</LoadError>
         ) : decisions.messages.length === 0 ? (
-          <Placeholder>Nothing to decide. Messages the AI hands to you, like safety concerns, appear here.</Placeholder>
+          <EmptyState icon="shield" tone="teal" title="Nothing to decide">
+            Messages the AI hands to you, like safety concerns, wait here for your call.
+          </EmptyState>
         ) : (
           <ul className="space-y-3">
             {decisions.messages.map((message) => (
-              <li key={message.id} className="space-y-3 rounded-lg border border-pdm-border bg-white p-4">
+              <li key={message.id} className="space-y-3 rounded-2xl border border-pdm-border bg-pdm-panel p-4">
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                     <p className="font-semibold">
@@ -89,7 +94,7 @@ export default async function ModerationPage() {
                   <p className="text-xs">
                     <span
                       className={`rounded-full px-2 py-0.5 font-semibold ${
-                        message.category === "safety_concern" ? "bg-red-100 text-red-800" : "bg-stone-100 text-pdm-ink"
+                        message.category === "safety_concern" ? "bg-pdm-danger-bg text-pdm-danger-ink" : "bg-pdm-subtle text-pdm-ink"
                       }`}
                     >
                       {categoryLabel(message.category)}
@@ -116,16 +121,22 @@ export default async function ModerationPage() {
       </PageSection>
 
       <PageSection id="flagged-answers" title="Answers with the ProfessorDM team">
-        <Placeholder>Your answers held for ProfessorDM review, with any feedback.</Placeholder>
+        <EmptyState icon="shield" tone="teal" title="Nothing held for review">
+          If the ProfessorDM team holds one of your answers, it shows here with their feedback.
+        </EmptyState>
       </PageSection>
 
       <PageSection id="flagged-knowledge" title="Flagged knowledge entries">
-        <Placeholder>Knowledge entries flagged by the weekly safety review.</Placeholder>
+        <EmptyState icon="book" tone="teal" title="No flagged entries">
+          Nothing in your Knowledge Database is flagged.
+        </EmptyState>
       </PageSection>
 
       {isAdmin ? (
         <PageSection id="admin-review" title="ProfessorDM team review">
-          <Placeholder>Admin only: approve flagged answers or send them back with feedback.</Placeholder>
+          <EmptyState icon="shield" tone="teal" title="Nothing waiting for review">
+            Flagged answers from every creator come here for you to approve or send back with feedback.
+          </EmptyState>
         </PageSection>
       ) : null}
     </div>
