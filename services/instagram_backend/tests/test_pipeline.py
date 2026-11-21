@@ -337,7 +337,7 @@ class OutboundStore:
         return {"id": CREATOR_ID} if profile_id == "signed-in-user" else None
 
     def get_ig_account(self, creator_id):
-        return {"id": ACCOUNT_ID, "creator_id": creator_id, "ig_user_id": "17841479724216495"}
+        return {"id": ACCOUNT_ID, "creator_id": creator_id, "ig_user_id": "17840000000000001"}
 
     def create_outbound(self, row):
         with self.lock:
@@ -457,7 +457,7 @@ class SenderTests(unittest.TestCase):
                 row = test.store.outbound[REQUEST_ID]
                 test.assertEqual((row["status"], row["attempts"]), ("pending", 1))
                 test.assertEqual((token, account_id, recipient),
-                                 ("private-test-token", "17841479724216495", "follower-ig-id"))
+                                 ("private-test-token", "17840000000000001", "follower-ig-id"))
                 return super().send(token, account_id, recipient, text)
         self.deps["graph"] = CheckedGraph()
         result = handle_send(send_event(), **self.deps)
@@ -465,7 +465,7 @@ class SenderTests(unittest.TestCase):
         row = self.store.outbound[REQUEST_ID]
         self.assertEqual((row["status"], row["meta_message_id"], row["attempts"]),
                          ("sent", "meta-message-id", 1))
-        self.assertEqual(self.deps["profile_tokens"].account_ids, ["17841479724216495"])
+        self.assertEqual(self.deps["profile_tokens"].account_ids, ["17840000000000001"])
 
     def test_invalid_jwt_rejected(self):
         event = send_event()

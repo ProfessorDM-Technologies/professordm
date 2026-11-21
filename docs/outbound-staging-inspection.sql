@@ -1,4 +1,4 @@
--- Read-only catalog inspection for staging project lejzezabvfhnfovkyxsx.
+-- Read-only catalog inspection for staging project <supabase-project-ref>.
 -- Run in Supabase SQL Editor. Returns one JSON row, with no row data or secrets.
 select jsonb_build_object(
   'outbound_columns', (
