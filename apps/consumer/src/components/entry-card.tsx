@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AiDisclosure } from "@/components/ai-disclosure";
 import { entryExcerpt, entryTitle, type KnowledgeEntry } from "@/lib/knowledge/search";
 
 export function EntryCard({ entry }: { entry: KnowledgeEntry }) {
@@ -20,6 +21,7 @@ export function EntryCard({ entry }: { entry: KnowledgeEntry }) {
           ))}
         </ul>
       ) : null}
+      <AiDisclosure variant="short" />
     </article>
   );
 }
