@@ -17,5 +17,5 @@ supabase/.temp/
 # local Claude Code notes and plans
 .claude/
 
-# local plan workspace: task briefs, test logs and progress notes
-.superpowers/
+# local design and plan notes
+docs/superpowers/
