@@ -15,7 +15,8 @@ Depends on:
     llm      for every model call (moderation, classification, clarification
              text). Tests replace this module with a fake.
     safety   for safety layers 1 and 2 (moderation thresholds, blocked terms),
-             shared with draft. Its names are re-exported here, so
+             shared with draft. Used on each inbound DM and on every
+             clarification the model writes, before it is sent. Its names are re-exported here, so
              triage.SEVERE, triage._flag and the rest keep working.
     prompts  for the default creator profile and the prompt version strings.
 
@@ -247,6 +248,42 @@ def _clarification(text, recent_messages, profile, rounds=None):
     return None
 
 
+def _screened_clarification(prompt, profile):
+    """Screen the model's clarification text before it is sent (SAF01).
+
+    The text runs through the same layers 1 and 2 as an inbound DM. Any
+    finding (a severe or mild moderation hit, or a blocked term) replaces it
+    with the profile's fixed clarify_fallback, which is not screened because
+    it is fixed text, like decline_text. The model is not asked again: a second
+    try could be flagged too, and the fixed question always works.
+
+    The findings are not added to the decision's safety_flags. Those are saved
+    on the follower's message and shown to the creator, and they describe the
+    follower's text, not ours. The swap shows in prompt_version ("+fallback")
+    and in one log line.
+
+    Args:
+        prompt (str): The text from llm.write_clarification.
+        profile (dict): The creator profile.
+
+    Returns:
+        tuple[str, str]: (text to send, template version for prompt_version).
+
+    Raises:
+        llm.LLMError: If the moderation call fails. Not caught, so an
+            unscreened clarification is never sent; the backend retries.
+
+    Side effects: one moderation API call and one log line, without text.
+    """
+    screened = safety.screen(prompt, profile, moderate=llm.moderate)
+    version = f"{TRIAGE_VERSION}+{CLARIFY_VERSION}"
+    if not screened["flags"]:
+        return prompt, version
+    logger.warning("Triage stage=clarify_screen FAIL flags=%d severe=%d blocked_term=%s",
+                   len(screened["flags"]), len(screened["severe"]), screened["blocked_term"])
+    return profile["clarify_fallback"], f"{version}+fallback"
+
+
 def _route(result, profile, flags, question_text, next_round, clarify):
     """Turn a classification result into the final decision (the routing table).
 
@@ -272,15 +309,19 @@ def _route(result, profile, flags, question_text, next_round, clarify):
             safety_concern                   -> creator_decision + policy flag
             expert_question                  -> ready_for_question + question
             needs_clarification              -> awaiting_clarification + clarification
-                                                and outbound, or creator_decision
-                                                after MAX_ROUNDS or if writing fails
+                                                and outbound (the screened model text,
+                                                or clarify_fallback if it was flagged),
+                                                or creator_decision after MAX_ROUNDS
+                                                or if writing fails
             service_request                  -> service_routed
             social, spam_irrelevant          -> closed_no_action
 
     Raises:
-        llm.LLMError: If writing the clarification hits a network or API error.
+        llm.LLMError: If writing or screening the clarification hits a network
+            or API error.
 
-    Side effects: may call clarify(), which calls the model.
+    Side effects: may call clarify(), which calls the model, then one
+    moderation call to screen its text.
     """
     category = result["category"]
     flags = list(flags)
@@ -309,7 +350,8 @@ def _route(result, profile, flags, question_text, next_round, clarify):
         if prompt is None:
             return _decision("creator_decision", profile,
                              **{**fields, "reason": "Model failed to write a clarification twice"})
-        return _clarifying(profile, next_round, prompt, version=f"{TRIAGE_VERSION}+{CLARIFY_VERSION}", **fields)
+        prompt, version = _screened_clarification(prompt, profile)
+        return _clarifying(profile, next_round, prompt, version=version, **fields)
     if category == "service_request":
         return _decision("service_routed", profile, **fields)
     return _decision("closed_no_action", profile, **fields)
@@ -375,7 +417,8 @@ def triage(text, recent_messages=None, profile=None):
     """Decide what to do with a new DM.
 
     Steps: empty text -> ask for words (no model call); moderation (block on
-    severe); blocked terms (block); classify with one retry; route.
+    severe); blocked terms (block); classify with one retry; route. A
+    clarification the model writes is screened before it is returned.
 
     Args:
         text (str | None): The DM text. None or blank for a photo-only DM.
@@ -398,8 +441,9 @@ def triage(text, recent_messages=None, profile=None):
             resets the status and retries.
         RuntimeError: If an API key is missing from the environment.
 
-    Side effects: up to 5 model calls (moderation, 2 classify, 2
-    clarification) and one log line. No database or Instagram access.
+    Side effects: up to 6 model calls (moderation, 2 classify, 2
+    clarification, moderation of the clarification) and one or two log
+    lines. No database or Instagram access.
     """
     started = time.monotonic()
     profile = profile or SWEETLIFE_FLORA
@@ -449,7 +493,7 @@ def reassess(original_text, rounds, recent_messages=None, profile=None):
         llm.LLMError: If OpenAI or OpenRouter fails; the backend retries.
         RuntimeError: If an API key is missing.
 
-    Side effects: up to 5 model calls and one log line.
+    Side effects: up to 6 model calls and one or two log lines.
     """
     started = time.monotonic()
     profile = profile or SWEETLIFE_FLORA
