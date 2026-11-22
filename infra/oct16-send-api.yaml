@@ -23,7 +23,9 @@ Resources:
       Handler: send_handler.lambda_handler
       CodeUri: ../services/instagram_backend/
       MemorySize: 256
-      Timeout: 20
+      # 28 s: the final screen can take up to 14 s (SCRUM-128), plus Supabase and
+      # Graph calls. The REST API caps the integration at 29 s.
+      Timeout: 28
       Environment:
         Variables:
           SSM_SUPABASE_URL: /professordm/staging/supabase-url
@@ -31,6 +33,7 @@ Resources:
           META_GRAPH_API_VERSION: !Ref GraphApiVersion
           SSM_INSTAGRAM_PROFILE_TOKEN_PREFIX: /professordm/staging/instagram-profile-tokens
           AI_JOBS_QUEUE_URL: !Sub https://sqs.${AWS::Region}.amazonaws.com/${AWS::AccountId}/professordm-inbound
+          SAFETY_SCREEN_FUNCTION: professordm-safety-screen
       Policies:
         - SSMParameterReadPolicy:
             ParameterName: professordm/staging/supabase-url
@@ -40,6 +43,8 @@ Resources:
             ParameterName: professordm/staging/instagram-profile-tokens/*
         - SQSSendMessagePolicy:
             QueueName: professordm-inbound
+        - LambdaInvokePolicy:
+            FunctionName: professordm-safety-screen
       Events:
         PostSend:
           Type: Api
