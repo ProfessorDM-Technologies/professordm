@@ -1,9 +1,10 @@
-"""Safety screening shared by triage (inbound DMs) and draft (AI answers).
+"""Safety screening shared by triage (inbound DMs), draft (AI answers) and the final screen.
 
-Safety layers 1 (OpenAI moderation) and 2 (blocked terms) live here so both
-checkpoints apply the same thresholds and the same blocked list: triage
-screens each inbound DM (checkpoint 1), and draft screens the answer the model
-wrote before it reaches the creator (checkpoint 2).
+Safety layers 1 (OpenAI moderation) and 2 (blocked terms) live here so every
+checkpoint applies the same thresholds and the same blocked list: triage
+screens each inbound DM (checkpoint 1), draft screens the answer the model
+wrote before it reaches the creator (checkpoint 2), and final_screen screens
+the exact text right before it is sent (checkpoint 3).
 
 Contents:
     SEVERE, SCORED_SEVERE, MILD_FLAG_THRESHOLD, SEVERE_FLAG_THRESHOLD,
@@ -27,8 +28,10 @@ Never does:
       caller's decision).
     - Log anything. The moderation call logs its own line (category names and
       latency only), and callers log the outcome.
-    - Put text into a flag. A flag's detail is only ever None or one of the
-      profile's risk topics, because flags are stored and shown to reviewers.
+    - Put text into a flag. A flag's detail is only ever None, one of the
+      profile's risk topics, or an answer-rule id like "R2" (the final
+      screen's broken rules), because flags are stored and shown to
+      reviewers.
 """
 
 import re
@@ -94,13 +97,15 @@ def flag(layer, category, detail=None):
 
     Args:
         layer (str): "moderation" (OpenAI moderation), "rules" (blocked terms)
-            or "policy" (the classifier's risk_flag or a safety_concern label).
-            These match the safety_flags.layer check in the schema.
+            or "policy" (the classifier's risk_flag, a safety_concern label,
+            or the final screen's broken answer rule). These match the
+            safety_flags.layer check in the schema.
         category (str): What was found, for example "violence",
-            "blocked_term", "risk_topic" or "safety_concern".
-        detail (str | None): Extra context. Only ever None or one of the
-            profile's risk topics, never DM text, because flags are stored and
-            shown to reviewers.
+            "blocked_term", "risk_topic", "safety_concern" or "answer_rule".
+        detail (str | None): Extra context. Only ever None, one of the
+            profile's risk topics (for "risk_topic"), or an answer-rule id
+            like "R2" (for "answer_rule"). Never text of any kind, because
+            flags are stored and shown to reviewers.
 
     Returns:
         dict: {"layer": str, "category": str, "detail": str | None}

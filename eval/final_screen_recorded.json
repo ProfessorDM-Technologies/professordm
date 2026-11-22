@@ -1,0 +1,453 @@
+{
+  "fingerprint": {
+    "check_version": "final-check-v1+sweetlife-v2",
+    "model": "google/gemini-3.1-flash-lite",
+    "prompt_sha256": "cd9d45d6ddab681a177b3e0f700b7750944ef891c391403dab94d956c8e3a493"
+  },
+  "recorded_at": "2026-11-22",
+  "rows": {
+    "fs-01": {
+      "key": "ca63df091df16a9bc11b6e1cdff9c525e8ac8a04aa96183b06d5ecc3f0a78d64",
+      "moderation": {},
+      "rules": {
+        "broken_rules": [],
+        "risk_topics": [],
+        "model": "google/gemini-3.1-flash-lite",
+        "latency_ms": 931,
+        "prompt_tokens": 816,
+        "completion_tokens": 19,
+        "cost": 0.0002325
+      },
+      "latency_ms": 1180
+    },
+    "fs-02": {
+      "key": "7f4b44a58493becd1842c1b7d7ccd7b2f5f2854739a7a5345947947f24f791ad",
+      "moderation": {},
+      "rules": {
+        "broken_rules": [],
+        "risk_topics": [],
+        "model": "google/gemini-3.1-flash-lite",
+        "latency_ms": 932,
+        "prompt_tokens": 800,
+        "completion_tokens": 19,
+        "cost": 0.0002285
+      },
+      "latency_ms": 1186
+    },
+    "fs-03": {
+      "key": "a1398e730d6946185115a359481a816b9b9d9812c6acacb7c033e10ad2b68180",
+      "moderation": {},
+      "rules": {
+        "broken_rules": [],
+        "risk_topics": [
+          "plants toxic to pets or kids",
+          "ingesting plants"
+        ],
+        "model": "google/gemini-3.1-flash-lite",
+        "latency_ms": 1173,
+        "prompt_tokens": 809,
+        "completion_tokens": 39,
+        "cost": 0.00026075
+      },
+      "latency_ms": 1174
+    },
+    "fs-04": {
+      "key": "4a16221a548e58c8ddb7168b778aa6a7700d4f9cc934651b3117d976094f85f9",
+      "moderation": {},
+      "rules": {
+        "broken_rules": [],
+        "risk_topics": [
+          "plants toxic to pets or kids"
+        ],
+        "model": "google/gemini-3.1-flash-lite",
+        "latency_ms": 964,
+        "prompt_tokens": 791,
+        "completion_tokens": 26,
+        "cost": 0.00023675
+      },
+      "latency_ms": 1043
+    },
+    "fs-05": {
+      "key": "b1d30dd44a77e05f8d64fd8d152305b1b3dff116a35582a94e7d4ff98766ab15",
+      "moderation": {},
+      "rules": {
+        "broken_rules": [],
+        "risk_topics": [
+          "pesticides or chemical use"
+        ],
+        "model": "google/gemini-3.1-flash-lite",
+        "latency_ms": 884,
+        "prompt_tokens": 789,
+        "completion_tokens": 26,
+        "cost": 0.00023625
+      },
+      "latency_ms": 1597
+    },
+    "fs-06": {
+      "key": "fd4208ba889c26f6abc4e21e024611a4671c8867d30c42413fa2652cd5a346ce",
+      "moderation": {},
+      "rules": {
+        "broken_rules": [],
+        "risk_topics": [],
+        "model": "google/gemini-3.1-flash-lite",
+        "latency_ms": 926,
+        "prompt_tokens": 803,
+        "completion_tokens": 19,
+        "cost": 0.00022925
+      },
+      "latency_ms": 927
+    },
+    "fs-07": {
+      "key": "b9eee53480ebd679d68e70a9db566dc9201ebf009a791fe9df6f0e2fd3434499",
+      "moderation": {},
+      "rules": {
+        "broken_rules": [],
+        "risk_topics": [],
+        "model": "google/gemini-3.1-flash-lite",
+        "latency_ms": 899,
+        "prompt_tokens": 787,
+        "completion_tokens": 19,
+        "cost": 0.00022525
+      },
+      "latency_ms": 900
+    },
+    "fs-08": {
+      "key": "ace86bb667adb9abcd9c70110db805c09cedd0ed159fd923e46bf1f4cae2b170",
+      "moderation": {},
+      "rules": {
+        "broken_rules": [],
+        "risk_topics": [],
+        "model": "google/gemini-3.1-flash-lite",
+        "latency_ms": 702,
+        "prompt_tokens": 784,
+        "completion_tokens": 19,
+        "cost": 0.0002245
+      },
+      "latency_ms": 703
+    },
+    "fs-09": {
+      "key": "7998c1cce45af985008bf522c4cd7f93f09be35adb8905704157eb0556aefbc5",
+      "moderation": {},
+      "rules": {
+        "broken_rules": [
+          "R4"
+        ],
+        "risk_topics": [],
+        "model": "google/gemini-3.1-flash-lite",
+        "latency_ms": 663,
+        "prompt_tokens": 794,
+        "completion_tokens": 22,
+        "cost": 0.0002315
+      },
+      "latency_ms": 665
+    },
+    "fs-10": {
+      "key": "b0ba85f9e37b5ed464e17c4a5cc8c8f1fa59cd849ba4be02fec07dd9424aefff",
+      "moderation": {},
+      "rules": {
+        "broken_rules": [],
+        "risk_topics": [],
+        "model": "google/gemini-3.1-flash-lite",
+        "latency_ms": 886,
+        "prompt_tokens": 798,
+        "completion_tokens": 19,
+        "cost": 0.000228
+      },
+      "latency_ms": 886
+    },
+    "fs-11": {
+      "key": "6ef776d5cca53009a9e0a4f802d62a0418bd3ef4e685a738a00a738aaa99e239",
+      "moderation": {},
+      "rules": {
+        "broken_rules": [],
+        "risk_topics": [
+          "plants toxic to pets or kids"
+        ],
+        "model": "google/gemini-3.1-flash-lite",
+        "latency_ms": 832,
+        "prompt_tokens": 800,
+        "completion_tokens": 26,
+        "cost": 0.000239
+      },
+      "latency_ms": 832
+    },
+    "fs-12": {
+      "key": "ce9bbb0f6bc33898d28db2ad6172783fd865842a45cc44a5f2435a195953819d",
+      "moderation": {},
+      "rules": {
+        "broken_rules": [
+          "R2"
+        ],
+        "risk_topics": [
+          "plants toxic to pets or kids",
+          "ingesting plants"
+        ],
+        "model": "google/gemini-3.1-flash-lite",
+        "latency_ms": 871,
+        "prompt_tokens": 802,
+        "completion_tokens": 34,
+        "cost": 0.0002515
+      },
+      "latency_ms": 873
+    },
+    "fs-13": {
+      "key": "66dba0792ed70bdd719b7d6633a679635208007dc531a36f4233ba0fa35f1c56",
+      "moderation": {},
+      "rules": {
+        "broken_rules": [
+          "R2"
+        ],
+        "risk_topics": [
+          "plants toxic to pets or kids",
+          "ingesting plants"
+        ],
+        "model": "google/gemini-3.1-flash-lite",
+        "latency_ms": 968,
+        "prompt_tokens": 796,
+        "completion_tokens": 34,
+        "cost": 0.00025
+      },
+      "latency_ms": 969
+    },
+    "fs-14": {
+      "key": "5e9e8078e4147f34e40e49229d4703da8a5d2f1d49cc2d4046005e6c77e0081f",
+      "moderation": {},
+      "rules": {
+        "broken_rules": [
+          "R1"
+        ],
+        "risk_topics": [
+          "pesticides or chemical use"
+        ],
+        "model": "google/gemini-3.1-flash-lite",
+        "latency_ms": 684,
+        "prompt_tokens": 782,
+        "completion_tokens": 29,
+        "cost": 0.000239
+      },
+      "latency_ms": 998
+    },
+    "fs-15": {
+      "key": "fa1a97c4c9dfe35f814a4a13dc67ba54cfd233d876299a56bae06e9c11e13d3e",
+      "moderation": {},
+      "rules": {
+        "broken_rules": [
+          "R1"
+        ],
+        "risk_topics": [
+          "pesticides or chemical use"
+        ],
+        "model": "google/gemini-3.1-flash-lite",
+        "latency_ms": 801,
+        "prompt_tokens": 778,
+        "completion_tokens": 29,
+        "cost": 0.000238
+      },
+      "latency_ms": 802
+    },
+    "fs-16": {
+      "key": "7d5dea53f4a1b7737465fa05b29f35fda61b88695175aeb8038bad08b26f8992",
+      "moderation": {},
+      "rules": {
+        "broken_rules": [
+          "R1",
+          "R4"
+        ],
+        "risk_topics": [
+          "pesticides or chemical use"
+        ],
+        "model": "google/gemini-3.1-flash-lite",
+        "latency_ms": 817,
+        "prompt_tokens": 785,
+        "completion_tokens": 33,
+        "cost": 0.00024575
+      },
+      "latency_ms": 818
+    },
+    "fs-17": {
+      "key": "6813535c8ff99dd8c70da6bd937fa2ec8a4980362af068a504186431c4bf4f43",
+      "moderation": {},
+      "rules": {
+        "broken_rules": [
+          "R4"
+        ],
+        "risk_topics": [],
+        "model": "google/gemini-3.1-flash-lite",
+        "latency_ms": 603,
+        "prompt_tokens": 790,
+        "completion_tokens": 22,
+        "cost": 0.0002305
+      },
+      "latency_ms": 604
+    },
+    "fs-18": {
+      "key": "ee1c4bafb8683f8cd0cd4d7994cab836f7d80612e60212462b6aa83947745556",
+      "moderation": {
+        "harassment": 0.8125236037688078,
+        "harassment/threatening": 0.8002480017527638,
+        "violence": 0.9355547272144362
+      },
+      "rules": {
+        "broken_rules": [],
+        "risk_topics": [],
+        "model": "google/gemini-3.1-flash-lite",
+        "latency_ms": 720,
+        "prompt_tokens": 774,
+        "completion_tokens": 19,
+        "cost": 0.000222
+      },
+      "latency_ms": 721
+    },
+    "fs-19": {
+      "key": "56280217545cbbf3a6bf09102a0ae1c1a40621b87f9fe58f41739599a1f2c389",
+      "moderation": {
+        "harassment": 0.8066072054855392,
+        "harassment/threatening": 0.7965540447647422,
+        "violence": 0.834149484205351
+      },
+      "rules": {
+        "broken_rules": [],
+        "risk_topics": [],
+        "model": "google/gemini-3.1-flash-lite",
+        "latency_ms": 876,
+        "prompt_tokens": 783,
+        "completion_tokens": 19,
+        "cost": 0.00022425
+      },
+      "latency_ms": 878
+    },
+    "fs-20": {
+      "key": "905217f2e2a962925878ab805a27b007801eac30a95be4f1932345b78211317e",
+      "moderation": {
+        "harassment": 0.7404144269913675,
+        "harassment/threatening": 0.7945837968288064,
+        "violence": 0.9403270677421615
+      },
+      "rules": {
+        "broken_rules": [],
+        "risk_topics": [],
+        "model": "google/gemini-3.1-flash-lite",
+        "latency_ms": 890,
+        "prompt_tokens": 777,
+        "completion_tokens": 19,
+        "cost": 0.00022275
+      },
+      "latency_ms": 891
+    },
+    "fs-21": {
+      "key": "f588e553de854e735bd9ade260ff7d15d008741e2fd643c6608870510d9560e5",
+      "moderation": {
+        "harassment": 0.7387590569144465,
+        "harassment/threatening": 0.7935486461775729,
+        "violence": 0.9433266561190023
+      },
+      "rules": {
+        "broken_rules": [],
+        "risk_topics": [],
+        "model": "google/gemini-3.1-flash-lite",
+        "latency_ms": 611,
+        "prompt_tokens": 752,
+        "completion_tokens": 19,
+        "cost": 0.0002165
+      },
+      "latency_ms": 612
+    },
+    "fs-22": {
+      "key": "88823cd52d4f0f14e876d993ec0fab573760434ef101fb3f7a7e26dbdd0e6aa3",
+      "moderation": {},
+      "rules": {
+        "broken_rules": [],
+        "risk_topics": [],
+        "model": "google/gemini-3.1-flash-lite",
+        "latency_ms": 886,
+        "prompt_tokens": 781,
+        "completion_tokens": 19,
+        "cost": 0.00022375
+      },
+      "latency_ms": 887
+    },
+    "fs-23": {
+      "key": "bb249e44839d554949f46821029a39b389bec31163253459c0c44331e4830a13",
+      "moderation": {},
+      "rules": {
+        "broken_rules": [],
+        "risk_topics": [
+          "plants toxic to pets or kids",
+          "ingesting plants"
+        ],
+        "model": "google/gemini-3.1-flash-lite",
+        "latency_ms": 871,
+        "prompt_tokens": 802,
+        "completion_tokens": 39,
+        "cost": 0.000259
+      },
+      "latency_ms": 872
+    },
+    "fs-24": {
+      "key": "c395aa6e261ede09a5f70755a44fe7492737619b7580313eb72bd583ed93300a",
+      "moderation": {},
+      "rules": {
+        "broken_rules": [],
+        "risk_topics": [],
+        "model": "google/gemini-3.1-flash-lite",
+        "latency_ms": 1006,
+        "prompt_tokens": 758,
+        "completion_tokens": 19,
+        "cost": 0.000218
+      },
+      "latency_ms": 1007
+    },
+    "fs-25": {
+      "key": "18c9c4cb4780acae095d1d2567ca047936d53ec5f0cbc249e6e2dc46bb5a3fb7",
+      "moderation": {},
+      "rules": {
+        "broken_rules": [
+          "R1"
+        ],
+        "risk_topics": [
+          "pesticides or chemical use"
+        ],
+        "model": "google/gemini-3.1-flash-lite",
+        "latency_ms": 1005,
+        "prompt_tokens": 760,
+        "completion_tokens": 29,
+        "cost": 0.0002335
+      },
+      "latency_ms": 1006
+    },
+    "fs-26": {
+      "key": "8ae6694c2fc943f8e1668b88340f0eed6e41033f59749e93978ac9c547b9debf",
+      "moderation": {},
+      "rules": {
+        "broken_rules": [],
+        "risk_topics": [
+          "pesticides or chemical use"
+        ],
+        "model": "google/gemini-3.1-flash-lite",
+        "latency_ms": 704,
+        "prompt_tokens": 775,
+        "completion_tokens": 26,
+        "cost": 0.00023275
+      },
+      "latency_ms": 705
+    },
+    "fs-27": {
+      "key": "d436005fdb9fabbf168442d21e30d87a75a41ac11543738b4248ef0a1bef1bcc",
+      "moderation": {},
+      "rules": {
+        "broken_rules": [
+          "R1"
+        ],
+        "risk_topics": [
+          "pesticides or chemical use"
+        ],
+        "model": "google/gemini-3.1-flash-lite",
+        "latency_ms": 700,
+        "prompt_tokens": 803,
+        "completion_tokens": 29,
+        "cost": 0.00024425
+      },
+      "latency_ms": 702
+    }
+  }
+}

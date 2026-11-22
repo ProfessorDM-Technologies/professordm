@@ -1,4 +1,4 @@
-"""Model calls: moderation, classification, clarification text, drafts and embeddings.
+"""Model calls: moderation, classification, clarification text, drafts, the answer-rules check and embeddings.
 
 This is the only file in ai_worker that makes HTTP calls. Keeping every
 network call here lets triage.py stay pure decision logic, and lets the tests
@@ -6,8 +6,10 @@ swap this whole module for a fake.
 
 Services:
     OpenAI moderation (omni-moderation-latest)  safety layer 1, free
-    OpenRouter chat completions (TRIAGE_MODEL)  classification and the
-                                                clarification question
+    OpenRouter chat completions (TRIAGE_MODEL)  classification, the
+                                                clarification question and the
+                                                final screen's answer-rules
+                                                check (safety layer 3)
     OpenRouter chat completions (DRAFT_MODEL,   the grounded answer draft,
         then DRAFT_FALLBACK_MODEL)              with a manual fallback
     OpenAI embeddings (text-embedding-3-small)  knowledge base vectors, for
@@ -25,8 +27,10 @@ Depends on:
     never at import, so tests and Lambda configuration can set them late.
 
 Never does:
-    - Decide routing or statuses (that is triage.py), or validate draft
-      fields (that is draft.py).
+    - Decide routing or statuses (that is triage.py), validate draft
+      fields (that is draft.py), or decide what a broken answer rule means
+      for a reply (that is final_screen.py, which also owns the one retry on
+      invalid output).
     - Touch the database or Instagram.
     - Log DM text, model output text, embedding input text or keys. Logs
       carry stage, category, confidence, flagged category names, character
@@ -47,7 +51,7 @@ import time
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from prompts import CATEGORIES, SERVICE_KINDS, clarify_prompt, triage_prompt
+from prompts import CATEGORIES, SERVICE_KINDS, answer_rule_ids, clarify_prompt, final_check_prompt, triage_prompt
 
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -78,6 +82,12 @@ MEDIA_WORDS = re.compile(r"\b(photos?|pics?|pictures?|images?|videos?|screenshot
 # Seconds per model call. Keeps one slow provider from holding the Lambda;
 # typical calls take 0.3 to 2 seconds.
 TIMEOUT = 10
+
+# Characters of the follower's question sent to the answer-rules check. The
+# final screen's contract sets no limit on the question, so nothing is
+# rejected for being long; this only bounds the size and cost of the call. An
+# Instagram DM is at most 1000 bytes, so a real question never reaches it.
+QUESTION_MAX_CHARS = 4000
 
 EMBEDDINGS_URL = "https://api.openai.com/v1/embeddings"
 
@@ -835,3 +845,157 @@ def write_draft(system, user, schema, *, deadline=None, clock=time.monotonic):
             raise
     fallback = os.environ.get("DRAFT_FALLBACK_MODEL") or DEFAULT_DRAFT_FALLBACK_MODEL
     return _draft_call("fallback", fallback, system, user, schema, DRAFT_FALLBACK_SETTINGS)
+
+
+def _rules_schema(profile):
+    """Build the strict JSON schema for one answer-rules check.
+
+    Built per profile because both arrays are enums of that creator's fixed
+    values: the rule ids and the risk topics. The reply therefore cannot hold
+    message text or a model paraphrase of it, which matters because the ids
+    and topics are stored in safety flags.
+
+    Args:
+        profile (dict): The creator profile (answer_rules, risk_topics).
+
+    Returns:
+        dict: A JSON schema object requiring broken_rules (an array of rule
+        ids) and risk_topics (an array of the profile's risk topics). A
+        profile with no risk topics gets no risk_topics property at all,
+        because an empty enum makes providers reject the request.
+
+    Side effects: none.
+    """
+    properties = {"broken_rules": {"type": "array",
+                                   "items": {"type": "string", "enum": answer_rule_ids(profile)}}}
+    if profile["risk_topics"]:
+        properties["risk_topics"] = {"type": "array",
+                                     "items": {"type": "string", "enum": list(profile["risk_topics"])}}
+    return {"type": "object", "properties": properties, "required": list(properties),
+            "additionalProperties": False}
+
+
+def _rules_message(text, question_text):
+    """Render the reply and the follower's question as the user message.
+
+    Both are JSON-quoted, like _conversation, so the model sees exactly where
+    each text starts and ends and can treat instructions inside as data.
+
+    Args:
+        text (str): The exact reply that will be sent. Not stripped: the
+            screen checks the text as it goes out.
+        question_text (str | None): The follower's question. None or blank
+            leaves the question block out (a manual reply has no question).
+            Only the first QUESTION_MAX_CHARS characters are sent.
+
+    Returns:
+        str: Lines like:
+            Follower's question:      (only with a question)
+            "..."
+            Reply to check:
+            "..."
+
+    Side effects: none.
+    """
+    lines = []
+    if isinstance(question_text, str) and question_text.strip():
+        lines += ["Follower's question:", json.dumps(question_text[:QUESTION_MAX_CHARS], ensure_ascii=False)]
+    lines += ["Reply to check:", json.dumps(text, ensure_ascii=False)]
+    return "\n".join(lines)
+
+
+def _parse_rules(content, profile):
+    """Validate the answer-rules reply and put it in a stable order.
+
+    The strict schema should already guarantee all of this, but providers
+    occasionally ignore it, so every rule is checked again here.
+
+    Args:
+        content (str | None): The raw model reply.
+        profile (dict): The creator profile (for the allowed ids and topics).
+
+    Returns:
+        dict: {"broken_rules": list[str], "risk_topics": list[str]}, without
+        duplicates. broken_rules is in rule order (R1 first) and risk_topics
+        in the profile's order, whatever order the model used. risk_topics
+        may be missing from the reply only when the profile has none.
+
+    Raises:
+        InvalidOutput: With code not_json, bad_fields (not an object, or a
+            field missing or not a list of strings), bad_rule (an id that is
+            not one of the profile's) or bad_risk_topic.
+
+    Side effects: none.
+    """
+    try:
+        data = json.loads(content)
+    except (TypeError, ValueError):
+        raise InvalidOutput("not_json") from None
+    if not isinstance(data, dict):
+        raise InvalidOutput("bad_fields")
+    broken = data.get("broken_rules")
+    topics = data.get("risk_topics") if profile["risk_topics"] else data.get("risk_topics", [])
+    if not all(isinstance(value, list) and all(isinstance(item, str) for item in value)
+               for value in (broken, topics)):
+        raise InvalidOutput("bad_fields")
+    rule_ids = answer_rule_ids(profile)
+    if any(rule_id not in rule_ids for rule_id in broken):
+        raise InvalidOutput("bad_rule")
+    if any(topic not in profile["risk_topics"] for topic in topics):
+        raise InvalidOutput("bad_risk_topic")
+    return {"broken_rules": [rule_id for rule_id in rule_ids if rule_id in broken],
+            "risk_topics": [topic for topic in profile["risk_topics"] if topic in topics]}
+
+
+def check_answer_rules(text, question_text, profile, *, timeout):
+    """Check one outgoing reply against the creator's answer rules (final screen, safety layer 3).
+
+    Moderation and blocked terms only catch abuse. This call catches a reply
+    that breaks one of the creator's own rules, for example telling a
+    follower whose pet chewed a plant that everything is fine. It asks only
+    which listed rules are clearly broken; it does not judge whether the
+    advice is correct.
+
+    One call, never a retry: final_screen.py owns the one retry on invalid
+    output, because only it knows how much of its deadline is left.
+
+    Args:
+        text (str): The exact reply that will be sent, unchanged.
+        question_text (str | None): The follower's question, or None for a
+            manual reply. Some rules depend on it.
+        profile (dict): The creator profile (creator_name, domain,
+            answer_rules, risk_topics).
+        timeout (float): Seconds before the request gives up.
+
+    Returns:
+        dict: {"broken_rules": list[str], "risk_topics": list[str], "model",
+        "latency_ms", "prompt_tokens", "completion_tokens", "cost"}.
+        broken_rules holds rule ids such as "R2"; risk_topics holds the
+        profile risk topics the reply covers (information only). The rest is
+        the call's meta from _openrouter. A profile with no answer rules has
+        nothing to check: no request is made and the result is empty, with
+        model None, zeros and cost None.
+
+    Raises:
+        InvalidOutput: If the reply breaks the schema (see _parse_rules);
+            logged as a warning with the error code only.
+        LLMError: On an API failure or a timeout.
+        RuntimeError: If OPENROUTER_API_KEY is missing.
+
+    Side effects: one OpenRouter call and one log line with rule ids, counts
+    and latency (never the reply or the question).
+    """
+    if not profile["answer_rules"]:
+        return {"broken_rules": [], "risk_topics": [], "model": None, "latency_ms": 0,
+                "prompt_tokens": 0, "completion_tokens": 0, "cost": None}
+    content, meta = _openrouter(final_check_prompt(profile), _rules_message(text, question_text),
+                                _rules_schema(profile), timeout=timeout, schema_name="final_check")
+    try:
+        result = _parse_rules(content, profile)
+    except InvalidOutput as error:
+        logger.warning("Screen stage=rules_check FAIL error_type=invalid_output detail=%s latency_ms=%d",
+                       error, meta["latency_ms"])
+        raise
+    logger.info("Screen stage=rules_check PASS broken=%s topics=%d latency_ms=%d",
+                ",".join(result["broken_rules"]) or "none", len(result["risk_topics"]), meta["latency_ms"])
+    return {**result, **meta}
