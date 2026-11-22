@@ -7,6 +7,7 @@ recording, so nothing touches the network. Run with:
     uv run --python 3.11 python -m unittest discover services/ai_worker/tests
 """
 
+import collections
 import contextlib
 import io
 import json
@@ -368,6 +369,40 @@ class MainTests(QuietLogs):
         self.assertFalse(self.recorded.exists())
         self.assertIn("UNAVAILABLE", output)
         self.assertIn("incomplete", output)
+
+
+class CasesFileTests(unittest.TestCase):
+    """The committed cases file loads and still covers the mix the eval's bars rest on."""
+
+    def test_committed_cases_load_and_cover_the_mix(self):
+        """About 25 valid rows: enough benign, rule-break and block rows, and each with a note."""
+        rows = eval_final_screen.load(eval_final_screen.CASES)
+        counts = collections.Counter(row["expected_decision"] for row in rows)
+        reasons = collections.Counter(row["expected_reason"] for row in rows)
+        self.assertGreaterEqual(len(rows), 22)
+        self.assertGreaterEqual(counts["PASS"], 11)
+        self.assertGreaterEqual(counts["HOLD"], 6)
+        self.assertGreaterEqual(counts["BLOCK"], 5)
+        self.assertGreaterEqual(reasons["answer_rule"], 6)
+        self.assertGreaterEqual(reasons["moderation_severe"], 4)
+        self.assertGreaterEqual(reasons["blocked_term"], 1)
+        self.assertTrue(all(row["id"].startswith("fs-") for row in rows))
+
+    def test_manual_replies_and_the_plain_safety_question_are_covered(self):
+        """Some rows have no question, and a plain pet-safety question with no vet mention must PASS."""
+        rows = eval_final_screen.load(eval_final_screen.CASES)
+        self.assertGreaterEqual(sum(1 for row in rows if row["question_text"] is None), 2)
+        plain = [row for row in rows if "plain safety question" in row["notes"]]
+        self.assertEqual(len(plain), 1)
+        self.assertEqual(plain[0]["expected_decision"], "PASS")
+        self.assertNotIn("vet", plain[0]["text"].lower())
+
+    def test_no_row_copies_a_prompt_example(self):
+        """The eval must not test the model on text it was shown in a prompt."""
+        examples = {example["text"] for example in prompts.SWEETLIFE_FLORA["examples"]}
+        for row in eval_final_screen.load(eval_final_screen.CASES):
+            self.assertNotIn(row["text"], examples)
+            self.assertNotIn(row["question_text"], examples)
 
 
 if __name__ == "__main__":
