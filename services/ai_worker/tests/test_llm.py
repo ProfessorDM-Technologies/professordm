@@ -451,5 +451,156 @@ class FinalCheckPromptTests(unittest.TestCase):
                          "final-check-v1+sweetlife-v2")
 
 
+RULES_TEXT = "Made-up reply about a fern."
+RULES_QUESTION = "Made-up question about a fern?"
+NO_FINDINGS = json.dumps({"broken_rules": [], "risk_topics": []})
+
+
+@patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-openrouter"})
+class CheckAnswerRulesTests(unittest.TestCase):
+    """check_answer_rules makes one strict-schema call and returns only rule ids and risk topics."""
+
+    def check(self, *outcomes, text=RULES_TEXT, question=RULES_QUESTION, profile=SWEETLIFE_FLORA):
+        """Run check_answer_rules against queued fake responses; return (result or error, the fake)."""
+        fake = FakeRequest(*[chat(o, model="served/model") if isinstance(o, str) else o for o in outcomes])
+        with patch("llm._json_request", fake):
+            try:
+                return llm.check_answer_rules(text, question, profile, timeout=7), fake
+            except (llm.InvalidOutput, llm.LLMError) as error:
+                return error, fake
+
+    def user(self, **kwargs):
+        """Return the user message sent for the given text and question."""
+        _, fake = self.check(NO_FINDINGS, **kwargs)
+        return fake.calls[0]["body"]["messages"][1]["content"]
+
+    def test_request_body(self):
+        """The call uses the triage model at temperature 0, the given timeout and a strict named schema."""
+        _, fake = self.check(NO_FINDINGS)
+        call = fake.calls[0]
+        body = call["body"]
+        self.assertEqual(len(fake.calls), 1)
+        self.assertEqual(call["timeout"], 7)
+        self.assertEqual(body["model"], llm.DEFAULT_MODEL)
+        self.assertEqual(body["temperature"], 0)
+        self.assertEqual(body["provider"], {"data_collection": "deny", "require_parameters": True})
+        self.assertEqual(body["messages"][0], {"role": "system",
+                                               "content": prompts.final_check_prompt(SWEETLIFE_FLORA)})
+        self.assertEqual(body["response_format"]["json_schema"]["name"], "final_check")
+        self.assertIs(body["response_format"]["json_schema"]["strict"], True)
+
+    def test_schema_enums_are_rule_ids_and_risk_topics(self):
+        """Both arrays only allow fixed values, so the output can never hold text."""
+        _, fake = self.check(NO_FINDINGS)
+        schema = fake.calls[0]["body"]["response_format"]["json_schema"]["schema"]
+        self.assertEqual(schema["properties"]["broken_rules"],
+                         {"type": "array", "items": {"type": "string", "enum": ["R1", "R2", "R3", "R4"]}})
+        self.assertEqual(schema["properties"]["risk_topics"],
+                         {"type": "array", "items": {"type": "string", "enum": SWEETLIFE_FLORA["risk_topics"]}})
+        self.assertEqual(schema["required"], ["broken_rules", "risk_topics"])
+        self.assertIs(schema["additionalProperties"], False)
+        self.assertEqual(set(schema["properties"]), {"broken_rules", "risk_topics"})
+
+    def test_question_included_only_when_given(self):
+        """The question block appears only for a non-blank question; both texts are JSON-quoted."""
+        self.assertEqual(self.user(), "Follower's question:\n" + json.dumps(RULES_QUESTION)
+                         + "\nReply to check:\n" + json.dumps(RULES_TEXT))
+        for question in (None, "", "   \n"):
+            with self.subTest(question=question):
+                self.assertEqual(self.user(question=question), "Reply to check:\n" + json.dumps(RULES_TEXT))
+
+    def test_long_question_is_cut_to_4000_characters(self):
+        """Only the first QUESTION_MAX_CHARS characters of the question are sent; the reply is intact."""
+        self.assertEqual(llm.QUESTION_MAX_CHARS, 4000)
+        user = self.user(question="q" * 5000)
+        self.assertIn(json.dumps("q" * 4000) + "\n", user)
+        self.assertNotIn("q" * 4001, user)
+        self.assertTrue(user.endswith(json.dumps(RULES_TEXT)))
+
+    def test_text_is_sent_exactly_as_given(self):
+        """The reply is not stripped: the screen checks the exact text that will be sent."""
+        text = "  spaced reply with \u00fcmlaut \n"
+        self.assertTrue(self.user(text=text).endswith(json.dumps(text, ensure_ascii=False)))
+
+    def test_result_is_ordered_deduped_and_carries_meta(self):
+        """Ids come back in rule order and topics in profile order, without duplicates, plus the call's meta."""
+        result, _ = self.check(json.dumps({"broken_rules": ["R4", "R2", "R4"],
+                                           "risk_topics": ["ingesting plants", "plants toxic to pets or kids",
+                                                           "ingesting plants"]}))
+        self.assertEqual(result["broken_rules"], ["R2", "R4"])
+        self.assertEqual(result["risk_topics"], ["plants toxic to pets or kids", "ingesting plants"])
+        self.assertEqual(result["model"], "served/model")
+        self.assertEqual((result["prompt_tokens"], result["completion_tokens"], result["cost"]), (900, 300, 0.0072))
+        self.assertEqual(set(result), {"broken_rules", "risk_topics", "model", "latency_ms", "prompt_tokens",
+                                       "completion_tokens", "cost"})
+
+    def test_invalid_output_codes(self):
+        """A reply outside the schema raises InvalidOutput with a short code, after exactly one request."""
+        for content, code in (
+                ("not json", "not_json"),
+                ("[]", "bad_fields"),
+                (json.dumps({"broken_rules": "R2", "risk_topics": []}), "bad_fields"),
+                (json.dumps({"broken_rules": [], "risk_topics": [1]}), "bad_fields"),
+                (json.dumps({"broken_rules": []}), "bad_fields"),
+                (json.dumps({"broken_rules": ["R9"], "risk_topics": []}), "bad_rule"),
+                (json.dumps({"broken_rules": ["the reply says it is fine"], "risk_topics": []}), "bad_rule"),
+                (json.dumps({"broken_rules": [], "risk_topics": ["made-up topic"]}), "bad_risk_topic")):
+            with self.subTest(content=content), self.assertLogs("llm", "WARNING"):
+                error, fake = self.check(content, NO_FINDINGS)
+                self.assertIsInstance(error, llm.InvalidOutput)
+                self.assertEqual(error.args, (code,))
+                self.assertEqual(len(fake.calls), 1)  # the caller owns the retry
+
+    def test_empty_content_is_not_json(self):
+        """A reply with no content is invalid output, not an empty result."""
+        fake = FakeRequest({"model": "served/model", "choices": [{"message": {"content": None}}], "usage": {}})
+        with patch("llm._json_request", fake), self.assertLogs("llm", "WARNING"):
+            with self.assertRaises(llm.InvalidOutput) as caught:
+                llm.check_answer_rules(RULES_TEXT, None, SWEETLIFE_FLORA, timeout=7)
+        self.assertEqual(caught.exception.args, ("not_json",))
+
+    def test_api_error_propagates_without_a_retry(self):
+        """An outage is raised as LLMError after one request."""
+        error, fake = self.check(llm.LLMError("openrouter", 503, "unavailable"), NO_FINDINGS)
+        self.assertIsInstance(error, llm.LLMError)
+        self.assertEqual(len(fake.calls), 1)
+
+    def test_missing_key_raises_before_any_request(self):
+        """Without OPENROUTER_API_KEY the call fails as a configuration error and sends nothing."""
+        fake = FakeRequest(chat(NO_FINDINGS))
+        with patch.dict(os.environ), patch("llm._json_request", fake):
+            del os.environ["OPENROUTER_API_KEY"]
+            with self.assertRaises(RuntimeError):
+                llm.check_answer_rules(RULES_TEXT, RULES_QUESTION, SWEETLIFE_FLORA, timeout=7)
+        self.assertEqual(fake.calls, [])
+
+    def test_no_answer_rules_makes_no_call(self):
+        """A profile with no rules has nothing to check: an empty result, no request, model None."""
+        result, fake = self.check(NO_FINDINGS, profile={**SWEETLIFE_FLORA, "answer_rules": []})
+        self.assertEqual(fake.calls, [])
+        self.assertEqual(result, {"broken_rules": [], "risk_topics": [], "model": None, "latency_ms": 0,
+                                  "prompt_tokens": 0, "completion_tokens": 0, "cost": None})
+
+    def test_no_risk_topics_leaves_them_out_of_the_schema(self):
+        """An empty enum would make providers reject every call, so the property is left out instead."""
+        result, fake = self.check(json.dumps({"broken_rules": ["R1"]}),
+                                  profile={**SWEETLIFE_FLORA, "risk_topics": []})
+        schema = fake.calls[0]["body"]["response_format"]["json_schema"]["schema"]
+        self.assertEqual(set(schema["properties"]), {"broken_rules"})
+        self.assertEqual(schema["required"], ["broken_rules"])
+        self.assertEqual((result["broken_rules"], result["risk_topics"]), (["R1"], []))
+
+    def test_log_lines_hold_ids_and_counts_but_no_text(self):
+        """The pass and fail lines carry rule ids, counts and latency, never the reply or the question."""
+        with self.assertLogs("llm", "INFO") as logs:
+            self.check(json.dumps({"broken_rules": ["R2"], "risk_topics": ["ingesting plants"]}),
+                       text="secret reply text", question="secret question text")
+            self.check("secret model output", text="secret reply text", question="secret question text")
+        self.assertEqual(len(logs.output), 2)
+        self.assertIn("stage=rules_check PASS broken=R2 topics=1 latency_ms=", logs.output[0])
+        self.assertIn("stage=rules_check FAIL error_type=invalid_output detail=not_json latency_ms=", logs.output[1])
+        self.assertNotIn("secret", "\n".join(logs.output))
+
+
 if __name__ == "__main__":
     unittest.main()
