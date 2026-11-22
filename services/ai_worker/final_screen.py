@@ -21,11 +21,18 @@ Flow:
     HOLD for the system (a check failed or did not finish), then HOLD for the
     creator (a mild moderation hit or a broken answer rule), then PASS.
 
+    Failing closed (SAF05): a check that raises, returns something outside its
+    vocabulary, gives invalid output twice or is not finished by the deadline
+    is "unavailable". The text is then never treated as clean; the only
+    stronger outcome is a BLOCK found by a check that did finish.
+
 Depends on:
     safety   screen (layers 1 and 2), blocked_term and flag, shared with
              triage's checkpoint 1 and draft's checkpoint 2, so the thresholds
              and the blocked list are the same everywhere.
     prompts  answer_rule_ids, prompt_version and FINAL_CHECK_VERSION.
+    llm      only its two exception types (LLMError, InvalidOutput), to tell
+             an outage from invalid output.
     The standard library (concurrent.futures, hashlib, logging, time).
     The two model calls are passed in as `moderate` and `check_rules`
     (normally llm.moderate and llm.check_answer_rules), so this module makes
@@ -38,7 +45,12 @@ Never does:
       and "blocked_term"; rules holds the creator's own rule text (config,
       not message text); a flag's detail is None, one of the profile's risk
       topics or an answer-rule id like "R2".
-    - Log the text, the question or a key.
+    - Raise because a check failed. Every failure becomes check_unavailable.
+    - Wait for a slow check past the deadline, or use a result that arrives
+      after it. A thread still waiting on a provider is left to end at its
+      own timeout and its result is thrown away.
+    - Log the text, the question or a key. Its own lines carry only the
+      stage and the error type.
 """
 
 from concurrent.futures import ThreadPoolExecutor, wait
@@ -46,6 +58,7 @@ import hashlib
 import logging
 import time
 
+import llm
 import safety
 from prompts import FINAL_CHECK_VERSION, answer_rule_ids, prompt_version
 
@@ -79,6 +92,51 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
+def _failed(stage, kind):
+    """Log one failed check and build its outcome.
+
+    Args:
+        stage (str): "screen" (layers 1 and 2) or "rules" (layer 3).
+        kind (str): "llm_error", "invalid_output", "bad_result", "deadline",
+            "config_error", or the class name of an unexpected exception.
+
+    Returns:
+        tuple[str, str]: ("failed", kind).
+
+    Side effects: one log line with the stage and the kind only. A missing
+    key is logged as an error (a configuration problem someone must fix);
+    everything else as a warning.
+    """
+    if kind == "config_error":
+        logger.error("Final screen config_error stage=%s", stage)
+    else:
+        logger.warning("Final screen stage=%s FAIL error_type=%s", stage, kind)
+    return "failed", kind
+
+
+def _kind(error):
+    """Name a check's exception for the log, without its message.
+
+    Args:
+        error (Exception): What the check raised.
+
+    Returns:
+        str: "llm_error" for an outage or timeout, "invalid_output" for a
+        reply that broke the schema, "config_error" for a missing key
+        (RuntimeError), otherwise the exception's class name. Never the
+        message, which could echo request content.
+
+    Side effects: none.
+    """
+    if isinstance(error, llm.LLMError):
+        return "llm_error"
+    if isinstance(error, llm.InvalidOutput):
+        return "invalid_output"
+    if isinstance(error, RuntimeError):
+        return "config_error"
+    return type(error).__name__
+
+
 def _screen_task(text, profile, moderate):
     """Run safety layers 1 and 2 on the text (one of the two parallel tasks).
 
@@ -88,16 +146,52 @@ def _screen_task(text, profile, moderate):
         moderate (callable[[str], dict[str, float]]): The moderation call.
 
     Returns:
-        dict: safety.screen's result ({"severe", "flags", "blocked_term",
-        "crisis"}).
+        tuple: ("ok", safety.screen's result) or ("failed", kind). It never
+        raises: any exception from the moderation call is a failed check, so
+        an unscreened text can never be mistaken for a clean one.
 
-    Side effects: one moderate() call.
+    Side effects: one moderate() call, and one log line on failure.
     """
-    return safety.screen(text, profile, moderate=moderate)
+    try:
+        return "ok", safety.screen(text, profile, moderate=moderate)
+    except Exception as error:  # fail closed on anything, including bugs
+        return _failed("screen", _kind(error))
 
 
-def _rules_task(text, question_text, profile, check_rules):
-    """Run safety layer 3, the answer-rules check (the other parallel task).
+def _valid_rules(result, profile):
+    """Say whether an answer-rules result holds only fixed vocabulary.
+
+    The ids and topics go into stored flags, so this module checks them
+    itself, whatever the injected check returned.
+
+    Args:
+        result (Any): What check_rules returned.
+        profile (dict): The creator profile (answer_rules, risk_topics).
+
+    Returns:
+        bool: True for a dict whose "broken_rules" is a list of this
+        profile's rule ids and whose "risk_topics" is a list of this
+        profile's risk topics.
+
+    Side effects: none.
+    """
+    if not isinstance(result, dict):
+        return False
+    broken, topics = result.get("broken_rules"), result.get("risk_topics")
+    if not isinstance(broken, list) or not isinstance(topics, list):
+        return False
+    rule_ids = answer_rule_ids(profile)
+    return (all(isinstance(rule_id, str) and rule_id in rule_ids for rule_id in broken)
+            and all(isinstance(topic, str) and topic in profile["risk_topics"] for topic in topics))
+
+
+def _rules_task(text, question_text, profile, check_rules, clock, deadline):
+    """Run safety layer 3, the answer-rules check, with one retry on invalid output.
+
+    Invalid output is usually a one-off, so it earns one retry, but only
+    when at least RULES_RETRY_MIN_SECONDS remain before the deadline. An
+    outage is never retried here: it would only add latency, and the creator
+    can press send again.
 
     Args:
         text (str): The exact text, unchanged.
@@ -105,14 +199,30 @@ def _rules_task(text, question_text, profile, check_rules):
         profile (dict): The creator profile.
         check_rules (callable): check_rules(text, question_text, profile),
             normally llm.check_answer_rules with its timeout bound.
+        clock (callable[[], float]): The screen's clock.
+        deadline (float): The screen's deadline, as a clock() value.
 
     Returns:
-        dict: The check's result, with at least "broken_rules" (rule ids),
-        "risk_topics" and "model".
+        tuple: ("ok", the check's result) or ("failed", kind). It never
+        raises. kind is "invalid_output" after two invalid replies (or one,
+        with no time to retry) and "bad_result" for a result outside the
+        vocabulary (see _valid_rules), which is not retried.
 
-    Side effects: one check_rules() call.
+    Side effects: one or two check_rules() calls, and one log line on
+    failure.
     """
-    return check_rules(text, question_text, profile)
+    for attempt in (1, 2):
+        try:
+            result = check_rules(text, question_text, profile)
+        except llm.InvalidOutput:
+            if attempt == 1 and deadline - clock() >= RULES_RETRY_MIN_SECONDS:
+                continue
+            return _failed("rules", "invalid_output")
+        except Exception as error:  # fail closed on anything, including bugs
+            return _failed("rules", _kind(error))
+        if not _valid_rules(result, profile):
+            return _failed("rules", "bad_result")
+        return "ok", result
 
 
 def _combine(text, profile, screened, checked):
@@ -122,11 +232,13 @@ def _combine(text, profile, screened, checked):
     branch on decision and next_actor only, and show the rest.
 
     Args:
-        text (str): The exact text (for the hash).
+        text (str): The exact text (for the hash and the local term check).
         profile (dict): The creator profile (answer_rules, risk_topics,
             version).
-        screened (dict): safety.screen's result.
-        checked (dict): The answer-rules result.
+        screened (dict | None): safety.screen's result, or None when layers
+            1 and 2 failed or did not finish.
+        checked (dict | None): The answer-rules result, or None when layer 3
+            failed or did not finish.
 
     Returns:
         dict: {"decision", "next_actor", "reason_codes", "categories",
@@ -138,23 +250,33 @@ def _combine(text, profile, screened, checked):
             flags         moderation flags, the blocked-term flag, one
                           answer_rule flag per broken rule, one risk_topic
                           flag per topic in the profile's order.
+            model         the model that served the rules check, or None
+                          when that check gave no valid result.
 
     Side effects: none.
     """
-    severe = screened["severe"]
-    moderation_flags = [entry for entry in screened["flags"] if entry["layer"] == "moderation"]
+    unavailable = screened is None or checked is None
+    severe = screened["severe"] if screened else []
+    moderation_flags = [entry for entry in screened["flags"] if entry["layer"] == "moderation"] if screened else []
     # A mild hit is any flagged moderation category that did not block.
     mild = [entry["category"] for entry in moderation_flags if entry["category"] not in severe]
-    blocked = screened["blocked_term"]
+    # The term match is a local regex, so it still runs when moderation is
+    # down or late: a blocked term always means BLOCK (contract v2.1), and the
+    # creator is not told "try again" about a text that can never be sent.
+    blocked = screened["blocked_term"] if screened else safety.blocked_term(text, profile)
     rule_text = dict(zip(answer_rule_ids(profile), profile["answer_rules"]))
     # Read in the profile's order, which also drops duplicates.
-    broken = [rule_id for rule_id in rule_text if rule_id in checked["broken_rules"]]
-    topics = [topic for topic in profile["risk_topics"] if topic in checked["risk_topics"]]
+    broken = [rule_id for rule_id in rule_text if rule_id in checked["broken_rules"]] if checked else []
+    topics = [topic for topic in profile["risk_topics"] if topic in checked["risk_topics"]] if checked else []
 
     found = {"moderation_severe": bool(severe), "blocked_term": blocked, "moderation_mild": bool(mild),
-             "answer_rule": bool(broken), "check_unavailable": False}
+             "answer_rule": bool(broken), "check_unavailable": unavailable}
     if severe or blocked:
         decision, next_actor = "BLOCK", "creator"
+    elif unavailable:
+        # Above HOLD/creator on purpose: a creator must not be able to
+        # confirm past a check that did not run.
+        decision, next_actor = "HOLD", "system"
     elif mild or broken:
         decision, next_actor = "HOLD", "creator"
     else:
@@ -174,7 +296,7 @@ def _combine(text, profile, screened, checked):
         # HOLD, so it covers the text exactly as given: no stripping.
         "text_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
         "check_version": prompt_version(profile, FINAL_CHECK_VERSION),
-        "model": checked.get("model"),
+        "model": checked.get("model") if checked else None,
     }
 
 
@@ -201,19 +323,35 @@ def screen_final(text, *, question_text=None, profile, moderate, check_rules, cl
 
     Returns:
         dict: The contract's response without latency_ms (the handler adds
-        it); see _combine for the fields.
+        it); see _combine for the fields. Returned by the deadline at the
+        latest. A check that failed or did not finish adds
+        "check_unavailable" and makes the decision HOLD for the system,
+        unless a check that did finish found a reason to BLOCK.
 
-    Side effects: one moderation call and one answer-rules call, each on its
-    own thread.
+    Raises:
+        Nothing for a failed check (see _screen_task and _rules_task).
+
+    Side effects: one moderation call and one or two answer-rules calls, on
+    two threads, and one log line per failed check. A call still running at
+    the deadline is left to finish on its own thread; its result is never
+    read.
     """
     deadline = clock() + deadline_seconds
     # No `with` block: its exit waits for every thread, and a slow provider
     # must not hold the response past the deadline.
     executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="final-screen")
     try:
-        screen_future = executor.submit(_screen_task, text, profile, moderate)
-        rules_future = executor.submit(_rules_task, text, question_text, profile, check_rules)
-        wait([screen_future, rules_future], timeout=max(0.0, deadline - clock()))
+        futures = {"screen": executor.submit(_screen_task, text, profile, moderate),
+                   "rules": executor.submit(_rules_task, text, question_text, profile, check_rules, clock,
+                                            deadline)}
+        done, _ = wait(futures.values(), timeout=max(0.0, deadline - clock()))
     finally:
         executor.shutdown(wait=False, cancel_futures=True)
-    return _combine(text, profile, screen_future.result(), rules_future.result())
+    # Only the futures that finished in time are read. `done` is a snapshot:
+    # a task that completes a moment later is not in it, so a late result can
+    # never change the response.
+    results = {}
+    for stage, future in futures.items():
+        status, value = future.result() if future in done else _failed(stage, "deadline")
+        results[stage] = value if status == "ok" else None
+    return _combine(text, profile, results["screen"], results["rules"])
