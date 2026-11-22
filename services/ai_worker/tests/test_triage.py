@@ -44,10 +44,16 @@ class FakeLLM:
     LLMError = llm.LLMError
     MODERATION_MODEL = "omni-moderation-latest"
 
-    def __init__(self, *results, flagged=None, clarifications=(CLARIFY_TEXT,), moderation_error=None):
-        """Queue classify results, moderation hits (category -> score), clarifications and an optional moderation error."""
+    def __init__(self, *results, flagged=None, clarifications=(CLARIFY_TEXT,), moderation_error=None,
+                 hits_by_text=None):
+        """Queue classify results, moderation hits (category -> score), clarifications and an optional moderation error.
+
+        hits_by_text maps an exact text to its own moderation hits (or an exception to raise), so a test
+        can flag the clarification the model wrote without flagging the follower's DM.
+        """
         self.results = list(results)
         self.flagged = dict(flagged or {})
+        self.hits_by_text = dict(hits_by_text or {})
         self.clarifications = list(clarifications)
         self.moderation_error = moderation_error
         self.calls = []
@@ -55,6 +61,11 @@ class FakeLLM:
     def moderate(self, text):
         """Record the call and return the configured moderation hits, or raise the configured error."""
         self.calls.append(("moderate", text))
+        if text in self.hits_by_text:
+            hits = self.hits_by_text[text]
+            if isinstance(hits, Exception):
+                raise hits
+            return hits
         if self.moderation_error:
             raise self.moderation_error
         return self.flagged
@@ -151,7 +162,8 @@ class RoutingTests(unittest.TestCase):
             "safety_flags": [], "question": None,
             "clarification": {"round": 1, "prompt": CLARIFY_TEXT},
             "outbound": {"type": "clarification", "text": CLARIFY_TEXT}})
-        self.assertEqual(fake.names(), ["moderate", "classify", "clarify"])
+        self.assertEqual(fake.names(), ["moderate", "classify", "clarify", "moderate"])
+        self.assertEqual(fake.calls[-1], ("moderate", CLARIFY_TEXT))
 
     def test_social_and_spam_close_without_action(self):
         """Social and spam close with no question, clarification, reply or flags."""
@@ -394,6 +406,104 @@ class FailureTests(unittest.TestCase):
             self.assertNotIn(fragment, output)
 
 
+class ClarificationScreenTests(unittest.TestCase):
+    """SCRUM-124 / SAF01: the clarification the model writes is screened before it is sent."""
+    FALLBACK = SWEETLIFE_FLORA["clarify_fallback"]
+    FALLBACK_VERSION = "triage-v4+clarify-v4+fallback+sweetlife-v2"
+
+    def assert_fallback(self, decision, round_=1):
+        """The decision asks the fixed question, records the swap and adds no flags to the follower's message."""
+        self.assertEqual(decision["status"], "awaiting_clarification")
+        self.assertEqual(decision["clarification"], {"round": round_, "prompt": self.FALLBACK})
+        self.assertEqual(decision["outbound"], {"type": "clarification", "text": self.FALLBACK})
+        self.assertEqual(decision["prompt_version"], self.FALLBACK_VERSION)
+        self.assertEqual(decision["safety_flags"], [])
+
+    def test_clean_clarification_is_sent_as_written(self):
+        """A clarification with no findings goes out unchanged, after its own moderation call."""
+        fake = FakeLLM(result("needs_clarification", 0.9))
+        decision = run(fake)
+        self.assertEqual(decision["outbound"], {"type": "clarification", "text": CLARIFY_TEXT})
+        self.assertEqual(decision["prompt_version"], "triage-v4+clarify-v4+sweetlife-v2")
+        self.assertEqual([call for call in fake.calls if call[0] == "moderate"],
+                         [("moderate", DM), ("moderate", CLARIFY_TEXT)])
+
+    def test_severe_moderation_hit_on_clarification_sends_fallback(self):
+        """A severe hit on the model's text sends the fixed question, not the model's text, and does not ask again."""
+        fake = FakeLLM(result("needs_clarification", 0.9),
+                       hits_by_text={CLARIFY_TEXT: {"harassment/threatening": 0.91}})
+        decision = run(fake)
+        self.assert_fallback(decision)
+        self.assertNotIn(CLARIFY_TEXT, json.dumps(decision))
+        self.assertEqual(fake.names(), ["moderate", "classify", "clarify", "moderate"])
+
+    def test_mild_moderation_hit_on_clarification_sends_fallback(self):
+        """A non-severe hit at MILD_FLAG_THRESHOLD is enough: nothing flagged is sent to a follower."""
+        decision = run(FakeLLM(result("needs_clarification", 0.9),
+                               hits_by_text={CLARIFY_TEXT: {"violence": triage.MILD_FLAG_THRESHOLD}}))
+        self.assert_fallback(decision)
+
+    def test_hit_below_mild_threshold_keeps_model_text(self):
+        """A low score that would not flag a DM does not replace the clarification either."""
+        decision = run(FakeLLM(result("needs_clarification", 0.9), hits_by_text={CLARIFY_TEXT: {"violence": 0.3}}))
+        self.assertEqual(decision["outbound"]["text"], CLARIFY_TEXT)
+
+    def test_blocked_term_in_clarification_sends_fallback(self):
+        """A base or creator blocked term in the model's text sends the fixed question."""
+        bad = "Which plant is it? kys"
+        decision = run(FakeLLM(result("needs_clarification", 0.9), clarifications=(bad,)))
+        self.assert_fallback(decision)
+        profile = {**SWEETLIFE_FLORA, "extra_blocked_terms": ["miracle grow hack"]}
+        decision = run(FakeLLM(result("needs_clarification", 0.9), clarifications=("Tried the Miracle  Grow hack?",)),
+                       profile=profile)
+        self.assertEqual(decision["outbound"]["text"], self.FALLBACK)
+
+    def test_round_two_clarification_is_screened_too(self):
+        """reassess screens the round-2 clarification the same way."""
+        round_2 = "How long has it been happening?"
+        fake = FakeLLM(result("needs_clarification", 0.9), clarifications=(round_2,),
+                       hits_by_text={round_2: {"self-harm/instructions": 0.8}})
+        self.assert_fallback(rerun(fake, "why are the tips brown", [ROUND_1]), round_=2)
+
+    def test_dm_flags_are_kept_when_clarification_falls_back(self):
+        """Flags on the follower's DM still reach the creator; the clarification's own findings are not added."""
+        fake = FakeLLM(result("needs_clarification", 0.9), flagged={"harassment": 0.7},
+                       hits_by_text={CLARIFY_TEXT: {"sexual": 0.9}})
+        decision = run(fake)
+        self.assertEqual(decision["outbound"]["text"], self.FALLBACK)
+        self.assertEqual(decision["safety_flags"], [{"layer": "moderation", "category": "harassment", "detail": None}])
+
+    def test_moderation_failure_on_clarification_raises(self):
+        """If the clarification can't be screened, nothing is sent: the error reaches the backend, which retries."""
+        fake = FakeLLM(result("needs_clarification", 0.9), hits_by_text={CLARIFY_TEXT: llm.LLMError("timeout")})
+        with self.assertRaises(llm.LLMError):
+            run(fake)
+
+    def test_fixed_texts_are_not_screened(self):
+        """The empty-text prompt is fixed text: no model or moderation call."""
+        fake = FakeLLM()
+        decision = run(fake, "   ")
+        self.assertEqual(decision["outbound"]["text"], SWEETLIFE_FLORA["empty_text_prompt"])
+        self.assertEqual(fake.calls, [])
+
+    def test_fallback_meets_clarification_rules(self):
+        """The fixed question follows the rules write_clarification enforces on model text."""
+        self.assertTrue(self.FALLBACK.strip())
+        self.assertLess(len(self.FALLBACK), llm.MAX_CLARIFICATION_CHARS)
+        self.assertIsNone(llm.MEDIA_WORDS.search(self.FALLBACK))
+        self.assertFalse(triage.blocked_term(self.FALLBACK, SWEETLIFE_FLORA))
+
+    def test_fallback_log_has_no_text(self):
+        """The swap is logged with counts only, never the model's text or the DM."""
+        bad = "Which plant is it? kys"
+        with self.assertLogs("triage", level="INFO") as logs:
+            run(FakeLLM(result("needs_clarification", 0.9), clarifications=(bad,)))
+        output = "\n".join(logs.output)
+        self.assertIn("stage=clarify_screen FAIL flags=1 severe=0 blocked_term=True", output)
+        for fragment in ("kys", "Which plant", DM[:20]):
+            self.assertNotIn(fragment, output)
+
+
 class ReassessTests(unittest.TestCase):
     """reassess routes clarification replies correctly across rounds 1 and 2."""
     def test_clear_after_round_one_is_ready_with_combined_question(self):
@@ -420,7 +530,8 @@ class ReassessTests(unittest.TestCase):
         self.assertEqual(decision["clarification"], {"round": 2, "prompt": "How long has it been happening?"})
         self.assertEqual(decision["outbound"], {"type": "clarification", "text": "How long has it been happening?"})
         self.assertEqual(decision["prompt_version"], "triage-v4+clarify-v4+sweetlife-v2")
-        clarify = fake.calls[-1]
+        clarify = next(call for call in fake.calls if call[0] == "clarify")
+        self.assertEqual(fake.calls[-1], ("moderate", "How long has it been happening?"))
         self.assertEqual((clarify[0], clarify[1], clarify[2], len(clarify[3])),
                          ("clarify", "why are the tips brown", ["hi"], 1))
 
@@ -460,11 +571,11 @@ class ReassessTests(unittest.TestCase):
         self.assertTrue(decision["question"]["safety_flagged"])
 
     def test_empty_reply_and_original_skip_moderation(self):
-        """Empty reply and original skip moderation and still classify."""
+        """Empty reply and original skip moderation and still classify; only the new clarification is screened."""
         fake = FakeLLM(result("needs_clarification", 0.9))
         decision = rerun(fake, None, [{**ROUND_1, "reply": None}])
         self.assertEqual(decision["clarification"]["round"], 2)
-        self.assertEqual(fake.names(), ["classify", "clarify"])
+        self.assertEqual(fake.names(), ["classify", "clarify", "moderate"])
         self.assertEqual(fake.calls[0][1], "")
 
     def test_social_reply_closes_and_service_reply_routes(self):

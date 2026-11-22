@@ -158,10 +158,12 @@ def _recording_json_request(service, url, headers, body, timeout=llm.TIMEOUT):
     Returns:
         Any: The parsed response, unchanged.
 
-    Side effects: sets the thread-local _calls.moderation for OpenAI calls.
+    Side effects: sets the thread-local _calls.moderation for the row's first
+    OpenAI call. Later calls screen the clarification triage wrote, not the
+    DM, so they are not recorded.
     """
     response = _json_request(service, url, headers, body, timeout)
-    if service == "openai" and isinstance(response, dict):
+    if service == "openai" and isinstance(response, dict) and _calls.moderation is None:
         result = (response.get("results") or [{}])[0]
         _calls.moderation = {k: round(v, 3) for k, v in (result.get("category_scores") or {}).items()}
     return response
@@ -207,6 +209,7 @@ def predict(row):
             if attempt == 4 or error.status not in (429, None, 500, 502, 503):
                 raise
             _calls.meta = []
+            _calls.moderation = None
             time.sleep(10 * (attempt + 1))
     risks = [f["detail"] for f in decision["safety_flags"] if f["category"] == "risk_topic"]
     confidence = decision["confidence"]

@@ -44,7 +44,8 @@ DM text (+ recent DMs from the same follower)
         safety_concern ──────────────────────► creator_decision + flag
         expert_question ─────────────────────► ready_for_question + question
         needs_clarification ─────────────────► awaiting_clarification + question to follower
-                                               (creator_decision after 2 rounds)
+                                               (screened first; fixed question if flagged;
+                                                creator_decision after 2 rounds)
         service_request ─────────────────────► service_routed
         social, spam_irrelevant ─────────────► closed_no_action
 ```
@@ -254,6 +255,8 @@ The routing rules are checked in this order:
 A risk flag or a mild moderation flag adds a `safety_flags` entry on any route and never changes the status. On `ready_for_question` it sets `question.safety_flagged`.
 
 **Clarification text** is at most 2 short questions, under 200 characters, in the profile's voice. It never mentions photos, because triage only reads text. Text that breaks these rules is rejected and retried once.
+
+**Clarification screening (SAF01, SCRUM-124).** Before a clarification the model wrote is returned, it runs through `safety.screen` (moderation and blocked terms), the same as an inbound DM. Any finding, severe or mild (score 0.5 or more) or a blocked term, replaces it with the profile's fixed `clarify_fallback` question, and `prompt_version` gets `+fallback` (for example `triage-v4+clarify-v4+fallback+sweetlife-v2`). The model is not asked again. The findings are not saved as `safety_flags`, because those sit on the follower's message and describe the follower's text; the swap is logged as `stage=clarify_screen FAIL` with counts only. If the moderation call fails, `LLMError` is raised and nothing is sent, so the backend retries. Fixed texts (`empty_text_prompt`, `clarify_fallback`, `decline_text`, `crisis_text`) are not screened.
 
 **Why at most 2 rounds:** two questions give the follower a fair chance to add the missing details without turning a DM into an interview. After that, the creator is better placed to decide. The schema allows only rounds 1 and 2.
 

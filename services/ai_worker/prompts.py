@@ -232,6 +232,11 @@ SWEETLIFE_FLORA = {
     "voice": "warm, short, encouraging, like a friendly plant expert",
     # Sent without a model call when a DM has no text (for example a photo only).
     "empty_text_prompt": "Thanks for reaching out! Could you tell me in words what's going on with your plant? Which plant is it, and what are you noticing?",
+    # Sent instead of the model's clarification when that text is flagged by
+    # moderation or a blocked term (SAF01). Fixed, so it is not screened. Kept
+    # under llm.MAX_CLARIFICATION_CHARS with no media words, like any
+    # clarification. Placeholder until Kristin signs off.
+    "clarify_fallback": "Happy to help! Which plant is it, what are you noticing, and how much light and water does it get?",
     # Sent when a DM is blocked (except self-harm, which gets crisis_text).
     "decline_text": "Thanks for your message. This isn't something we can help with here.",
     # Sent instead of decline_text when moderation blocks for self-harm.
