@@ -655,7 +655,7 @@ The handler's summary line is the record for each call:
 Final screen decision=HOLD next_actor=creator reasons=answer_rule categories=none rules=R2 flags=1 text_chars=58 question_chars=41 channel=instagram model=google/gemini-3.1-flash-lite latency_ms=873 check_version=final-check-v1+sweetlife-v2 trace_id=abc-123
 ```
 
-A model call that outlives the 11 second deadline is left to finish on its own thread. Its result is thrown away, but its own `llm.py` log line (`stage=moderation` or `stage=rules_check`) can appear during a later request on the same Lambda container. So read the summary line as the record, and never match an `llm.py` line to the request around it. No line holds the text, the question or a key.
+A model call that outlives the 11 second deadline is left to finish on its own thread. Its result is thrown away, but the lines it writes when it ends can appear during a later request on the same Lambda container: its own `llm.py` line (`stage=moderation` or `stage=rules_check`), and a second `Final screen stage=... FAIL` line if the call ends in an error (the first one, `error_type=deadline`, was written in time). So read the summary line as the record, and never match one of those lines to the request around it. No line holds the text, the question or a key.
 
 ### Latency, cost and eval
 

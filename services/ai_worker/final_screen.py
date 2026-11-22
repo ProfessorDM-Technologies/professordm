@@ -29,7 +29,9 @@ Flow:
 Depends on:
     safety   screen (layers 1 and 2), blocked_term and flag, shared with
              triage's checkpoint 1 and draft's checkpoint 2, so the thresholds
-             and the blocked list are the same everywhere.
+             and the blocked list are the same everywhere. The blocked-term
+             match is always run here as well, because safety.screen skips it
+             after a severe hit or when moderation raises.
     prompts  answer_rule_ids, prompt_version and FINAL_CHECK_VERSION.
     llm      only its two exception types (LLMError, InvalidOutput), to tell
              an outage from invalid output.
@@ -260,10 +262,14 @@ def _combine(text, profile, screened, checked):
     moderation_flags = [entry for entry in screened["flags"] if entry["layer"] == "moderation"] if screened else []
     # A mild hit is any flagged moderation category that did not block.
     mild = [entry["category"] for entry in moderation_flags if entry["category"] not in severe]
-    # The term match is a local regex, so it still runs when moderation is
-    # down or late: a blocked term always means BLOCK (contract v2.1), and the
-    # creator is not told "try again" about a text that can never be sent.
-    blocked = screened["blocked_term"] if screened else safety.blocked_term(text, profile)
+    # The term match is checked here, not read from `screened`, for two
+    # reasons. safety.screen skips it once a moderation hit is severe (the
+    # order triage has always used), but this response lists every finding,
+    # so the creator learns about the phrase and the threat together. And it
+    # is a local regex, so it still runs when moderation is down or late: a
+    # blocked term always means BLOCK (contract v2.1), and the creator is not
+    # told "try again" about a text that can never be sent.
+    blocked = safety.blocked_term(text, profile)
     rule_text = dict(zip(answer_rule_ids(profile), profile["answer_rules"]))
     # Read in the profile's order, which also drops duplicates.
     broken = [rule_id for rule_id in rule_text if rule_id in checked["broken_rules"]] if checked else []

@@ -217,6 +217,18 @@ class CombiningTests(unittest.TestCase):
         self.assertEqual(result["flags"], [*moderation("harassment"), BLOCKED_TERM_FLAG,
                                            {"layer": "policy", "category": "answer_rule", "detail": "R2"}])
 
+    def test_severe_hit_plus_blocked_term_lists_both(self):
+        """safety.screen skips the term check once a hit is severe; the final screen still lists the term.
+
+        Otherwise the creator would remove the threat, send again, and only
+        then learn about the blocked phrase.
+        """
+        result, _, _ = run({"harassment/threatening": 0.9}, text="ok kys then")
+        self.assertEqual(outcome_of(result), ("BLOCK", "creator"))
+        self.assertEqual(result["reason_codes"], ["moderation_severe", "blocked_term"])
+        self.assertEqual(result["categories"], ["harassment/threatening", "blocked_term"])
+        self.assertEqual(result["flags"], [*moderation("harassment/threatening"), BLOCKED_TERM_FLAG])
+
     def test_duplicates_from_the_check_give_no_duplicate_flags(self):
         """A rule or topic the check lists twice appears once."""
         result, _, _ = run(outcome=rules(broken=["R2", "R2"], topics=[TOPIC, TOPIC]))

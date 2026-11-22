@@ -226,8 +226,8 @@ Final screen decision=HOLD next_actor=creator reasons=answer_rule categories=non
 ```
 
 - No line ever holds the text, the question or a key. `trace_id` is cut to 64 characters and stripped to letters, digits and `._:-`.
-- `llm.py` also logs one line per model call. A call that outlives the deadline can write its line during a later request on the same container, so don't read those lines as belonging to the request around them.
-- A failed check adds `Final screen stage=<screen|rules> FAIL error_type=<type>`. A missing key adds `Final screen config_error ...`.
+- `llm.py` also logs one line per model call, and a failed check adds `Final screen stage=<screen|rules> FAIL error_type=<type>` (a missing key adds `Final screen config_error ...`).
+- A call that outlives the deadline is logged as `error_type=deadline` in time. When it ends later, it can write its `llm.py` line, and a second `FAIL` line if it ends in an error, during another request on the same container. So don't read those lines as belonging to the request around them.
 
 ### Known gaps
 
