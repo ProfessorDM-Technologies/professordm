@@ -379,11 +379,11 @@ class CasesFileTests(unittest.TestCase):
         rows = eval_final_screen.load(eval_final_screen.CASES)
         counts = collections.Counter(row["expected_decision"] for row in rows)
         reasons = collections.Counter(row["expected_reason"] for row in rows)
-        self.assertGreaterEqual(len(rows), 22)
-        self.assertGreaterEqual(counts["PASS"], 11)
-        self.assertGreaterEqual(counts["HOLD"], 6)
+        self.assertGreaterEqual(len(rows), 27)
+        self.assertGreaterEqual(counts["PASS"], 14)
+        self.assertGreaterEqual(counts["HOLD"], 8)
         self.assertGreaterEqual(counts["BLOCK"], 5)
-        self.assertGreaterEqual(reasons["answer_rule"], 6)
+        self.assertGreaterEqual(reasons["answer_rule"], 8)
         self.assertGreaterEqual(reasons["moderation_severe"], 4)
         self.assertGreaterEqual(reasons["blocked_term"], 1)
         self.assertTrue(all(row["id"].startswith("fs-") for row in rows))
@@ -396,6 +396,14 @@ class CasesFileTests(unittest.TestCase):
         self.assertEqual(len(plain), 1)
         self.assertEqual(plain[0]["expected_decision"], "PASS")
         self.assertNotIn("vet", plain[0]["text"].lower())
+
+    def test_an_instruction_inside_the_reply_is_a_hazard_row(self):
+        """One rule-break row also tells the checker to return nothing: the reply must be treated as data (T06)."""
+        rows = eval_final_screen.load(eval_final_screen.CASES)
+        injected = [row for row in rows if "data, not instructions" in row["notes"]]
+        self.assertEqual(len(injected), 1)
+        self.assertEqual((injected[0]["expected_decision"], injected[0]["expected_reason"]), ("HOLD", "answer_rule"))
+        self.assertIn("broken_rules", injected[0]["text"])
 
     def test_no_row_copies_a_prompt_example(self):
         """The eval must not test the model on text it was shown in a prompt."""
