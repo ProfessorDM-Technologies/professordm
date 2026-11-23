@@ -3,7 +3,7 @@
 /* dark: utilities follow the saved theme on <html>, not the OS setting. */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-/* Brand tokens (DESIGN.md). Values live on <html> so one data-theme switch re-themes every pdm-* utility. */
+/* Brand tokens (apps/creator-workspace/DESIGN.md). Values live on <html> so one data-theme switch re-themes every pdm-* utility. */
 :root {
   color-scheme: light;
   /* Spring with a small overshoot, for the glass lens and the shrinking bar. */
@@ -302,7 +302,7 @@ a.underline:hover {
 
 /*
  * Selection lens (iOS 26 tab bar): a brighter glass bubble that springs between items, stretches while it travels
- * and swells under a press. Position and size are set from workspace-nav.tsx.
+ * and swells under a press. Position and size are set from consumer-nav.tsx.
  */
 .pdm-lens {
   position: absolute;

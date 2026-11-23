@@ -13,7 +13,7 @@ export default function NotFound() {
       <img src="/brand/wordmark-light.svg" alt="ProfessorDM" width={530} height={96} className="mt-3 h-6 w-auto dark:hidden" />
       <img src="/brand/wordmark-dark.svg" alt="ProfessorDM" width={530} height={96} className="mt-3 hidden h-6 w-auto dark:block" />
       <h1 className="mt-8 text-3xl font-extrabold">Page not found</h1>
-      <p className="mt-3 text-pdm-muted">That page doesn&apos;t exist in Ask Sweetlife Flora.</p>
+      <p className="mt-3 text-pdm-muted">That page doesn&apos;t exist. The link may be old or mistyped.</p>
       <Link
         href="/"
         className="pdm-press mt-8 inline-flex min-h-11 items-center rounded-full bg-pdm-accent px-5 font-semibold text-pdm-on-accent hover:bg-pdm-accent-strong"

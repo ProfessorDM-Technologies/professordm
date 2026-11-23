@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element -- static SVG/WebP brand assets; next/image adds nothing here */
 import Link from "next/link";
 
-// Icon mark + vector wordmark (DESIGN.md "Logo"). No background: it sits straight on the page.
+// Icon mark + vector wordmark (apps/creator-workspace/DESIGN.md "Logo"). No background: it sits straight on the page.
 // The dark wordmark sets "Professor" in white so it stays legible on navy; the light one uses brand navy.
 export function BrandLogo({ className = "" }: { className?: string }) {
   return (

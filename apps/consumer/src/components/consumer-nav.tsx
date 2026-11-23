@@ -47,8 +47,10 @@ export function ConsumerNav({ variant, className = "" }: { variant: "island" | "
   const items = NAV_ITEMS;
   const routeIndex = items.findIndex((item) => isActive(pathname, item.href));
 
-  // The tapped item, until the route catches up. Keyed by the path it was tapped on, so it clears itself.
+  // The tapped item, until the route catches up. Dropped as soon as the path changes, so Back to the page it was
+  // tapped on doesn't bring it back.
   const [tapped, setTapped] = useState<{ index: number; from: string } | null>(null);
+  if (tapped && tapped.from !== pathname) setTapped(null);
   const shown = tapped && tapped.from === pathname ? tapped.index : routeIndex;
 
   const navRef = useRef<HTMLElement>(null);

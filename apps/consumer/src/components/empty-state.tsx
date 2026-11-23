@@ -13,7 +13,7 @@ const ICONS = {
   settings: <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm7.4-3a7.4 7.4 0 0 0-.1-1.2l2-1.6-2-3.4-2.4.9a7.5 7.5 0 0 0-2-1.2L14.5 3h-4l-.4 2.5a7.5 7.5 0 0 0-2 1.2l-2.4-.9-2 3.4 2 1.6a7.4 7.4 0 0 0 0 2.4l-2 1.6 2 3.4 2.4-.9a7.5 7.5 0 0 0 2 1.2l.4 2.5h4l.4-2.5a7.5 7.5 0 0 0 2-1.2l2.4.9 2-3.4-2-1.6c.1-.4.1-.8.1-1.2Z" />,
 } as const;
 
-// Cyan for questions and messages, gold for money, teal for knowledge and done work (DESIGN.md palette roles).
+// Cyan for questions and messages, gold for money, teal for knowledge and done work (apps/creator-workspace/DESIGN.md palette roles).
 const TONES = {
   cyan: "bg-pdm-cyan-tint text-pdm-cyan-ink",
   gold: "bg-pdm-gold-tint text-pdm-gold-ink",
