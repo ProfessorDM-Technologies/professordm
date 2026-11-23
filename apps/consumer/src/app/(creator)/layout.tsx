@@ -7,5 +7,5 @@ export const metadata: Metadata = {
 };
 
 export default function CreatorLayout({ children }: { children: ReactNode }) {
-  return <div className="min-h-dvh bg-flora-surface text-flora-ink">{children}</div>;
+  return <div className="min-h-dvh">{children}</div>;
 }
