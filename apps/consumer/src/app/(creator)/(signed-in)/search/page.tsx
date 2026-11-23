@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { EmptyState } from "@/components/empty-state";
 import { EntryCard } from "@/components/entry-card";
+import { PageSection } from "@/components/page-section";
+import { SearchForm } from "@/components/search-form";
 import { getPublishedEntries } from "@/lib/knowledge/queries";
 import { filterEntries } from "@/lib/knowledge/search";
 
@@ -17,33 +20,12 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
     : "All answers";
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-semibold tracking-tight">Search</h1>
+    <div className="space-y-8">
+      <h1 className="text-3xl leading-tight font-extrabold sm:text-4xl">Search</h1>
 
-      <form action="/search" role="search" className="flex gap-2">
-        <label htmlFor="search-query" className="sr-only">
-          Search plant care answers
-        </label>
-        <input
-          id="search-query"
-          name="q"
-          type="search"
-          defaultValue={query}
-          placeholder="Search plant care answers"
-          className="min-w-0 flex-1 rounded-lg border border-flora-border bg-white p-3 text-base"
-        />
-        <button
-          type="submit"
-          className="rounded-lg bg-flora-accent px-4 py-3 font-semibold text-white hover:bg-flora-accent-strong"
-        >
-          Search
-        </button>
-      </form>
+      <SearchForm id="search-query" defaultValue={query} />
 
-      <section aria-labelledby="results-heading" className="space-y-2">
-        <h2 id="results-heading" className="text-lg font-semibold">
-          {heading}
-        </h2>
+      <PageSection id="results" title={heading}>
         {results.length > 0 ? (
           <ul className="space-y-3">
             {results.map((entry) => (
@@ -53,26 +35,19 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
             ))}
           </ul>
         ) : (
-          <div className="space-y-2 rounded-lg border border-flora-border bg-white p-4">
-            <p className="font-medium">
-              {query ? "No answers match your search yet." : "No answers have been published yet."}
-            </p>
-            <p className="text-flora-muted">
-              {query ? "Try fewer words, or ask Sweetlife Flora directly." : "Check back soon, or ask Sweetlife Flora directly."}
-            </p>
-            <Link
-              href="/ask-expert"
-              className="inline-block font-semibold text-flora-accent-strong underline underline-offset-4"
-            >
-              Ask the Expert
-            </Link>
-          </div>
+          <EmptyState
+            icon="question"
+            title={query ? "No answers match your search yet." : "No answers have been published yet."}
+            action={{ href: "/ask-expert", label: "Ask the Expert" }}
+          >
+            {query ? "Try fewer words, or ask Sweetlife Flora directly." : "Check back soon, or ask Sweetlife Flora directly."}
+          </EmptyState>
         )}
-      </section>
+      </PageSection>
 
       {results.length > 0 ? (
         <p>
-          <Link href="/ask-expert" className="font-semibold text-flora-accent-strong underline underline-offset-4">
+          <Link href="/ask-expert" className="font-semibold text-pdm-accent-strong underline underline-offset-4">
             Need more specific advice? Ask the Expert
           </Link>
         </p>

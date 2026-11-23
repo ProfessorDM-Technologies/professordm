@@ -14,36 +14,36 @@ export default async function ProfilePage() {
   const name = displayName && displayName !== email ? displayName : null;
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-semibold tracking-tight">Profile</h1>
+    <div className="space-y-8">
+      <h1 className="text-3xl leading-tight font-extrabold sm:text-4xl">Profile</h1>
 
       <section aria-labelledby="account-heading" className="space-y-2">
-        <h2 id="account-heading" className="text-lg font-semibold">
+        <h2 id="account-heading" className="text-lg font-bold">
           Account
         </h2>
-        <dl className="divide-y divide-flora-border rounded-lg border border-flora-border bg-white">
+        <dl className="divide-y divide-pdm-border rounded-2xl border border-pdm-border bg-pdm-panel">
           <div className="flex flex-col gap-1 p-4 sm:flex-row sm:justify-between">
-            <dt className="text-sm text-flora-muted">Name</dt>
+            <dt className="text-sm text-pdm-muted">Name</dt>
             <dd className="font-medium">{name ?? "Not set"}</dd>
           </div>
           <div className="flex flex-col gap-1 p-4 sm:flex-row sm:justify-between">
-            <dt className="text-sm text-flora-muted">Email</dt>
+            <dt className="text-sm text-pdm-muted">Email</dt>
             <dd className="font-medium break-all">{email}</dd>
           </div>
         </dl>
       </section>
 
       <section aria-labelledby="plan-heading" className="space-y-2">
-        <h2 id="plan-heading" className="text-lg font-semibold">
+        <h2 id="plan-heading" className="text-lg font-bold">
           Plan
         </h2>
-        <p className="rounded-lg border border-flora-border bg-white p-4 font-medium">Free Trial</p>
+        <p className="rounded-2xl border border-pdm-border bg-pdm-panel p-4 font-semibold">Free Trial</p>
       </section>
 
       <form action={signOut}>
         <button
           type="submit"
-          className="rounded-lg border border-flora-border bg-white px-4 py-3 font-medium hover:bg-flora-tint"
+          className="pdm-press min-h-11 rounded-full border border-pdm-border bg-pdm-panel px-5 font-semibold text-pdm-ink hover:border-pdm-accent hover:bg-pdm-subtle"
         >
           Sign out
         </button>

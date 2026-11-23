@@ -24,20 +24,20 @@ export default async function EntryPage({ params }: PageProps<"/entry/[id]">) {
   return (
     <article className="space-y-6">
       <p>
-        <Link href="/search" className="text-sm font-medium text-flora-accent-strong underline underline-offset-4">
+        <Link href="/search" className="text-sm font-medium text-pdm-accent-strong underline underline-offset-4">
           Back to search
         </Link>
       </p>
 
       <header className="space-y-3">
-        <h1 className="text-2xl font-semibold tracking-tight">{entryTitle(entry)}</h1>
+        <h1 className="text-3xl leading-tight font-extrabold sm:text-4xl">{entryTitle(entry)}</h1>
         {entry.tags && entry.tags.length > 0 ? (
           <ul className="flex flex-wrap gap-2" aria-label="Topics">
             {entry.tags.map((tag) => (
               <li key={tag}>
                 <Link
                   href={`/search?q=${encodeURIComponent(tag)}`}
-                  className="inline-flex min-h-11 items-center rounded-full bg-flora-tint px-4 text-sm font-medium text-flora-accent-strong hover:underline"
+                  className="pdm-press inline-flex min-h-11 items-center rounded-full bg-pdm-tint px-4 text-sm font-semibold text-pdm-accent-strong hover:bg-pdm-subtle"
                 >
                   {tag}
                 </Link>
@@ -47,8 +47,8 @@ export default async function EntryPage({ params }: PageProps<"/entry/[id]">) {
         ) : null}
       </header>
 
-      <section aria-labelledby="answer-heading" className="space-y-4 rounded-lg border border-flora-border bg-white p-4 sm:p-6">
-        <h2 id="answer-heading" className="text-lg font-semibold">
+      <section aria-labelledby="answer-heading" className="space-y-4 rounded-2xl border border-pdm-border bg-pdm-panel p-4 sm:p-6">
+        <h2 id="answer-heading" className="text-lg font-bold">
           Sweetlife Flora&apos;s answer
         </h2>
         {paragraphs.map((paragraph, index) => (
@@ -60,7 +60,7 @@ export default async function EntryPage({ params }: PageProps<"/entry/[id]">) {
       </section>
 
       <p>
-        <Link href="/ask-expert" className="font-semibold text-flora-accent-strong underline underline-offset-4">
+        <Link href="/ask-expert" className="font-semibold text-pdm-accent-strong underline underline-offset-4">
           Need more specific advice? Ask the Expert
         </Link>
       </p>

@@ -6,11 +6,11 @@ export const metadata: Metadata = {
 
 export default function AskStatusPage() {
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-semibold tracking-tight">Question status</h1>
+    <div className="space-y-8">
+      <h1 className="text-3xl leading-tight font-extrabold sm:text-4xl">Question status</h1>
 
-      <section aria-labelledby="status-heading" className="space-y-2 rounded-lg border border-pdm-border bg-white p-4">
-        <h2 id="status-heading" className="font-medium">
+      <section aria-labelledby="status-heading" className="space-y-2 rounded-2xl border border-pdm-border bg-pdm-panel p-4">
+        <h2 id="status-heading" className="font-semibold">
           Current status
         </h2>
         <p className="text-pdm-muted">Your question&apos;s status will appear here.</p>
