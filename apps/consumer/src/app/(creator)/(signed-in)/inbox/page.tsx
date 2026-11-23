@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { Placeholder } from "@/components/placeholder";
+import { EmptyState } from "@/components/empty-state";
+import { PageHeader, PageSection } from "@/components/page-section";
 
 export const metadata: Metadata = {
   title: "Inbox",
@@ -7,18 +8,12 @@ export const metadata: Metadata = {
 
 export default function InboxPage() {
   return (
-    <div className="space-y-6">
-      <div className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Inbox</h1>
-        <p className="text-flora-muted">Answers to questions you asked in the app.</p>
-      </div>
+    <div className="space-y-8">
+      <PageHeader title="Inbox" description="Answers to questions you asked in the app." />
 
-      <section aria-labelledby="answers-heading" className="space-y-2">
-        <h2 id="answers-heading" className="text-lg font-semibold">
-          Your questions
-        </h2>
-        <Placeholder>Your questions and answers will appear here.</Placeholder>
-      </section>
+      <PageSection id="answers" title="Your questions">
+        <EmptyState icon="question" title="Your questions and answers will appear here." />
+      </PageSection>
     </div>
   );
 }

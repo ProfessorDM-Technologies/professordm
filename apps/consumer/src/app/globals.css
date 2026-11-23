@@ -1,33 +1,401 @@
 @import "tailwindcss";
 
-@theme {
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+/* dark: utilities follow the saved theme on <html>, not the OS setting. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-  --color-pdm-ink: #1c1917;
-  --color-pdm-muted: #57534e;
-  --color-pdm-accent: #b45309;
-  --color-pdm-accent-strong: #92400e;
-  --color-pdm-surface: #fffbeb;
-  --color-pdm-border: #e7e5e4;
+/* Brand tokens (apps/creator-workspace/DESIGN.md). Values live on <html> so one data-theme switch re-themes every pdm-* utility. */
+:root {
+  color-scheme: light;
+  /* Spring with a small overshoot, for the glass lens and the shrinking bar. */
+  --ease-spring: linear(0, 0.009, 0.035 2.1%, 0.141 4.4%, 0.723 12.9%, 0.938 16.7%, 1.017 19.4%, 1.067, 1.099 24.3%, 1.108 26%, 1.104, 1.088 30.6%, 1.03 37.6%, 1.007 41.3%, 0.991 46.4%, 0.996 58.1%, 1.001 67.5%, 1);
+  --pdm-surface: #f5f8f9;
+  --pdm-panel: #ffffff;
+  --pdm-ink: #12232e;
+  --pdm-heading: #043b65;
+  --pdm-muted: #4a5d6b;
+  --pdm-border: #dce5ea;
+  --pdm-accent: #043b65;
+  --pdm-accent-strong: #032c4c;
+  --pdm-on-accent: #ffffff;
+  --pdm-tint: #e3f1ea;
+  --pdm-subtle: #edf2f5;
+  --pdm-danger-bg: #fdecec;
+  --pdm-danger-line: #f5c2c2;
+  --pdm-danger-ink: #9b1c1c;
+  --pdm-success-bg: #e4f4ec;
+  --pdm-success-line: #b9e3cc;
+  --pdm-success-ink: #0c6b46;
+  --pdm-cyan-tint: #e0f5f8;
+  --pdm-cyan-ink: #065a66;
+  --pdm-gold-tint: #fbebd8;
+  --pdm-gold-ink: #8a4b0b;
+  --pdm-glass: linear-gradient(180deg, rgb(255 255 255 / 0.16), rgb(255 255 255 / 0.06));
+  --pdm-glass-rim: rgb(255 255 255 / 0.5);
+  --pdm-glass-line: rgb(4 59 101 / 0.08);
+  --pdm-glass-highlight: rgb(255 255 255 / 0.95);
+  --pdm-glass-lowlight: rgb(255 255 255 / 0.4);
+  --pdm-glass-sheen: rgb(255 255 255 / 0.16);
+  --pdm-glass-drop: rgb(4 59 101 / 0.22);
+  --pdm-glass-active: rgb(255 255 255 / 0.6);
+  --pdm-glass-lens: linear-gradient(180deg, rgb(255 255 255 / 0.75), rgb(255 255 255 / 0.5));
+  --pdm-glass-lens-rim: rgb(255 255 255 / 0.9);
+  --pdm-shadow: 0 1px 2px rgb(18 35 46 / 0.06), 0 8px 24px -8px rgb(4 59 101 / 0.18);
+}
 
-  --color-flora-ink: #14291c;
-  --color-flora-muted: #4b5f52;
-  --color-flora-accent: #2f6b45;
-  --color-flora-accent-strong: #1f4d31;
-  --color-flora-surface: #f4f8f3;
-  --color-flora-tint: #e3eee2;
-  --color-flora-border: #d3e0d2;
+[data-theme="dark"] {
+  color-scheme: dark;
+  --pdm-surface: #0e1b24;
+  --pdm-panel: #152936;
+  --pdm-ink: #e8eff3;
+  --pdm-heading: #ffffff;
+  --pdm-muted: #a3b5c2;
+  --pdm-border: #26404f;
+  --pdm-accent: #0dbed6;
+  --pdm-accent-strong: #6fdceb;
+  --pdm-on-accent: #0b1a22;
+  --pdm-tint: #163a38;
+  --pdm-subtle: #1e3644;
+  --pdm-danger-bg: #3a1d22;
+  --pdm-danger-line: #6b2a33;
+  --pdm-danger-ink: #ffb4b4;
+  --pdm-success-bg: #12352a;
+  --pdm-success-line: #1f5a44;
+  --pdm-success-ink: #7fe0b4;
+  --pdm-cyan-tint: #113a44;
+  --pdm-cyan-ink: #7fe3f0;
+  --pdm-gold-tint: #3a2a14;
+  --pdm-gold-ink: #f2b46a;
+  --pdm-glass: linear-gradient(180deg, rgb(38 64 79 / 0.3), rgb(21 41 54 / 0.18));
+  --pdm-glass-rim: rgb(255 255 255 / 0.14);
+  --pdm-glass-line: rgb(0 0 0 / 0.25);
+  --pdm-glass-highlight: rgb(255 255 255 / 0.22);
+  --pdm-glass-lowlight: rgb(255 255 255 / 0.06);
+  --pdm-glass-sheen: rgb(255 255 255 / 0.08);
+  --pdm-glass-drop: rgb(0 0 0 / 0.6);
+  --pdm-glass-active: rgb(255 255 255 / 0.12);
+  --pdm-glass-lens: linear-gradient(180deg, rgb(255 255 255 / 0.2), rgb(255 255 255 / 0.1));
+  --pdm-glass-lens-rim: rgb(255 255 255 / 0.22);
+  --pdm-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 10px 28px -8px rgb(0 0 0 / 0.55);
+}
+
+@theme inline {
+  --font-sans: Aptos, "Segoe UI Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: var(--font-montserrat), Aptos, -apple-system, system-ui, sans-serif;
+
+  --color-pdm-surface: var(--pdm-surface);
+  --color-pdm-panel: var(--pdm-panel);
+  --color-pdm-ink: var(--pdm-ink);
+  --color-pdm-heading: var(--pdm-heading);
+  --color-pdm-muted: var(--pdm-muted);
+  --color-pdm-border: var(--pdm-border);
+  --color-pdm-accent: var(--pdm-accent);
+  --color-pdm-accent-strong: var(--pdm-accent-strong);
+  --color-pdm-on-accent: var(--pdm-on-accent);
+  --color-pdm-tint: var(--pdm-tint);
+  --color-pdm-subtle: var(--pdm-subtle);
+  --color-pdm-danger-bg: var(--pdm-danger-bg);
+  --color-pdm-danger-line: var(--pdm-danger-line);
+  --color-pdm-danger-ink: var(--pdm-danger-ink);
+  --color-pdm-success-bg: var(--pdm-success-bg);
+  --color-pdm-success-line: var(--pdm-success-line);
+  --color-pdm-success-ink: var(--pdm-success-ink);
+  --color-pdm-cyan-tint: var(--pdm-cyan-tint);
+  --color-pdm-cyan-ink: var(--pdm-cyan-ink);
+  --color-pdm-gold-tint: var(--pdm-gold-tint);
+  --color-pdm-gold-ink: var(--pdm-gold-ink);
+
+  /* Fixed brand colours (same in both themes). */
+  --color-pdm-navy: #043b65;
+  --color-pdm-midnight: #12232e;
+  --color-pdm-teal: #17a770;
+  --color-pdm-cyan: #0dbed6;
+  --color-pdm-gold: #db8424;
+  --color-pdm-sage: #d2e1be;
+
+  --shadow-pdm: var(--pdm-shadow);
+  --ease-pdm: cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
 html {
   -webkit-text-size-adjust: 100%;
+  background-color: var(--pdm-surface);
 }
 
 body {
   min-height: 100dvh;
+  line-height: 1.5;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  color: var(--pdm-heading);
+  text-wrap: balance;
+}
+
+h1 {
+  letter-spacing: -0.02em;
 }
 
 :focus-visible {
-  outline: 2px solid currentColor;
+  outline: 2px solid var(--pdm-accent);
   outline-offset: 2px;
+}
+
+::selection {
+  background: rgb(13 190 214 / 0.28);
+}
+
+/*
+ * Liquid glass, iOS style, for floating chrome only (nav and account islands). Content cards stay solid.
+ * Layers: a thin tint, a heavy blur that boosts saturation so colour behind it glows through, a bright rim on the
+ * top edge, a softer one at the bottom, and a sheen in ::before. The element needs a positioned box
+ * (relative or fixed) for the sheen.
+ */
+.pdm-glass {
+  isolation: isolate;
+  background: var(--pdm-glass);
+  border: 1px solid var(--pdm-glass-rim);
+  box-shadow:
+    inset 0 1px 0.5px var(--pdm-glass-highlight),
+    inset 0 -1px 1px var(--pdm-glass-lowlight),
+    inset 0 0 0 0.5px var(--pdm-glass-line),
+    0 12px 32px -12px var(--pdm-glass-drop),
+    0 2px 8px -2px rgb(18 35 46 / 0.08);
+  -webkit-backdrop-filter: blur(8px) saturate(180%);
+  backdrop-filter: blur(8px) saturate(180%);
+}
+
+.pdm-glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(130% 160% at 18% -20%, var(--pdm-glass-sheen), transparent 48%),
+    radial-gradient(90% 140% at 100% 120%, rgb(13 190 214 / 0.1), transparent 60%);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .pdm-glass {
+    background: var(--pdm-panel);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .pdm-glass {
+    background: var(--pdm-panel);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* "Settle": a small lift on hover and a soft press, on one curve. */
+.pdm-press {
+  transition:
+    transform 160ms var(--ease-pdm),
+    background-color 160ms var(--ease-pdm),
+    border-color 160ms var(--ease-pdm),
+    color 160ms var(--ease-pdm),
+    box-shadow 240ms var(--ease-pdm);
+}
+
+.pdm-press:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.pdm-lift {
+  transition:
+    translate 240ms var(--ease-pdm),
+    border-color 240ms var(--ease-pdm),
+    box-shadow 240ms var(--ease-pdm);
+}
+
+@media (hover: hover) {
+  .pdm-lift:hover {
+    translate: 0 -2px;
+    box-shadow: var(--pdm-shadow);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pdm-press,
+  .pdm-lift {
+    transition: none;
+  }
+  .pdm-press:active:not(:disabled) {
+    transform: none;
+  }
+  .pdm-lift:hover {
+    translate: none;
+  }
+}
+
+/* Theme switch crossfade (View Transitions). Short, and skipped under reduced motion in theme-toggle.tsx. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 240ms;
+  animation-timing-function: var(--ease-pdm);
+}
+
+/* Only behind the logo corner, so content still passes under the glass islands (that is what makes them glass). */
+.pdm-scrim {
+  background: radial-gradient(farthest-side at 0% 0%, var(--pdm-surface) 62%, transparent 100%);
+}
+
+/* Account popover: pinned under the account island; settles in on open. */
+.pdm-popover {
+  position: fixed;
+  inset: auto 1rem auto auto;
+  top: 4.25rem;
+  margin: 0;
+  opacity: 1;
+  translate: 0 0;
+  transition:
+    opacity 160ms var(--ease-pdm),
+    translate 160ms var(--ease-pdm),
+    overlay 160ms allow-discrete,
+    display 160ms allow-discrete;
+}
+
+@media (min-width: 80rem) {
+  .pdm-popover {
+    inset: auto 1.5rem auto auto;
+    top: 5rem;
+  }
+}
+
+.pdm-popover:not(:popover-open) {
+  opacity: 0;
+  translate: 0 -4px;
+}
+
+@starting-style {
+  .pdm-popover:popover-open {
+    opacity: 0;
+    translate: 0 -4px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pdm-popover {
+    transition: none;
+  }
+}
+
+/* Inline text links keep their underline at rest and answer hover by thickening it. */
+a.underline {
+  text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+  transition:
+    text-decoration-color 160ms var(--ease-pdm),
+    text-underline-offset 160ms var(--ease-pdm);
+}
+
+a.underline:hover {
+  text-decoration-color: currentColor;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 6px;
+}
+
+/*
+ * Selection lens (iOS 26 tab bar): a brighter glass bubble that springs between items, stretches while it travels
+ * and swells under a press. Position and size are set from consumer-nav.tsx.
+ */
+.pdm-lens {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  border-radius: 9999px;
+  pointer-events: none;
+  background: var(--pdm-glass-lens);
+  border: 1px solid var(--pdm-glass-lens-rim);
+  box-shadow:
+    inset 0 1px 0.5px var(--pdm-glass-highlight),
+    0 1px 3px rgb(4 59 101 / 0.12),
+    0 6px 16px -6px rgb(4 59 101 / 0.25);
+  transform-origin: center;
+  transition:
+    scale 420ms var(--ease-spring),
+    opacity 200ms var(--ease-pdm);
+}
+
+.pdm-lens[data-pressed="true"] {
+  scale: 1.08 1.12;
+}
+
+/* Shrinks while scrolling down, springs back on scroll up, like the iOS 26 tab bar. */
+.pdm-shrink {
+  transition: scale 520ms var(--ease-spring), translate 520ms var(--ease-spring);
+}
+
+.pdm-shrink[data-compact="true"] {
+  scale: 0.9;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pdm-lens,
+  .pdm-shrink {
+    transition: none;
+  }
+  .pdm-lens[data-pressed="true"],
+  .pdm-shrink[data-compact="true"] {
+    scale: none;
+  }
+}
+
+/*
+ * Page transition (template.tsx): the old page leaves fast (120 ms fade), the new one settles in
+ * (220 ms fade with an 8 px rise, after the exit). The nav islands opt out of the page crossfade so their
+ * selection lens keeps animating live instead of showing a ghost at the old position.
+ */
+::view-transition-old(.page-exit) {
+  animation: 120ms var(--ease-pdm) both pdm-page-out;
+}
+
+::view-transition-new(.page-enter) {
+  animation: 220ms var(--ease-pdm) 100ms both pdm-page-in;
+}
+
+@keyframes pdm-page-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes pdm-page-in {
+  from {
+    opacity: 0;
+    translate: 0 8px;
+  }
+}
+
+.pdm-vt-island {
+  view-transition-name: pdm-nav-island;
+}
+
+.pdm-vt-dock {
+  view-transition-name: pdm-nav-dock;
+}
+
+::view-transition-group(pdm-nav-island),
+::view-transition-group(pdm-nav-dock),
+::view-transition-new(pdm-nav-island),
+::view-transition-new(pdm-nav-dock) {
+  animation: none;
+}
+
+::view-transition-old(pdm-nav-island),
+::view-transition-old(pdm-nav-dock) {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(.page-exit),
+  ::view-transition-new(.page-enter) {
+    animation: none;
+  }
 }

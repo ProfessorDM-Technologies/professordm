@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { EmptyState } from "@/components/empty-state";
+import { PageHeader, PageSection } from "@/components/page-section";
+import { SearchForm } from "@/components/search-form";
 import { getCurrentUser } from "@/lib/auth/session";
 import { FREE_ANSWER_LIMIT, freeAnswersLeft } from "@/lib/knowledge/free-answers";
 import { getFreeViewsUsed, getPublishedTags } from "@/lib/knowledge/queries";
@@ -15,53 +18,28 @@ export default async function HomePage() {
 
   return (
     <div className="space-y-8">
-      <div className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Plant care answers from Sweetlife Flora</h1>
-        <p className="text-flora-muted">Search answers to questions other plant owners have already asked.</p>
-      </div>
+      <PageHeader
+        title="Plant care answers from Sweetlife Flora"
+        description="Search answers to questions other plant owners have already asked."
+      />
 
-      <form action="/search" role="search" className="flex gap-2">
-        <label htmlFor="home-search" className="sr-only">
-          Search plant care answers
-        </label>
-        <input
-          id="home-search"
-          name="q"
-          type="search"
-          placeholder="Search plant care answers"
-          className="min-w-0 flex-1 rounded-lg border border-flora-border bg-white p-3 text-base"
-        />
-        <button
-          type="submit"
-          className="rounded-lg bg-flora-accent px-4 py-3 font-semibold text-white hover:bg-flora-accent-strong"
-        >
-          Search
-        </button>
-      </form>
+      <SearchForm id="home-search" />
 
-      <section aria-labelledby="trial-heading" className="space-y-2">
-        <h2 id="trial-heading" className="text-lg font-semibold">
-          Free answers remaining
-        </h2>
-        <p className="rounded-lg border border-flora-border bg-white p-4">
-          <span className="text-2xl font-semibold text-flora-accent-strong">{left}</span>{" "}
-          <span className="text-flora-muted">
-            of {FREE_ANSWER_LIMIT} free answers left
-          </span>
+      <PageSection id="trial" title="Free answers remaining">
+        <p className="rounded-2xl border border-pdm-border bg-pdm-panel p-5">
+          <span className="font-display text-3xl font-extrabold text-pdm-heading tabular-nums">{left}</span>{" "}
+          <span className="text-pdm-muted">of {FREE_ANSWER_LIMIT} free answers left</span>
         </p>
-      </section>
+      </PageSection>
 
-      <section aria-labelledby="topics-heading" className="space-y-2">
-        <h2 id="topics-heading" className="text-lg font-semibold">
-          Popular topics
-        </h2>
+      <PageSection id="topics" title="Popular topics">
         {topics.length > 0 ? (
           <ul className="flex flex-wrap gap-2">
             {topics.map((topic) => (
               <li key={topic}>
                 <Link
                   href={`/search?q=${encodeURIComponent(topic)}`}
-                  className="inline-flex min-h-11 items-center rounded-full border border-flora-border bg-white px-4 text-sm font-medium text-flora-accent-strong hover:bg-flora-tint"
+                  className="pdm-press inline-flex min-h-11 items-center rounded-full border border-pdm-border bg-pdm-panel px-4 text-sm font-semibold text-pdm-ink hover:border-pdm-accent hover:bg-pdm-subtle"
                 >
                   {topic}
                 </Link>
@@ -69,18 +47,34 @@ export default async function HomePage() {
             ))}
           </ul>
         ) : (
-          <p className="text-flora-muted">No topics yet.</p>
+          <EmptyState icon="list" tone="teal" title="No topics yet" />
         )}
-      </section>
+      </PageSection>
 
-      <section aria-labelledby="ask-heading" className="space-y-2 rounded-lg bg-flora-tint p-4">
-        <h2 id="ask-heading" className="text-lg font-semibold">
-          Can&apos;t find what you need?
-        </h2>
-        <p className="text-flora-muted">Ask Sweetlife Flora directly for a personal answer.</p>
-        <Link href="/ask-expert" className="inline-block font-semibold text-flora-accent-strong underline underline-offset-4">
-          Ask the Expert
-        </Link>
+      <section
+        aria-labelledby="ask-heading"
+        className="flex items-start gap-4 rounded-2xl border border-pdm-border bg-pdm-panel p-5"
+      >
+        <span
+          aria-hidden="true"
+          className="grid size-12 shrink-0 place-items-center rounded-2xl rounded-bl-md bg-pdm-cyan-tint text-pdm-cyan-ink"
+        >
+          <svg viewBox="0 0 24 24" className="size-6" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 5h14v10h-7l-5 4v-4H5V5Zm5.2 3.3a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1M12 13.2h.01" />
+          </svg>
+        </span>
+        <div className="min-w-0 space-y-1 pt-0.5">
+          <h2 id="ask-heading" className="text-lg font-bold">
+            Can&apos;t find what you need?
+          </h2>
+          <p className="text-sm text-pdm-muted">Ask Sweetlife Flora directly for a personal answer.</p>
+          <Link
+            href="/ask-expert"
+            className="pdm-press mt-2 inline-flex min-h-11 items-center rounded-full bg-pdm-accent px-5 font-semibold text-pdm-on-accent hover:bg-pdm-accent-strong"
+          >
+            Ask the Expert
+          </Link>
+        </div>
       </section>
     </div>
   );
